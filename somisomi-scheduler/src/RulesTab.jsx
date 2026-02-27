@@ -158,27 +158,32 @@ export function RulesTab({ rules, setRules, employees }) {
 
       {/* Staffing Levels */}
       <Section id="staffing" title="Staffing Levels" icon="👥" {...sectionProps}>
-        <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 10 }}>How many people needed per day type.</div>
+        <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 10 }}>How many people needed per day type. Weekend includes a mid shift (3pm–7pm).</div>
         {[
-          ["weekday", "Weekday (Mon–Thu)"],
-          ["weekdayHoliday", "Weekday Holiday"],
-          ["friday", "Friday"],
-          ["fridayHoliday", "Friday Holiday"],
-          ["saturday", "Saturday"],
-          ["sunday", "Sunday"],
-        ].map(([key, label]) => (
-          <div key={key} style={{ marginBottom: 12, padding: "10px 12px", background: "#F9FAFB", borderRadius: 8 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 6 }}>{label}</div>
-            <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
-              <NumField label="Day" value={rules.staffing[key].day} onChange={v => update(r => { r.staffing[key].day = v; r.staffing[key].total = v + r.staffing[key].evening; })} />
-              <NumField label="Evening" value={rules.staffing[key].evening} onChange={v => update(r => { r.staffing[key].evening = v; r.staffing[key].total = r.staffing[key].day + v; })} />
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span style={{ fontSize: 12, color: "#6B7280", fontWeight: 600 }}>Total:</span>
-                <span style={{ fontSize: 14, fontWeight: 800, color: "#111827" }}>{rules.staffing[key].total}</span>
+          ["weekday", "Weekday (Mon–Thu)", false],
+          ["weekdayHoliday", "Weekday Holiday", false],
+          ["friday", "Friday", false],
+          ["fridayHoliday", "Friday Holiday", false],
+          ["saturday", "Saturday", true],
+          ["sunday", "Sunday", true],
+        ].map(([key, label, hasMid]) => {
+          const s = rules.staffing[key];
+          const total = (s.day || 0) + (s.mid || 0) + (s.evening || 0);
+          return (
+            <div key={key} style={{ marginBottom: 12, padding: "10px 12px", background: "#F9FAFB", borderRadius: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 6 }}>{label}</div>
+              <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+                <NumField label="Day" value={s.day} onChange={v => update(r => { r.staffing[key].day = v; r.staffing[key].total = v + (r.staffing[key].mid || 0) + r.staffing[key].evening; })} />
+                {hasMid && <NumField label="Mid" value={s.mid || 0} onChange={v => update(r => { r.staffing[key].mid = v; r.staffing[key].total = r.staffing[key].day + v + r.staffing[key].evening; })} />}
+                <NumField label="Evening" value={s.evening} onChange={v => update(r => { r.staffing[key].evening = v; r.staffing[key].total = r.staffing[key].day + (r.staffing[key].mid || 0) + v; })} />
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 12, color: "#6B7280", fontWeight: 600 }}>Total:</span>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: "#111827" }}>{total}</span>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </Section>
 
       {/* Priority Lists */}

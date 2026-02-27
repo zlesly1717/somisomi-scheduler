@@ -13,6 +13,7 @@ export default function App() {
   const [timeOffs, setTimeOffs] = useState([]);
   const [rules, setRules] = useState(SEED_RULES);
   const [schoolDates, setSchoolDates] = useState([]);
+  const [savedSchedules, setSavedSchedules] = useState({});
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("employees");
 
@@ -23,18 +24,20 @@ export default function App() {
       setTimeOffs(d.timeOffs || []);
       setRules(d.rules || SEED_RULES);
       setSchoolDates(d.schoolDates || SEED_SCHOOL_CALENDAR);
+      setSavedSchedules(d.savedSchedules || {});
     } else {
       setEmployees(SEED_EMPLOYEES);
       setTimeOffs([]);
       setRules(SEED_RULES);
       setSchoolDates(SEED_SCHOOL_CALENDAR);
+      setSavedSchedules({});
     }
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    if (!loading) saveData({ employees, timeOffs, rules, schoolDates });
-  }, [employees, timeOffs, rules, schoolDates, loading]);
+    if (!loading) saveData({ employees, timeOffs, rules, schoolDates, savedSchedules });
+  }, [employees, timeOffs, rules, schoolDates, savedSchedules, loading]);
 
   const ct = r => employees.filter(e => e.status === "active" && e.role === r).length;
   const upcomingTOs = timeOffs.filter(t => new Date(t.date) >= new Date(new Date().toDateString()));
@@ -109,7 +112,7 @@ export default function App() {
         <SchoolCalendarTab schoolDates={schoolDates} setSchoolDates={setSchoolDates} />
       )}
       {tab === "schedule" && (
-        <ScheduleTab employees={employees} rules={rules} schoolDates={schoolDates} timeOffs={timeOffs} />
+        <ScheduleTab employees={employees} rules={rules} schoolDates={schoolDates} timeOffs={timeOffs} savedSchedules={savedSchedules} setSavedSchedules={setSavedSchedules} />
       )}
     </div>
   );
