@@ -779,20 +779,9 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
                               const hasUnavail = u.allDay || (u.start && u.end);
                               const showUnavail = hasUnavail && shifts.length === 0;
 
-                              const isDropHere = dropTarget && dropTarget.toDate === d && dropTarget.toEmpId === emp.id;
-
                               return (
                                 <td key={d}
-                                  onDragOver={e => handleDragOver(e, d, emp.id)}
-                                  onDragLeave={handleDragLeave}
-                                  onDrop={e => handleDrop(e, d, emp.id)}
-                                  style={{
-                                    padding: "6px 4px", verticalAlign: "top", minHeight: 60,
-                                    background: isDropHere ? "#DBEAFE" : "transparent",
-                                    outline: isDropHere ? "2px dashed #3B82F6" : "none",
-                                    borderRadius: isDropHere ? 6 : 0,
-                                    transition: "background 0.15s",
-                                  }}>
+                                  style={{ padding: "6px 4px", verticalAlign: "top", minHeight: 60 }}>
                                   {/* Time-off block */}
                                   {hasTO && weekTO.map((to, ti) => (
                                     <div key={`to-${ti}`} style={{
@@ -813,7 +802,7 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
                                       <div style={{ fontSize: 9, color: "#D1D5DB" }}>{u.allDay ? "All Day" : `${fmtTime(u.start)}–${fmtTime(u.end)}`}</div>
                                     </div>
                                   )}
-                                  {/* Shift blocks — DRAGGABLE */}
+                                  {/* Shift blocks */}
                                   {shifts.map((s, si) => {
                                     let sColors = shiftColors[s.type] || { bg: "#6B7280", text: "#fff", label: s.label };
                                     if (isWE && (s.type === "day_lead" || s.type === "day")) sColors = { ...sColors, ...weekendDayColor, label: s.type === "day_lead" ? "Shift Lead" : "Weekend Day" };
