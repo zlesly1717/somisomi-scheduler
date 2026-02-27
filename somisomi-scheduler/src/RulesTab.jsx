@@ -81,10 +81,43 @@ function PriorityList({ title, items, onReorder, onAdd, onRemove, allNames }) {
   );
 }
 
+function AddConstraintForm({ onAdd }) {
+  const [open, setOpen] = useState(false);
+  const [label, setLabel] = useState("");
+  const [desc, setDesc] = useState("");
+
+  const handleAdd = () => {
+    if (!label.trim()) return;
+    onAdd(label.trim(), desc.trim());
+    setLabel(""); setDesc(""); setOpen(false);
+  };
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)} style={{
+        marginTop: 14, padding: "10px 18px", borderRadius: 8, fontSize: 12, fontWeight: 700,
+        border: "1px dashed #D1D5DB", background: "#F9FAFB", color: "#6B7280",
+        cursor: "pointer", fontFamily: font, width: "100%", textAlign: "left",
+      }}>+ Add Custom Constraint</button>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: 14, padding: 14, background: "#F9FAFB", borderRadius: 10, border: "1px solid #E5E7EB" }}>
+      <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 8 }}>New Constraint</div>
+      <input value={label} onChange={e => setLabel(e.target.value)} placeholder="Rule name (e.g. No trainees on weekday day shifts)" style={{ ...si, marginBottom: 6 }} />
+      <input value={desc} onChange={e => setDesc(e.target.value)} placeholder="Description (optional)" style={{ ...si, marginBottom: 8 }} />
+      <div style={{ display: "flex", gap: 6 }}>
+        <button onClick={handleAdd} style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: font }}>+ Add</button>
+        <button onClick={() => { setOpen(false); setLabel(""); setDesc(""); }} style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid #D1D5DB", background: "#fff", color: "#6B7280", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: font }}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 const categories = [
   { id: "constraints", label: "Constraints", icon: "🚫" },
   { id: "staffing", label: "Staffing Levels", icon: "👥" },
-  { id: "shifts", label: "Shift Settings", icon: "⏰" },
   { id: "priorities", label: "Priority Lists", icon: "📋" },
   { id: "rotation", label: "MC Rotation", icon: "🔄" },
   { id: "employee_rules", label: "Employee Rules", icon: "📌" },
@@ -132,9 +165,31 @@ export function RulesTab({ rules, setRules, employees }) {
                 <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 4 }}>Hard Constraints</div>
                 <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 12 }}>The scheduler will never violate an enabled constraint.</div>
                 {rules.constraints.map(c => (
-                  <Toggle key={c.id} checked={c.enabled} label={c.label} desc={c.desc}
-                    onChange={v => update(r => { const idx = r.constraints.findIndex(x => x.id === c.id); r.constraints[idx].enabled = v; })} />
+                  <div key={c.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 0", borderBottom: "1px solid #F3F4F6" }}>
+                    <button onClick={() => update(r => { const idx = r.constraints.findIndex(x => x.id === c.id); r.constraints[idx].enabled = !c.enabled; })} style={{
+                      width: 40, height: 22, borderRadius: 11, border: "none", cursor: "pointer", padding: 2, flexShrink: 0, marginTop: 1,
+                      background: c.enabled ? "#22C55E" : "#D1D5DB", transition: "background 0.2s", display: "flex", alignItems: "center",
+                    }}>
+                      <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "transform 0.2s", transform: c.enabled ? "translateX(18px)" : "translateX(0)" }} />
+                    </button>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: c.enabled ? "#111827" : "#9CA3AF" }}>{c.label}</div>
+                      {c.desc && <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 1, lineHeight: 1.4 }}>{c.desc}</div>}
+                    </div>
+                    {c.custom && (
+                      <button onClick={() => update(r => { r.constraints = r.constraints.filter(x => x.id !== c.id); })} style={{
+                        background: "none", border: "none", cursor: "pointer", color: "#DC2626", fontSize: 10, fontWeight: 600, flexShrink: 0, marginTop: 2,
+                      }}>✕</button>
+                    )}
+                  </div>
                 ))}
+
+                {/* Add new constraint */}
+                <AddConstraintForm onAdd={(label, desc) => {
+                  update(r => {
+                    r.constraints.push({ id: `custom-${Date.now()}`, label, desc, enabled: true, custom: true });
+                  });
+                }} />
               </div>
             )}
 
@@ -165,38 +220,6 @@ export function RulesTab({ rules, setRules, employees }) {
                     </div>
                   );
                 })}
-              </div>
-            )}
-
-            {/* ── SHIFT SETTINGS ── */}
-            {activeTab === "shifts" && (
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 4 }}>Shift & Employee Settings</div>
-                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 12 }}>Shifts per week and role-specific settings.</div>
-
-                <div style={{ padding: 14, background: "#FEF3C7", borderRadius: 10, marginBottom: 12, border: "1px solid #FDE68A" }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#B45309", marginBottom: 8 }}>🟡 Shift Leads</div>
-                  <Num label="Min shifts/week" value={rules.shiftLead.shiftsPerWeek.min} onChange={v => update(r => { r.shiftLead.shiftsPerWeek.min = v; })} />
-                  <Num label="Max shifts/week" value={rules.shiftLead.shiftsPerWeek.max} onChange={v => update(r => { r.shiftLead.shiftsPerWeek.max = v; })} />
-                  <Num label="Min weekend shifts" value={rules.shiftLead.minWeekendShifts} onChange={v => update(r => { r.shiftLead.minWeekendShifts = v; })} />
-                  <Toggle checked={rules.shiftLead.alternateDayLeads} label="Rotate Day Leads"
-                    desc="Alternate Day Lead role among Shift Leads"
-                    onChange={v => update(r => { r.shiftLead.alternateDayLeads = v; })} />
-                </div>
-
-                <div style={{ padding: 14, background: "#DBEAFE", borderRadius: 10, marginBottom: 12, border: "1px solid #93C5FD" }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#1D4ED8", marginBottom: 8 }}>🔵 Regular Employees</div>
-                  <Num label="Min shifts/week" value={rules.regular.shiftsPerWeek.min} onChange={v => update(r => { r.regular.shiftsPerWeek.min = v; })} />
-                  <Num label="Max shifts/week" value={rules.regular.shiftsPerWeek.max} onChange={v => update(r => { r.regular.shiftsPerWeek.max = v; })} />
-                </div>
-
-                <div style={{ padding: 14, background: "#EDE9FE", borderRadius: 10, border: "1px solid #C4B5FD" }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: "#7C3AED", marginBottom: 8 }}>🟣 Trainees</div>
-                  <Num label="Min shifts/week" value={rules.trainee.shiftsPerWeek.min} onChange={v => update(r => { r.trainee.shiftsPerWeek.min = v; })} />
-                  <Num label="Max shifts/week" value={rules.trainee.shiftsPerWeek.max} onChange={v => update(r => { r.trainee.shiftsPerWeek.max = v; })} />
-                  <Num label="Graduation hours" value={rules.trainee.graduationHours} onChange={v => update(r => { r.trainee.graduationHours = v; })} />
-                  <Toggle checked={rules.trainee.fillGapsOnly} label="Fill gaps only" desc="Trainees only fill remaining slots after regulars" onChange={v => update(r => { r.trainee.fillGapsOnly = v; })} />
-                </div>
               </div>
             )}
 

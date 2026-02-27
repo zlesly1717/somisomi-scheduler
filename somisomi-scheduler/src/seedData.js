@@ -196,6 +196,8 @@ export const SEED_RULES = {
     {id:"no_trainees_mc",label:"No trainees on MC nights",desc:"Trainees cannot be assigned to machine cleaning shifts",enabled:true},
     {id:"mc_evening_sl_leads",label:"Evening SL leads MC",desc:"The Evening SL on MC night IS the MC leader — not a separate person. MC crew = Evening SL + 1 SL helper + 2 regulars (4 total).",enabled:true},
     {id:"no_two_trainees",label:"No two trainees on same day",desc:"Avoid scheduling two trainees on the same day to ensure proper supervision",enabled:true},
+    {id:"no_mc_twice",label:"No MC more than once per week",desc:"No employee can be assigned to machine cleaning more than once per week",enabled:true},
+    {id:"no_trainees_weekday_day",label:"No trainees on weekday day shifts",desc:"Trainees cannot work Mon–Fri day shifts (Day Lead or 2nd Day)",enabled:true},
   ],
   shiftLead: { shiftsPerWeek:{min:4,max:4}, minWeekendShifts:2, mcPerWeek:1, alternateDayLeads:true },
   regular: { shiftsPerWeek:{min:3,max:4} },

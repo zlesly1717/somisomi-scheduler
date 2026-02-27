@@ -133,6 +133,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs) {
   const con = id => { const c = rules.constraints.find(x => x.id === id); return c ? c.enabled : true; };
   const T = rules.shiftTimes;
   const nightMap = {};
+  const mcCount = {}; // track MC assignments per employee
+  active.forEach(e => { mcCount[e.id] = 0; });
 
   // ── FRI→SUN FIRST, THEN MON→THU ──
   const schedOrder = [4, 5, 6, 0, 1, 2, 3];
@@ -188,6 +190,10 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs) {
       if (sc[emp.id] >= emp.maxShifts) return false;
       if (sh[emp.id] + slot.hours > emp.maxHours) return false;
       if (con("no_trainees_mc") && slot.isMC && emp.role === "trainee") return false;
+      // No MC more than once per week
+      if (con("no_mc_twice") && slot.isMC && mcCount[emp.id] >= 1) return false;
+      // No trainees on weekday day shifts (Mon-Fri)
+      if (con("no_trainees_weekday_day") && emp.role === "trainee" && !isWE && (slot.type === "day_lead" || slot.type === "day")) return false;
       // No two trainees on same day
       if (con("no_two_trainees") && emp.role === "trainee") {
         const traineeAlreadyToday = schedule[dateStr].some(a => a.empId && active.find(e => e.id === a.empId)?.role === "trainee");
@@ -259,6 +265,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs) {
         const ch = cands[0];
         schedule[dateStr].push({ ...slot, empId: ch.id, empName: ch.name, empRole: ch.role });
         sc[ch.id]++; sh[ch.id] += slot.hours; sd[ch.id].add(dateStr); usedToday.add(ch.id);
+        if (slot.isMC) mcCount[ch.id]++;
         if (tm(slot.start) >= 1020 || slot.isMC) { if (!nightMap[dateStr]) nightMap[dateStr] = new Set(); nightMap[dateStr].add(ch.id); }
       } else {
         schedule[dateStr].push({ ...slot, empId: null, empName: "⚠ UNFILLED", empRole: null });
@@ -812,31 +819,17 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
                                     if (isWE && (s.type === "day_lead" || s.type === "day")) sColors = { ...sColors, ...weekendDayColor, label: s.type === "day_lead" ? "Shift Lead" : "Weekend Day" };
                                     if (s.type === "day_lead" && !isWE) sColors = { ...sColors, label: "Day Shift Lead" };
 
-                                    // Find the actual slot index in the day's schedule
-                                    const actualIdx = (result.schedule[d] || []).findIndex(a => a === s);
-
                                     return (
                                       <div key={si}
-                                        draggable={!isSaved}
-                                        onDragStart={e => handleDragStart(e, d, actualIdx, emp.id)}
-                                        onDragEnd={() => { setDragData(null); setDropTarget(null); }}
                                         style={{
                                           padding: "7px 8px", borderRadius: 6, marginBottom: 3,
                                           background: sColors.bg, color: sColors.text, minHeight: 36,
-                                          cursor: isSaved ? "default" : "grab",
-                                          opacity: dragData && dragData.fromDate === d && dragData.slotIdx === actualIdx ? 0.5 : 1,
                                         }}>
                                         <div style={{ fontSize: 11, fontWeight: 700 }}>{fmtTime(s.start)}–{fmtTime(s.end)}</div>
                                         <div style={{ fontSize: 9, fontWeight: 600, opacity: 0.9 }}>{sColors.label}</div>
                                       </div>
                                     );
                                   })}
-                                  {/* Empty drop hint when dragging */}
-                                  {shifts.length === 0 && !showUnavail && !hasTO && dragData && (
-                                    <div style={{ padding: "12px 8px", borderRadius: 6, border: "1px dashed #D1D5DB", textAlign: "center", fontSize: 10, color: "#D1D5DB" }}>
-                                      Drop here
-                                    </div>
-                                  )}
                                 </td>
                               );
                             })}
