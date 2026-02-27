@@ -122,7 +122,7 @@ function parseTimeOffs(text, employees, weekDates) {
 // ═══════════════════════════════════
 // GENERATE ENGINE
 // ═══════════════════════════════════
-function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs) {
+function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, dayStaffingOverrides) {
   const schedule = {};
   const sc = {}, sh = {}, sd = {};
   const warnings = [];
@@ -142,7 +142,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs) {
   schedOrder.forEach(dayIndex => {
     const dateStr = weekDates[dayIndex];
     const dayType = getDayType(dateStr, schoolDates);
-    const staffing = rules.staffing[dayType] || rules.staffing.weekday;
+    const defaultStaffing = rules.staffing[dayType] || rules.staffing.weekday;
+    const staffing = dayStaffingOverrides?.[dateStr] ? { ...defaultStaffing, ...dayStaffingOverrides[dateStr] } : defaultStaffing;
     const d = new Date(dateStr + "T12:00:00");
     const dow = d.getDay();
     const isWE = dow === 0 || dow === 6;
@@ -379,6 +380,7 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
   const [step, setStep] = useState("timeoff"); // "timeoff" | "review" | "result"
   const [viewMode, setViewMode] = useState("shift"); // "shift" | "employee"
   const [selected, setSelected] = useState(null); // { date, slotKey } - first click
+  const [dayStaffing, setDayStaffing] = useState(null); // per-day overrides { date: {day,mid,evening} }
 
   // ── Click-to-swap handler ──
   const handleCellClick = (date, type, order) => {
@@ -429,19 +431,30 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
   const isSaved = !!saved;
   const dayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+  const initDayStaffing = (dates) => {
+    const ds = {};
+    dates.forEach(d => {
+      const dt = getDayType(d, schoolDates);
+      const s = rules.staffing[dt] || rules.staffing.weekday;
+      ds[d] = { day: s.day || 2, mid: s.mid || 0, evening: s.evening || 3 };
+    });
+    return ds;
+  };
+
   const handleParseTimeOffs = () => {
     const parsed = parseTimeOffs(toText, employees.filter(e => e.status === "active"), weekDates);
     setWeeklyTOs(parsed);
+    if (!dayStaffing) setDayStaffing(initDayStaffing(weekDates));
     setStep("review");
   };
 
   const handleGenerate = () => {
     setGenerating(true);
     setStep("result");
+    const ds = dayStaffing || initDayStaffing(weekDates);
     setTimeout(() => {
-      // Combine stored timeOffs + weekly parsed ones
       const allTOs = [...(timeOffs || []), ...weeklyTOs];
-      const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs);
+      const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs, ds);
       setDraft(r);
       setGenerating(false);
     }, 200);
@@ -470,7 +483,7 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
 
   const handleWeekChange = (val) => {
     setWeekStart(val); setDraft(null); setNotes([]);
-    setWeeklyTOs([]); setToText(""); setStep("timeoff");
+    setWeeklyTOs([]); setToText(""); setStep("timeoff"); setDayStaffing(null);
   };
 
   const getRows = () => {
@@ -590,6 +603,70 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* Per-day staffing inputs */}
+          {dayStaffing && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 16 }}>👥</span>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>Staffing per day</div>
+                <div style={{ fontSize: 11, color: "#9CA3AF" }}>— adjust before generating</div>
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, minWidth: 700 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ padding: "4px 6px", fontSize: 10, fontWeight: 700, color: "#9CA3AF", textAlign: "left", width: 60 }}></th>
+                      {weekDates.map((d, i) => {
+                        const dt = new Date(d + "T12:00:00");
+                        const dayType = getDayType(d, schoolDates);
+                        const isH = dayType.includes("Holiday");
+                        return (
+                          <th key={d} style={{ padding: "4px 4px", textAlign: "center", fontSize: 10, fontWeight: 700, color: isH ? "#DC2626" : "#374151" }}>
+                            {dayLabels[i]} {dt.getDate()}
+                            {isH && <div style={{ fontSize: 8, color: "#DC2626" }}>HOLIDAY</div>}
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      { key: "day", label: "Day", color: "#16A34A" },
+                      { key: "mid", label: "Mid", color: "#0891B2" },
+                      { key: "evening", label: "Eve", color: "#7C3AED" },
+                    ].map(row => (
+                      <tr key={row.key}>
+                        <td style={{ padding: "3px 6px", fontSize: 10, fontWeight: 700, color: row.color }}>{row.label}</td>
+                        {weekDates.map(d => {
+                          const val = dayStaffing[d]?.[row.key] ?? 0;
+                          return (
+                            <td key={d} style={{ padding: "2px 2px", textAlign: "center" }}>
+                              <div style={{ display: "inline-flex", alignItems: "center", gap: 1 }}>
+                                <button onClick={() => setDayStaffing(prev => ({ ...prev, [d]: { ...prev[d], [row.key]: Math.max(0, val - 1) } }))}
+                                  style={{ width: 20, height: 20, borderRadius: 4, border: "1px solid #D1D5DB", background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#374151", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>-</button>
+                                <span style={{ width: 18, textAlign: "center", fontSize: 13, fontWeight: 800, color: "#111827" }}>{val}</span>
+                                <button onClick={() => setDayStaffing(prev => ({ ...prev, [d]: { ...prev[d], [row.key]: val + 1 } }))}
+                                  style={{ width: 20, height: 20, borderRadius: 4, border: "1px solid #D1D5DB", background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#374151", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>+</button>
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                    <tr>
+                      <td style={{ padding: "3px 6px", fontSize: 10, fontWeight: 800, color: "#111827" }}>Total</td>
+                      {weekDates.map(d => {
+                        const s = dayStaffing[d] || {};
+                        const total = (s.day || 0) + (s.mid || 0) + (s.evening || 0);
+                        return <td key={d} style={{ padding: "2px 2px", textAlign: "center", fontSize: 12, fontWeight: 800, color: "#111827" }}>{total}</td>;
+                      })}
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
           )}

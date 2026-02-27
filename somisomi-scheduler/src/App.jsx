@@ -21,7 +21,15 @@ export default function App() {
     if (d) {
       setEmployees(d.employees || SEED_EMPLOYEES);
       setTimeOffs(d.timeOffs || []);
-      setRules(d.rules || SEED_RULES);
+      // Merge rules: keep saved rules but add any new seed constraints
+      const savedRules = d.rules || SEED_RULES;
+      if (savedRules.constraints && SEED_RULES.constraints) {
+        const savedIds = new Set(savedRules.constraints.map(c => c.id));
+        SEED_RULES.constraints.forEach(sc => {
+          if (!savedIds.has(sc.id)) savedRules.constraints.push(sc);
+        });
+      }
+      setRules(savedRules);
       setSchoolDates(d.schoolDates || SEED_SCHOOL_CALENDAR);
       setSavedSchedules(d.savedSchedules || {});
     } else {
