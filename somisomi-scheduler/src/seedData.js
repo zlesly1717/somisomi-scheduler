@@ -195,6 +195,7 @@ export const SEED_RULES = {
     {id:"overlap_blocks",label:"Any unavailability overlap blocks shift",desc:"If any part of a shift overlaps with an employee's unavailability, they cannot work that shift",enabled:true},
     {id:"no_trainees_mc",label:"No trainees on MC nights",desc:"Trainees cannot be assigned to machine cleaning shifts",enabled:true},
     {id:"mc_evening_sl_leads",label:"Evening SL leads MC",desc:"The Evening SL on MC night IS the MC leader — not a separate person. MC crew = Evening SL + 1 SL helper + 2 regulars (4 total).",enabled:true},
+    {id:"no_two_trainees",label:"No two trainees on same day",desc:"Avoid scheduling two trainees on the same day to ensure proper supervision",enabled:true},
   ],
   shiftLead: { shiftsPerWeek:{min:4,max:4}, minWeekendShifts:2, mcPerWeek:1, alternateDayLeads:true },
   regular: { shiftsPerWeek:{min:3,max:4} },

@@ -188,6 +188,11 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs) {
       if (sc[emp.id] >= emp.maxShifts) return false;
       if (sh[emp.id] + slot.hours > emp.maxHours) return false;
       if (con("no_trainees_mc") && slot.isMC && emp.role === "trainee") return false;
+      // No two trainees on same day
+      if (con("no_two_trainees") && emp.role === "trainee") {
+        const traineeAlreadyToday = schedule[dateStr].some(a => a.empId && active.find(e => e.id === a.empId)?.role === "trainee");
+        if (traineeAlreadyToday) return false;
+      }
       if (!isWE && !isFri && emp.tags.includes("no_weekday_nights") && tm(slot.start) >= 1020) return false;
       if (con("no_day_after_mc") && (slot.type === "day_lead" || slot.type === "day" || slot.type === "mid")) {
         const prevIdx = dayIndex - 1;
@@ -265,14 +270,88 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs) {
     slots.filter(s => !s.slOnly).forEach(assign);
   });
 
-  // Check minimums
+  // ═══ SECOND PASS: Fill unfilled slots ═══
+  // Try to fill any ⚠ UNFILLED slots by relaxing preference filters
+  weekDates.forEach(dateStr => {
+    const dayAssignments = schedule[dateStr];
+    dayAssignments.forEach((slot, idx) => {
+      if (slot.empId !== null) return; // already filled
+
+      // Find anyone who CAN work this slot (basic availability only)
+      const cands = active.filter(emp => {
+        if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs)) return false;
+        if (slot.slOnly && emp.role !== "shift_lead") return false;
+        if (sc[emp.id] >= emp.maxShifts) return false;
+        if (sh[emp.id] + slot.hours > emp.maxHours) return false;
+        if (slot.isMC && emp.role === "trainee") return false;
+        // Allow doubles in second pass if no_doubles was blocking
+        const alreadyToday = schedule[dateStr].some(a => a.empId === emp.id);
+        if (alreadyToday) return false;
+        return true;
+      });
+
+      // Prefer those below minimum
+      cands.sort((a, b) => {
+        const aB = sc[a.id] < a.minShifts ? 1 : 0;
+        const bB = sc[b.id] < b.minShifts ? 1 : 0;
+        if (bB !== aB) return bB - aB;
+        return sc[a.id] - sc[b.id];
+      });
+
+      if (cands.length > 0) {
+        const ch = cands[0];
+        dayAssignments[idx] = { ...slot, empId: ch.id, empName: ch.name, empRole: ch.role };
+        sc[ch.id]++; sh[ch.id] += slot.hours; sd[ch.id].add(dateStr);
+      }
+    });
+  });
+
+  // ═══ THIRD PASS: Give shifts to employees below minimum ═══
+  // Find employees still below their min and try to add them to days with room
+  const belowMin = active.filter(e => sc[e.id] < e.minShifts);
+  for (const emp of belowMin) {
+    // Try each day (Fri-Sun first, then Mon-Thu)
+    const tryOrder = [4, 5, 6, 0, 1, 2, 3];
+    for (const di of tryOrder) {
+      if (sc[emp.id] >= emp.minShifts) break;
+      if (sc[emp.id] >= emp.maxShifts) break;
+      const dateStr = weekDates[di];
+      // Skip if already working this day
+      if (sd[emp.id].has(dateStr)) continue;
+
+      const dayAssignments = schedule[dateStr];
+      // Look for any unfilled slot this employee could take
+      const unfilledIdx = dayAssignments.findIndex(slot => {
+        if (slot.empId !== null) return false;
+        if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs)) return false;
+        if (slot.slOnly && emp.role !== "shift_lead") return false;
+        if (slot.isMC && emp.role === "trainee") return false;
+        if (sh[emp.id] + slot.hours > emp.maxHours) return false;
+        return true;
+      });
+
+      if (unfilledIdx >= 0) {
+        const slot = dayAssignments[unfilledIdx];
+        dayAssignments[unfilledIdx] = { ...slot, empId: emp.id, empName: emp.name, empRole: emp.role };
+        sc[emp.id]++; sh[emp.id] += slot.hours; sd[emp.id].add(dateStr);
+      }
+    }
+  }
+
+  // Rebuild warnings
+  const warnings2 = [];
+  weekDates.forEach(dateStr => {
+    schedule[dateStr].forEach(slot => {
+      if (!slot.empId) warnings2.push({ date: dateStr, msg: `No available employee for ${slot.label}` });
+    });
+  });
   active.forEach(e => {
     if (sc[e.id] < e.minShifts) {
-      warnings.push({ date: "", msg: `${e.name} has ${sc[e.id]} shifts (minimum: ${e.minShifts})` });
+      warnings2.push({ date: "", msg: `${e.name} has ${sc[e.id]} shifts (minimum: ${e.minShifts})` });
     }
   });
 
-  return { schedule, empShiftCount: sc, empHours: sh, warnings };
+  return { schedule, empShiftCount: sc, empHours: sh, warnings: warnings2 };
 }
 
 // ═══════════════════════════════════
@@ -292,6 +371,49 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
   const [weeklyTOs, setWeeklyTOs] = useState([]);
   const [step, setStep] = useState("timeoff"); // "timeoff" | "review" | "result"
   const [viewMode, setViewMode] = useState("shift"); // "shift" | "employee"
+  const [selected, setSelected] = useState(null); // { date, slotKey } - first click
+
+  // ── Click-to-swap handler ──
+  const handleCellClick = (date, type, order) => {
+    if (!draft || isSaved) return;
+    const slotKey = `${type}-${order}`;
+
+    if (!selected) {
+      // First click — select this cell
+      setSelected({ date, slotKey, type, order });
+    } else if (selected.date === date && selected.slotKey === slotKey) {
+      // Clicked same cell — deselect
+      setSelected(null);
+    } else {
+      // Second click — swap the two cells
+      const newSchedule = {};
+      Object.keys(draft.schedule).forEach(d => { newSchedule[d] = [...draft.schedule[d]]; });
+
+      const fromSlotIdx = newSchedule[selected.date].findIndex(a => a.type === selected.type && a.order === selected.order);
+      const toSlotIdx = newSchedule[date].findIndex(a => a.type === type && a.order === order);
+
+      if (fromSlotIdx >= 0 && toSlotIdx >= 0) {
+        const fromSlot = newSchedule[selected.date][fromSlotIdx];
+        const toSlot = newSchedule[date][toSlotIdx];
+
+        // Swap employee assignments (keep slot structure like type/start/end)
+        newSchedule[selected.date][fromSlotIdx] = { ...fromSlot, empId: toSlot.empId, empName: toSlot.empName, empRole: toSlot.empRole };
+        newSchedule[date][toSlotIdx] = { ...toSlot, empId: fromSlot.empId, empName: fromSlot.empName, empRole: fromSlot.empRole };
+
+        // Recalc counts
+        const newSc = {}, newSh = {};
+        employees.filter(e => e.status === "active").forEach(e => { newSc[e.id] = 0; newSh[e.id] = 0; });
+        Object.values(newSchedule).forEach(daySlots => {
+          daySlots.forEach(slot => {
+            if (slot.empId) { newSc[slot.empId] = (newSc[slot.empId] || 0) + 1; newSh[slot.empId] = (newSh[slot.empId] || 0) + slot.hours; }
+          });
+        });
+
+        setDraft({ ...draft, schedule: newSchedule, empShiftCount: newSc, empHours: newSh });
+      }
+      setSelected(null);
+    }
+  };
 
   const weekDates = getWeekDates(weekStart);
   const weekKey = weekDates[0];
@@ -491,7 +613,15 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
           )}
 
           {/* View Toggle + Grid */}
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            {selected && !isSaved ? (
+              <div style={{ fontSize: 12, fontWeight: 600, color: "#2563EB", background: "#DBEAFE", padding: "6px 14px", borderRadius: 8, display: "flex", alignItems: "center", gap: 6 }}>
+                🔀 Click another cell to swap, or same cell to cancel
+                <button onClick={() => setSelected(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "#DC2626", fontWeight: 700, fontSize: 11 }}>✕</button>
+              </div>
+            ) : !isSaved && draft ? (
+              <div style={{ fontSize: 11, color: "#9CA3AF" }}>💡 Click any cell to select, then click another to swap</div>
+            ) : <div />}
             <div style={{ display: "flex", background: "#F3F4F6", borderRadius: 8, padding: 2 }}>
               {[["shift", "Shift View"], ["employee", "Employee View"]].map(([k, l]) => (
                 <button key={k} onClick={() => setViewMode(k)} style={{
@@ -536,9 +666,20 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
                         const match = (result.schedule[d] || []).find(a => a.type === row.type && a.order === row.order);
                         if (!match) return <td key={d} style={{ padding: "6px 4px", textAlign: "center", color: "#E5E7EB", fontSize: 10 }}>—</td>;
                         const un = !match.empId; const isTr = match.empRole === "trainee"; const isSL = match.empRole === "shift_lead";
+                        const isSel = selected && selected.date === d && selected.type === row.type && selected.order === row.order;
+                        const canClick = !isSaved && draft;
                         return (
-                          <td key={d} style={{ padding: "5px 4px", textAlign: "center" }}>
-                            <div style={{ padding: "5px 4px", borderRadius: 6, fontSize: 11, fontWeight: 600, color: un ? "#DC2626" : isTr ? "#7C3AED" : isSL ? "#B45309" : "#374151", background: un ? "#FEE2E2" : isTr ? "#EDE9FE" : isSL ? "#FEF3C7" : "#F9FAFB", border: un ? "1px dashed #FCA5A5" : "1px solid #E5E7EB" }}>{match.empName.split(" ")[0]}</div>
+                          <td key={d}
+                            onClick={canClick ? () => handleCellClick(d, row.type, row.order) : undefined}
+                            style={{ padding: "5px 4px", textAlign: "center", cursor: canClick ? "pointer" : "default", background: isSel ? "#DBEAFE" : "transparent", transition: "background 0.15s" }}
+                          >
+                            <div style={{
+                              padding: "5px 4px", borderRadius: 6, fontSize: 11, fontWeight: 600,
+                              color: un ? "#DC2626" : isTr ? "#7C3AED" : isSL ? "#B45309" : "#374151",
+                              background: un ? "#FEE2E2" : isTr ? "#EDE9FE" : isSL ? "#FEF3C7" : "#F9FAFB",
+                              border: isSel ? "2px solid #2563EB" : un ? "1px dashed #FCA5A5" : "1px solid #E5E7EB",
+                              boxShadow: isSel ? "0 0 0 2px rgba(37,99,235,0.2)" : "none",
+                            }}>{match.empName.split(" ")[0]}</div>
                             <div style={{ fontSize: 8, color: "#9CA3AF", marginTop: 1 }}>{fmtTime(match.start)}–{fmtTime(match.end)}</div>
                           </td>
                         );
@@ -552,74 +693,178 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
           ) : (
           /* ── EMPLOYEE VIEW (Homebase-style) ── */
           <div style={{ overflowX: "auto", background: "#fff", borderRadius: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginBottom: 16 }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 900 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 1000 }}>
               <thead>
                 <tr style={{ borderBottom: "2px solid #E5E7EB" }}>
-                  <th style={{ padding: "10px 10px", textAlign: "left", fontWeight: 700, color: "#6B7280", fontSize: 10, width: 130, position: "sticky", left: 0, background: "#fff", zIndex: 1 }}>EMPLOYEE</th>
+                  <th style={{ padding: "12px 10px", textAlign: "left", fontWeight: 700, color: "#6B7280", fontSize: 10, width: 150, position: "sticky", left: 0, background: "#fff", zIndex: 2 }}></th>
                   {weekDates.map((d, i) => {
                     const dt = new Date(d + "T12:00:00");
                     const dayType = getDayType(d, schoolDates);
                     const isH = dayType.includes("Holiday");
-                    const isMC = i === 3 || i === 6;
                     return (
-                      <th key={d} style={{ padding: "10px 6px", textAlign: "center", fontWeight: 700, fontSize: 10.5, color: isH ? "#DC2626" : "#374151", background: isMC ? "#F5F3FF" : isH ? "#FEF2F2" : "transparent" }}>
-                        <div>{dayLabels[i]}</div>
-                        <div style={{ fontSize: 9, fontWeight: 500, color: "#9CA3AF" }}>{dt.getMonth() + 1}/{dt.getDate()}</div>
+                      <th key={d} style={{ padding: "12px 6px", textAlign: "center", fontWeight: 700, fontSize: 13, color: isH ? "#DC2626" : "#374151", borderBottom: "none", minWidth: 110 }}>
+                        <div>{["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][dt.getDay()]}, {dt.getDate()}</div>
                       </th>
                     );
                   })}
-                  <th style={{ padding: "10px 6px", textAlign: "center", fontWeight: 700, color: "#6B7280", fontSize: 10, width: 50 }}>TOTAL</th>
                 </tr>
               </thead>
               <tbody>
-                {employees.filter(e => e.status === "active").sort((a, b) => {
-                  const o = { shift_lead: 0, regular: 1, trainee: 2 };
-                  return (o[a.role] || 3) - (o[b.role] || 3) || a.name.localeCompare(b.name);
-                }).map(emp => {
-                  const rc = { shift_lead: { color: "#B45309", bg: "#FEF3C7", label: "SL" }, regular: { color: "#1D4ED8", bg: "#DBEAFE", label: "REG" }, trainee: { color: "#7C3AED", bg: "#EDE9FE", label: "TR" } };
-                  const role = rc[emp.role] || rc.regular;
-                  const totalShifts = result.empShiftCount[emp.id] || 0;
-                  const totalHrs = result.empHours[emp.id] || 0;
-                  const below = totalShifts < emp.minShifts;
+                {(() => {
+                  const sortedEmps = employees.filter(e => e.status === "active").sort((a, b) => {
+                    const o = { shift_lead: 0, regular: 1, trainee: 2 };
+                    return (o[a.role] || 3) - (o[b.role] || 3) || a.name.localeCompare(b.name);
+                  });
+
+                  // Shift block colors matching Homebase
+                  const shiftColors = {
+                    day_lead: { bg: "#22C55E", text: "#fff", label: "Day Shift Lead" },
+                    day: { bg: "#4ADE80", text: "#fff", label: "Weekday Day" },
+                    mid: { bg: "#FB923C", text: "#fff", label: "Mid Shift" },
+                    evening_sl: { bg: "#EF4444", text: "#fff", label: "Shift Lead" },
+                    evening: { bg: "#A855F7", text: "#fff", label: "Night Shift" },
+                    mc_leader: { bg: "#F59E0B", text: "#fff", label: "Shiftlead/Machineclean" },
+                    mc_sl_helper: { bg: "#F59E0B", text: "#fff", label: "Machineclean" },
+                    mc_helper: { bg: "#F59E0B", text: "#fff", label: "Machineclean" },
+                  };
+                  // Weekend day gets different color
+                  const weekendDayColor = { bg: "#3B82F6", text: "#fff", label: "Weekend Day" };
+
+                  // Role colors for initials circle
+                  const roleCircle = { shift_lead: "#EF4444", regular: "#3B82F6", trainee: "#A855F7" };
 
                   return (
-                    <tr key={emp.id} style={{ borderBottom: "1px solid #F3F4F6", background: below ? "#FEF2F2" : "transparent" }}>
-                      <td style={{ padding: "8px 10px", position: "sticky", left: 0, background: below ? "#FEF2F2" : "#fff", zIndex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: 12, color: "#374151" }}>{emp.name}</div>
-                        <span style={{ fontSize: 8.5, fontWeight: 700, color: role.color, background: role.bg, padding: "1px 5px", borderRadius: 6 }}>{role.label}</span>
-                      </td>
-                      {weekDates.map(d => {
-                        const shifts = (result.schedule[d] || []).filter(a => a.empId === emp.id);
-                        if (shifts.length === 0) return (
-                          <td key={d} style={{ padding: "6px 4px", textAlign: "center" }}>
-                            <span style={{ color: "#E5E7EB", fontSize: 11 }}>—</span>
-                          </td>
-                        );
+                    <>
+                      {sortedEmps.map(emp => {
+                        const totalHrs = result.empHours[emp.id] || 0;
+                        const initials = emp.name.split(" ").map(w => w[0]).join("").toUpperCase();
+                        const below = (result.empShiftCount[emp.id] || 0) < emp.minShifts;
+
                         return (
-                          <td key={d} style={{ padding: "4px 3px", textAlign: "center", verticalAlign: "top" }}>
-                            {shifts.map((s, si) => {
-                              const colors = tc[s.type] || { color: "#374151", bg: "#F9FAFB" };
-                              return (
-                                <div key={si} style={{
-                                  padding: "3px 4px", borderRadius: 5, marginBottom: 2,
-                                  fontSize: 9.5, fontWeight: 600, color: colors.color, background: colors.bg,
-                                  border: `1px solid ${colors.color}22`, lineHeight: 1.3,
-                                }}>
-                                  <div>{s.label.replace(/ \(.*\)/, "")}</div>
-                                  <div style={{ fontSize: 8, fontWeight: 500, opacity: 0.7 }}>{fmtTime(s.start)}–{fmtTime(s.end)}</div>
+                          <tr key={emp.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
+                            {/* Employee name cell */}
+                            <td style={{ padding: "10px 10px", position: "sticky", left: 0, background: "#fff", zIndex: 1, borderRight: "1px solid #E5E7EB", verticalAlign: "top" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <div style={{
+                                  width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
+                                  background: roleCircle[emp.role] || "#9CA3AF", color: "#fff", fontSize: 11, fontWeight: 800, flexShrink: 0,
+                                }}>{initials}</div>
+                                <div>
+                                  <div style={{ fontWeight: 700, fontSize: 12, color: below ? "#DC2626" : "#374151", lineHeight: 1.2 }}>{emp.name}</div>
+                                  <div style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 600 }}>{totalHrs.toFixed(2)} hrs</div>
                                 </div>
+                              </div>
+                            </td>
+                            {/* Day cells */}
+                            {weekDates.map((d, di) => {
+                              const shifts = (result.schedule[d] || []).filter(a => a.empId === emp.id);
+                              const dt = new Date(d + "T12:00:00");
+                              const dow = dt.getDay();
+                              const isWE = dow === 0 || dow === 6;
+                              const dayKey = DAYS[dow === 0 ? 6 : dow - 1];
+                              const u = emp.unavailability[dayKey];
+
+                              // Check for weekly time-offs
+                              const weekTO = weeklyTOs.filter(t => t.empId === emp.id && t.date === d);
+                              const hasTO = weekTO.length > 0;
+
+                              // Check unavailability
+                              const hasUnavail = u.allDay || (u.start && u.end);
+                              const showUnavail = hasUnavail && shifts.length === 0;
+
+                              const isDropHere = dropTarget && dropTarget.toDate === d && dropTarget.toEmpId === emp.id;
+
+                              return (
+                                <td key={d}
+                                  onDragOver={e => handleDragOver(e, d, emp.id)}
+                                  onDragLeave={handleDragLeave}
+                                  onDrop={e => handleDrop(e, d, emp.id)}
+                                  style={{
+                                    padding: "6px 4px", verticalAlign: "top", minHeight: 60,
+                                    background: isDropHere ? "#DBEAFE" : "transparent",
+                                    outline: isDropHere ? "2px dashed #3B82F6" : "none",
+                                    borderRadius: isDropHere ? 6 : 0,
+                                    transition: "background 0.15s",
+                                  }}>
+                                  {/* Time-off block */}
+                                  {hasTO && weekTO.map((to, ti) => (
+                                    <div key={`to-${ti}`} style={{
+                                      padding: "6px 8px", borderRadius: 6, marginBottom: 3,
+                                      background: "#F3F4F6", border: "1px solid #D1D5DB",
+                                    }}>
+                                      <div style={{ fontSize: 10, color: "#6B7280", fontWeight: 600 }}>⏰ Time-off</div>
+                                      <div style={{ fontSize: 9, color: "#9CA3AF" }}>{to.allDay ? "All Day" : `${fmtTime(to.start)}–${fmtTime(to.end)}`}</div>
+                                    </div>
+                                  ))}
+                                  {/* Unavailability block */}
+                                  {showUnavail && !hasTO && (
+                                    <div style={{
+                                      padding: "6px 8px", borderRadius: 6, marginBottom: 3,
+                                      background: "#F9FAFB", border: "1px dashed #D1D5DB",
+                                    }}>
+                                      <div style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 600 }}>Unavailable</div>
+                                      <div style={{ fontSize: 9, color: "#D1D5DB" }}>{u.allDay ? "All Day" : `${fmtTime(u.start)}–${fmtTime(u.end)}`}</div>
+                                    </div>
+                                  )}
+                                  {/* Shift blocks — DRAGGABLE */}
+                                  {shifts.map((s, si) => {
+                                    let sColors = shiftColors[s.type] || { bg: "#6B7280", text: "#fff", label: s.label };
+                                    if (isWE && (s.type === "day_lead" || s.type === "day")) sColors = { ...sColors, ...weekendDayColor, label: s.type === "day_lead" ? "Shift Lead" : "Weekend Day" };
+                                    if (s.type === "day_lead" && !isWE) sColors = { ...sColors, label: "Day Shift Lead" };
+
+                                    // Find the actual slot index in the day's schedule
+                                    const actualIdx = (result.schedule[d] || []).findIndex(a => a === s);
+
+                                    return (
+                                      <div key={si}
+                                        draggable={!isSaved}
+                                        onDragStart={e => handleDragStart(e, d, actualIdx, emp.id)}
+                                        onDragEnd={() => { setDragData(null); setDropTarget(null); }}
+                                        style={{
+                                          padding: "7px 8px", borderRadius: 6, marginBottom: 3,
+                                          background: sColors.bg, color: sColors.text, minHeight: 36,
+                                          cursor: isSaved ? "default" : "grab",
+                                          opacity: dragData && dragData.fromDate === d && dragData.slotIdx === actualIdx ? 0.5 : 1,
+                                        }}>
+                                        <div style={{ fontSize: 11, fontWeight: 700 }}>{fmtTime(s.start)}–{fmtTime(s.end)}</div>
+                                        <div style={{ fontSize: 9, fontWeight: 600, opacity: 0.9 }}>{sColors.label}</div>
+                                      </div>
+                                    );
+                                  })}
+                                  {/* Empty drop hint when dragging */}
+                                  {shifts.length === 0 && !showUnavail && !hasTO && dragData && (
+                                    <div style={{ padding: "12px 8px", borderRadius: 6, border: "1px dashed #D1D5DB", textAlign: "center", fontSize: 10, color: "#D1D5DB" }}>
+                                      Drop here
+                                    </div>
+                                  )}
+                                </td>
                               );
                             })}
-                          </td>
+                          </tr>
                         );
                       })}
-                      <td style={{ padding: "6px 6px", textAlign: "center" }}>
-                        <div style={{ fontSize: 13, fontWeight: 800, color: below ? "#DC2626" : "#374151" }}>{totalShifts}</div>
-                        <div style={{ fontSize: 9, color: "#9CA3AF" }}>{totalHrs.toFixed(1)}h</div>
-                      </td>
-                    </tr>
+                      {/* Daily totals row */}
+                      <tr style={{ borderTop: "2px solid #E5E7EB", background: "#F9FAFB" }}>
+                        <td style={{ padding: "10px 10px", fontWeight: 700, fontSize: 11, color: "#374151", position: "sticky", left: 0, background: "#F9FAFB", zIndex: 1, borderRight: "1px solid #E5E7EB" }}>
+                          Hours
+                        </td>
+                        {weekDates.map(d => {
+                          const dayAssignments = result.schedule[d] || [];
+                          const filled = dayAssignments.filter(a => a.empId);
+                          const totalHrs = filled.reduce((sum, a) => sum + a.hours, 0);
+                          return (
+                            <td key={d} style={{ padding: "8px 6px", textAlign: "center" }}>
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                                <span style={{ fontSize: 11, color: "#6B7280" }}>👤 {filled.length}</span>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>{totalHrs.toFixed(2)}</span>
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    </>
                   );
-                })}
+                })()}
               </tbody>
             </table>
           </div>
