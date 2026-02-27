@@ -3,7 +3,6 @@ import { DAYS, DAY_LABELS, DAY_FULL, ROLE_CONFIG, TAG_OPTIONS, newUnavail, fmtTi
 import { loadData, saveData } from "./storage";
 import { SEED_EMPLOYEES, SEED_RULES } from "./seedData";
 import { EmployeesTab } from "./EmployeesTab";
-import { TimeOffTab } from "./TimeOffTab";
 import { RulesTab } from "./RulesTab";
 import { SchoolCalendarTab, SEED_SCHOOL_CALENDAR } from "./SchoolCalendarTab";
 import { ScheduleTab } from "./ScheduleTab";
@@ -40,7 +39,6 @@ export default function App() {
   }, [employees, timeOffs, rules, schoolDates, savedSchedules, loading]);
 
   const ct = r => employees.filter(e => e.status === "active" && e.role === r).length;
-  const upcomingTOs = timeOffs.filter(t => new Date(t.date) >= new Date(new Date().toDateString()));
 
   if (loading) {
     return (
@@ -72,7 +70,7 @@ export default function App() {
 
       {/* Tabs */}
       <div style={{ background: "#fff", borderBottom: "1px solid #E5E7EB", padding: "0 28px", display: "flex" }}>
-        {[["employees", "Employees"], ["timeoff", "Time-Off"], ["calendar", "Calendar"], ["schedule", "Schedule"], ["rules", "Rules"]].map(([k, l]) => (
+        {[["employees", "Employees"], ["calendar", "Calendar"], ["schedule", "Schedule"], ["rules", "Rules"]].map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} style={{
             padding: "11px 18px", fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none", background: "none",
             color: tab === k ? "#111827" : "#9CA3AF",
@@ -80,11 +78,6 @@ export default function App() {
             fontFamily: "'DM Sans',sans-serif",
           }}>
             {l}
-            {k === "timeoff" && upcomingTOs.length > 0 && (
-              <span style={{ marginLeft: 6, padding: "1px 7px", borderRadius: 10, fontSize: 10, fontWeight: 700, background: "#FEF3C7", color: "#92400E" }}>
-                {upcomingTOs.length}
-              </span>
-            )}
             {k === "calendar" && (
               <span style={{ marginLeft: 6, padding: "1px 7px", borderRadius: 10, fontSize: 10, fontWeight: 700, background: "#DBEAFE", color: "#1D4ED8" }}>📅</span>
             )}
@@ -101,9 +94,6 @@ export default function App() {
       {/* Tab Content */}
       {tab === "employees" && (
         <EmployeesTab employees={employees} setEmployees={setEmployees} timeOffs={timeOffs} />
-      )}
-      {tab === "timeoff" && (
-        <TimeOffTab employees={employees} timeOffs={timeOffs} setTimeOffs={setTimeOffs} />
       )}
       {tab === "rules" && (
         <RulesTab rules={rules} setRules={setRules} employees={employees} />

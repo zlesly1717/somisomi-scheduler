@@ -172,13 +172,13 @@ export const SEED_EMPLOYEES = [
   },
   {
     id:"tr-1",name:"Yise Moya",role:"trainee",status:"active",
-    maxShifts:3,minShifts:0,maxHours:15,
+    maxShifts:3,minShifts:1,maxHours:15,
     tags:[],unavailability:newUnavail(),
     notes:"Fully available.",traineeCumulative:8.0,
   },
   {
     id:"tr-2",name:"Tiernan Hollister",role:"trainee",status:"active",
-    maxShifts:3,minShifts:0,maxHours:15,
+    maxShifts:3,minShifts:1,maxHours:15,
     tags:[],unavailability:newUnavail(),
     notes:"Fully available.",traineeCumulative:10.0,
   },
