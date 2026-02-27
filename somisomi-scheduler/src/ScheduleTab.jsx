@@ -216,24 +216,30 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs) {
         const f = cands.filter(e => (rules.secondDayPriority || []).includes(e.name));
         if (f.length > 0) cands = f;
       }
-      if (isWE && !slot.isMC) {
+      if (isWE && !slot.isMC && !slot.slOnly) {
         const f = cands.filter(e => (rules.goodWeekendPeople || []).includes(e.name));
         if (f.length > 0) cands = f;
+        // Don't filter here if it would eliminate everyone — keep full cands
       }
 
-      // For non-MC non-SL slots: prefer regulars, but include trainees if they need shifts
+      // For non-MC non-SL slots: prefer regulars, but always include trainees as fallback
       if (!slot.slOnly && !slot.isMC) {
         const nonTr = cands.filter(e => e.role !== "trainee");
         const trainees = cands.filter(e => e.role === "trainee");
-        const traineesBelowMin = trainees.filter(e => sc[e.id] < e.minShifts);
 
-        // If all regulars are at or above their min, let trainees who need shifts in
-        const regsAboveMin = nonTr.every(e => sc[e.id] >= e.minShifts);
-        if (regsAboveMin && traineesBelowMin.length > 0) {
-          cands = [...traineesBelowMin, ...nonTr];
-        } else if (nonTr.length > 0) {
-          cands = nonTr;
+        if (nonTr.length > 0) {
+          // Regulars available: use them first, but append trainees who need shifts at the end
+          const traineesBelowMin = trainees.filter(e => sc[e.id] < e.minShifts);
+          const regsAllAboveMin = nonTr.every(e => sc[e.id] >= e.minShifts);
+          if (regsAllAboveMin && traineesBelowMin.length > 0) {
+            // Regulars are satisfied, trainees need shifts — trainees go first
+            cands = [...traineesBelowMin, ...nonTr];
+          } else {
+            // Regulars still need shifts — regulars first, trainees as backup
+            cands = [...nonTr, ...trainees];
+          }
         }
+        // If nonTr is empty, cands stays as-is (trainees only) — don't filter them out
       }
 
       // Sort: below-min first, then fewest shifts
@@ -285,6 +291,7 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
   const [toText, setToText] = useState("");
   const [weeklyTOs, setWeeklyTOs] = useState([]);
   const [step, setStep] = useState("timeoff"); // "timeoff" | "review" | "result"
+  const [viewMode, setViewMode] = useState("shift"); // "shift" | "employee"
 
   const weekDates = getWeekDates(weekStart);
   const weekKey = weekDates[0];
@@ -483,7 +490,21 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
             </div>
           )}
 
-          {/* Grid */}
+          {/* View Toggle + Grid */}
+          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+            <div style={{ display: "flex", background: "#F3F4F6", borderRadius: 8, padding: 2 }}>
+              {[["shift", "Shift View"], ["employee", "Employee View"]].map(([k, l]) => (
+                <button key={k} onClick={() => setViewMode(k)} style={{
+                  padding: "5px 14px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                  border: "none", fontFamily: font,
+                  background: viewMode === k ? "#111827" : "transparent",
+                  color: viewMode === k ? "#fff" : "#6B7280",
+                }}>{l}</button>
+              ))}
+            </div>
+          </div>
+
+          {viewMode === "shift" ? (
           <div style={{ overflowX: "auto", background: "#fff", borderRadius: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginBottom: 16 }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 900 }}>
               <thead>
@@ -528,6 +549,81 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
               </tbody>
             </table>
           </div>
+          ) : (
+          /* ── EMPLOYEE VIEW (Homebase-style) ── */
+          <div style={{ overflowX: "auto", background: "#fff", borderRadius: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginBottom: 16 }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 900 }}>
+              <thead>
+                <tr style={{ borderBottom: "2px solid #E5E7EB" }}>
+                  <th style={{ padding: "10px 10px", textAlign: "left", fontWeight: 700, color: "#6B7280", fontSize: 10, width: 130, position: "sticky", left: 0, background: "#fff", zIndex: 1 }}>EMPLOYEE</th>
+                  {weekDates.map((d, i) => {
+                    const dt = new Date(d + "T12:00:00");
+                    const dayType = getDayType(d, schoolDates);
+                    const isH = dayType.includes("Holiday");
+                    const isMC = i === 3 || i === 6;
+                    return (
+                      <th key={d} style={{ padding: "10px 6px", textAlign: "center", fontWeight: 700, fontSize: 10.5, color: isH ? "#DC2626" : "#374151", background: isMC ? "#F5F3FF" : isH ? "#FEF2F2" : "transparent" }}>
+                        <div>{dayLabels[i]}</div>
+                        <div style={{ fontSize: 9, fontWeight: 500, color: "#9CA3AF" }}>{dt.getMonth() + 1}/{dt.getDate()}</div>
+                      </th>
+                    );
+                  })}
+                  <th style={{ padding: "10px 6px", textAlign: "center", fontWeight: 700, color: "#6B7280", fontSize: 10, width: 50 }}>TOTAL</th>
+                </tr>
+              </thead>
+              <tbody>
+                {employees.filter(e => e.status === "active").sort((a, b) => {
+                  const o = { shift_lead: 0, regular: 1, trainee: 2 };
+                  return (o[a.role] || 3) - (o[b.role] || 3) || a.name.localeCompare(b.name);
+                }).map(emp => {
+                  const rc = { shift_lead: { color: "#B45309", bg: "#FEF3C7", label: "SL" }, regular: { color: "#1D4ED8", bg: "#DBEAFE", label: "REG" }, trainee: { color: "#7C3AED", bg: "#EDE9FE", label: "TR" } };
+                  const role = rc[emp.role] || rc.regular;
+                  const totalShifts = result.empShiftCount[emp.id] || 0;
+                  const totalHrs = result.empHours[emp.id] || 0;
+                  const below = totalShifts < emp.minShifts;
+
+                  return (
+                    <tr key={emp.id} style={{ borderBottom: "1px solid #F3F4F6", background: below ? "#FEF2F2" : "transparent" }}>
+                      <td style={{ padding: "8px 10px", position: "sticky", left: 0, background: below ? "#FEF2F2" : "#fff", zIndex: 1 }}>
+                        <div style={{ fontWeight: 700, fontSize: 12, color: "#374151" }}>{emp.name}</div>
+                        <span style={{ fontSize: 8.5, fontWeight: 700, color: role.color, background: role.bg, padding: "1px 5px", borderRadius: 6 }}>{role.label}</span>
+                      </td>
+                      {weekDates.map(d => {
+                        const shifts = (result.schedule[d] || []).filter(a => a.empId === emp.id);
+                        if (shifts.length === 0) return (
+                          <td key={d} style={{ padding: "6px 4px", textAlign: "center" }}>
+                            <span style={{ color: "#E5E7EB", fontSize: 11 }}>—</span>
+                          </td>
+                        );
+                        return (
+                          <td key={d} style={{ padding: "4px 3px", textAlign: "center", verticalAlign: "top" }}>
+                            {shifts.map((s, si) => {
+                              const colors = tc[s.type] || { color: "#374151", bg: "#F9FAFB" };
+                              return (
+                                <div key={si} style={{
+                                  padding: "3px 4px", borderRadius: 5, marginBottom: 2,
+                                  fontSize: 9.5, fontWeight: 600, color: colors.color, background: colors.bg,
+                                  border: `1px solid ${colors.color}22`, lineHeight: 1.3,
+                                }}>
+                                  <div>{s.label.replace(/ \(.*\)/, "")}</div>
+                                  <div style={{ fontSize: 8, fontWeight: 500, opacity: 0.7 }}>{fmtTime(s.start)}–{fmtTime(s.end)}</div>
+                                </div>
+                              );
+                            })}
+                          </td>
+                        );
+                      })}
+                      <td style={{ padding: "6px 6px", textAlign: "center" }}>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: below ? "#DC2626" : "#374151" }}>{totalShifts}</div>
+                        <div style={{ fontSize: 9, color: "#9CA3AF" }}>{totalHrs.toFixed(1)}h</div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          )}
 
           {/* Accept / Reject */}
           {!isSaved && draft && (
