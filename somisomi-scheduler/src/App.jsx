@@ -5,11 +5,14 @@ import { SEED_EMPLOYEES, SEED_RULES } from "./seedData";
 import { EmployeesTab } from "./EmployeesTab";
 import { TimeOffTab } from "./TimeOffTab";
 import { RulesTab } from "./RulesTab";
+import { SchoolCalendarTab, SEED_SCHOOL_CALENDAR } from "./SchoolCalendarTab";
+import { ScheduleTab } from "./ScheduleTab";
 
 export default function App() {
   const [employees, setEmployees] = useState([]);
   const [timeOffs, setTimeOffs] = useState([]);
   const [rules, setRules] = useState(SEED_RULES);
+  const [schoolDates, setSchoolDates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState("employees");
 
@@ -19,17 +22,19 @@ export default function App() {
       setEmployees(d.employees || SEED_EMPLOYEES);
       setTimeOffs(d.timeOffs || []);
       setRules(d.rules || SEED_RULES);
+      setSchoolDates(d.schoolDates || SEED_SCHOOL_CALENDAR);
     } else {
       setEmployees(SEED_EMPLOYEES);
       setTimeOffs([]);
       setRules(SEED_RULES);
+      setSchoolDates(SEED_SCHOOL_CALENDAR);
     }
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    if (!loading) saveData({ employees, timeOffs, rules });
-  }, [employees, timeOffs, rules, loading]);
+    if (!loading) saveData({ employees, timeOffs, rules, schoolDates });
+  }, [employees, timeOffs, rules, schoolDates, loading]);
 
   const ct = r => employees.filter(e => e.status === "active" && e.role === r).length;
   const upcomingTOs = timeOffs.filter(t => new Date(t.date) >= new Date(new Date().toDateString()));
@@ -64,7 +69,7 @@ export default function App() {
 
       {/* Tabs */}
       <div style={{ background: "#fff", borderBottom: "1px solid #E5E7EB", padding: "0 28px", display: "flex" }}>
-        {[["employees", "Employees"], ["timeoff", "Time-Off"], ["rules", "Rules"]].map(([k, l]) => (
+        {[["employees", "Employees"], ["timeoff", "Time-Off"], ["calendar", "Calendar"], ["schedule", "Schedule"], ["rules", "Rules"]].map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} style={{
             padding: "11px 18px", fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none", background: "none",
             color: tab === k ? "#111827" : "#9CA3AF",
@@ -76,6 +81,12 @@ export default function App() {
               <span style={{ marginLeft: 6, padding: "1px 7px", borderRadius: 10, fontSize: 10, fontWeight: 700, background: "#FEF3C7", color: "#92400E" }}>
                 {upcomingTOs.length}
               </span>
+            )}
+            {k === "calendar" && (
+              <span style={{ marginLeft: 6, padding: "1px 7px", borderRadius: 10, fontSize: 10, fontWeight: 700, background: "#DBEAFE", color: "#1D4ED8" }}>📅</span>
+            )}
+            {k === "schedule" && (
+              <span style={{ marginLeft: 6, padding: "1px 7px", borderRadius: 10, fontSize: 10, fontWeight: 700, background: "#F0FDF4", color: "#16A34A" }}>⚡</span>
             )}
             {k === "rules" && (
               <span style={{ marginLeft: 6, padding: "1px 7px", borderRadius: 10, fontSize: 10, fontWeight: 700, background: "#EDE9FE", color: "#6D28D9" }}>⚙</span>
@@ -93,6 +104,12 @@ export default function App() {
       )}
       {tab === "rules" && (
         <RulesTab rules={rules} setRules={setRules} employees={employees} />
+      )}
+      {tab === "calendar" && (
+        <SchoolCalendarTab schoolDates={schoolDates} setSchoolDates={setSchoolDates} />
+      )}
+      {tab === "schedule" && (
+        <ScheduleTab employees={employees} rules={rules} schoolDates={schoolDates} timeOffs={timeOffs} />
       )}
     </div>
   );
