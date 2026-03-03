@@ -121,6 +121,14 @@ function parseTimeOffs(text, employees, weekDates) {
 // === GENERATE ENGINE ===
 function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, dayStaffingOverrides) {
   const schedule = {};
+  // Helper: check if employee can fill an SL-only slot (with day_lead fallback)
+  const slCheck = (slot, emp) => {
+    if (!slot.slOnly) return true;
+    if (emp.role === "shift_lead") return true;
+    // Allow day_lead_eligible regulars for Day Lead as fallback
+    if (slot.type === "day_lead" && (emp.tags || []).includes("day_lead_eligible")) return true;
+    return false;
+  };
   const sc = {}, sh = {}, sd = {};
   const active = employees.filter(e => e.status === "active");
   active.forEach(e => { sc[e.id] = 0; sh[e.id] = 0; sd[e.id] = new Set(); });
@@ -171,7 +179,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 
     const canA = (emp, slot) => {
       if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs)) return false;
-      if (slot.slOnly && emp.role !== "shift_lead") return false;
+      if (!slCheck(slot, emp)) return false;
       if (con("no_doubles") && sd[emp.id].has(dateStr)) return false;
       if (sc[emp.id] >= emp.maxShifts) return false;
       if (sh[emp.id] + slot.hours > emp.maxHours) return false;
@@ -327,7 +335,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (slot.empId !== null) return;
       const cands = active.filter(emp => {
         if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs)) return false;
-        if (slot.slOnly && emp.role !== "shift_lead") return false;
+        if (!slCheck(slot, emp)) return false;
         if (sc[emp.id] >= emp.maxShifts || sh[emp.id] + slot.hours > emp.maxHours) return false;
         if (slot.isMC && emp.role === "trainee") return false;
         if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
@@ -354,7 +362,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       const unfilledIdx = schedule[dateStr].findIndex(slot => {
         if (slot.empId !== null) return false;
         if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs)) return false;
-        if (slot.slOnly && emp.role !== "shift_lead") return false;
+        if (!slCheck(slot, emp)) return false;
         if (slot.isMC && emp.role === "trainee") return false;
         if (sh[emp.id] + slot.hours > emp.maxHours) return false;
         return true;
@@ -423,7 +431,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (slot.empId !== null) return;
       const cands = active.filter(emp => {
         if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs)) return false;
-        if (slot.slOnly && emp.role !== "shift_lead") return false;
+        if (!slCheck(slot, emp)) return false;
         if (sc[emp.id] >= emp.maxShifts || sh[emp.id] + slot.hours > emp.maxHours) return false;
         if (slot.isMC && emp.role === "trainee") return false;
         // Never allow doubles
