@@ -1,117 +1,142 @@
 import { useState, useEffect } from "react";
-import { DAYS, DAY_LABELS, DAY_FULL, ROLE_CONFIG, TAG_OPTIONS, newUnavail, fmtTime } from "./constants";
-import { loadData, saveData } from "./storage";
-import { SEED_EMPLOYEES, SEED_RULES } from "./seedData";
 import { EmployeesTab } from "./EmployeesTab";
-import { RulesTab } from "./RulesTab";
-import { SchoolCalendarTab, SEED_SCHOOL_CALENDAR } from "./SchoolCalendarTab";
 import { ScheduleTab } from "./ScheduleTab";
+import { RulesTab } from "./RulesTab";
+import { SchoolCalendarTab } from "./SchoolCalendarTab";
+import { TimeOffTab } from "./TimeOffTab";
+import { SEED_EMPLOYEES, SEED_RULES } from "./seedData";
+import { loadData, saveData } from "./storage";
+
+const SEED_SCHOOL_CALENDAR = [
+  {date:"2025-09-01",label:"Labor Day",type:"holiday"},
+  {date:"2025-10-13",label:"Columbus Day",type:"holiday"},
+  {date:"2025-11-03",label:"Staff Development",type:"holiday"},
+  {date:"2025-11-25",label:"Thanksgiving Break",type:"holiday"},
+  {date:"2025-11-26",label:"Thanksgiving Break",type:"holiday"},
+  {date:"2025-11-27",label:"Thanksgiving Day",type:"holiday"},
+  {date:"2025-11-28",label:"Thanksgiving Break",type:"holiday"},
+  {date:"2025-12-22",label:"Winter Break",type:"holiday"},
+  {date:"2025-12-23",label:"Winter Break",type:"holiday"},
+  {date:"2025-12-24",label:"Christmas Eve",type:"holiday"},
+  {date:"2025-12-25",label:"Christmas Day",type:"holiday"},
+  {date:"2025-12-26",label:"Winter Break",type:"holiday"},
+  {date:"2025-12-29",label:"Winter Break",type:"holiday"},
+  {date:"2025-12-30",label:"Winter Break",type:"holiday"},
+  {date:"2025-12-31",label:"New Year's Eve",type:"holiday"},
+  {date:"2026-01-01",label:"New Year's Day",type:"holiday"},
+  {date:"2026-01-02",label:"Winter Break",type:"holiday"},
+  {date:"2026-01-19",label:"MLK Day",type:"holiday"},
+  {date:"2026-02-16",label:"Presidents Day",type:"holiday"},
+  {date:"2026-03-09",label:"Spring Break",type:"holiday"},
+  {date:"2026-03-10",label:"Spring Break",type:"holiday"},
+  {date:"2026-03-11",label:"Spring Break",type:"holiday"},
+  {date:"2026-03-12",label:"Spring Break",type:"holiday"},
+  {date:"2026-03-13",label:"Spring Break",type:"holiday"},
+  {date:"2026-04-02",label:"Staff Development",type:"holiday"},
+  {date:"2026-04-03",label:"Good Friday",type:"holiday"},
+  {date:"2026-05-25",label:"Memorial Day",type:"holiday"},
+  {date:"2026-06-04",label:"Last Day of School",type:"holiday"},
+  {date:"2026-06-05",label:"Summer Break",type:"summer"},
+];
+
+const font = "'DM Sans',sans-serif";
+
+const tabs = [
+  { id: "schedule", label: "Schedule", icon: "\ud83d\udcc5" },
+  { id: "employees", label: "Employees", icon: "\ud83d\udc65" },
+  { id: "rules", label: "Rules", icon: "\u2699\ufe0f" },
+  { id: "calendar", label: "School Calendar", icon: "\ud83c\udfeb" },
+  { id: "timeoff", label: "Time Off", icon: "\u23f0" },
+];
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState("schedule");
   const [employees, setEmployees] = useState([]);
-  const [timeOffs, setTimeOffs] = useState([]);
-  const [rules, setRules] = useState(SEED_RULES);
+  const [rules, setRules] = useState(null);
   const [schoolDates, setSchoolDates] = useState([]);
+  const [timeOffs, setTimeOffs] = useState([]);
   const [savedSchedules, setSavedSchedules] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState("employees");
+  const [loaded, setLoaded] = useState(false);
 
+  // Load from localStorage
   useEffect(() => {
-    const d = loadData();
-    if (d) {
-      setEmployees(d.employees || SEED_EMPLOYEES);
-      setTimeOffs(d.timeOffs || []);
-      // Merge rules: keep saved rules but add any new seed constraints
-      const savedRules = d.rules || SEED_RULES;
-      if (savedRules.constraints && SEED_RULES.constraints) {
-        const savedIds = new Set(savedRules.constraints.map(c => c.id));
-        SEED_RULES.constraints.forEach(sc => {
-          if (!savedIds.has(sc.id)) savedRules.constraints.push(sc);
-        });
+    const data = loadData();
+    if (data) {
+      // Migrate: add minHours to old employees that don't have it
+      const emps = (data.employees || SEED_EMPLOYEES).map(e => {
+        if (e.minHours === undefined) {
+          if (e.role === "shift_lead") e.minHours = 18;
+          else if (e.role === "regular") e.minHours = 12;
+          else e.minHours = 0;
+        }
+        return e;
+      });
+      // Migrate: convert old mcRotation format to new
+      const r = data.rules || SEED_RULES;
+      if (r.mcRotation && !r.mcRotation.shiftLeadPool) {
+        r.mcRotation.shiftLeadPool = [
+          ...(r.mcRotation.thursdayLeaders || []),
+          ...(r.mcRotation.sundayLeaderPool || []),
+        ].filter((v, i, a) => a.indexOf(v) === i);
+        r.mcRotation.assistantPool = r.mcRotation.helperPool || [];
+        delete r.mcRotation.thursdayLeaders;
+        delete r.mcRotation.sundayLeaderPool;
+        delete r.mcRotation.helperPool;
       }
-      setRules(savedRules);
-      setSchoolDates(d.schoolDates || SEED_SCHOOL_CALENDAR);
-      setSavedSchedules(d.savedSchedules || {});
+      setEmployees(emps);
+      setRules(r);
+      setSchoolDates(data.schoolDates || SEED_SCHOOL_CALENDAR);
+      setTimeOffs(data.timeOffs || []);
+      setSavedSchedules(data.savedSchedules || {});
     } else {
       setEmployees(SEED_EMPLOYEES);
-      setTimeOffs([]);
       setRules(SEED_RULES);
       setSchoolDates(SEED_SCHOOL_CALENDAR);
-      setSavedSchedules({});
     }
-    setLoading(false);
+    setLoaded(true);
   }, []);
 
+  // Save to localStorage on change
   useEffect(() => {
-    if (!loading) saveData({ employees, timeOffs, rules, schoolDates, savedSchedules });
-  }, [employees, timeOffs, rules, schoolDates, savedSchedules, loading]);
+    if (!loaded || !rules) return;
+    saveData({ employees, rules, schoolDates, timeOffs, savedSchedules });
+  }, [employees, rules, schoolDates, timeOffs, savedSchedules, loaded]);
 
-  const ct = r => employees.filter(e => e.status === "active" && e.role === r).length;
-
-  if (loading) {
-    return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", fontFamily: "'DM Sans',sans-serif" }}>
-        <span style={{ color: "#9CA3AF" }}>Loading...</span>
-      </div>
-    );
-  }
+  if (!loaded || !rules) return <div style={{ padding: 40, textAlign: "center", color: "#9CA3AF" }}>Loading...</div>;
 
   return (
-    <div style={{ minHeight: "100vh", background: "#F3F4F6", fontFamily: "'DM Sans',sans-serif" }}>
+    <div style={{ fontFamily: font, minHeight: "100vh", background: "#F3F4F6" }}>
       {/* Header */}
-      <div style={{ background: "#111827", padding: "18px 28px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>
-          <div style={{ fontSize: 9.5, fontWeight: 700, color: "#F59E0B", letterSpacing: 2.5, textTransform: "uppercase", marginBottom: 1 }}>
-            SomiSomi · The Woodlands
+      <div style={{ background: "#111827", padding: "14px 28px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <span style={{ fontSize: 22 }}>{"\ud83c\udf66"}</span>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: "#fff", letterSpacing: -0.3 }}>SomiSomi Scheduler</div>
+            <div style={{ fontSize: 10, color: "#6B7280", fontWeight: 500 }}>The Woodlands</div>
           </div>
-          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#fff", letterSpacing: -0.3 }}>Schedule Builder</h1>
         </div>
-        <div style={{ display: "flex", gap: 20 }}>
-          {[["SL", ct("shift_lead"), "#F59E0B"], ["REG", ct("regular"), "#3B82F6"], ["TR", ct("trainee"), "#8B5CF6"]].map(([l, n, c]) => (
-            <div key={l} style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 18, fontWeight: 800, color: c }}>{n}</div>
-              <div style={{ fontSize: 8.5, color: "#9CA3AF", fontWeight: 700, letterSpacing: 0.8 }}>{l}</div>
-            </div>
+        <div style={{ display: "flex", gap: 2 }}>
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
+              padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontFamily: font,
+              display: "flex", alignItems: "center", gap: 6,
+              background: activeTab === t.id ? "#F59E0B" : "transparent",
+              color: activeTab === t.id ? "#111827" : "#9CA3AF",
+              fontSize: 12, fontWeight: activeTab === t.id ? 700 : 500,
+              transition: "all 0.15s",
+            }}>
+              <span style={{ fontSize: 14 }}>{t.icon}</span>{t.label}
+            </button>
           ))}
         </div>
       </div>
 
-      {/* Tabs */}
-      <div style={{ background: "#fff", borderBottom: "1px solid #E5E7EB", padding: "0 28px", display: "flex" }}>
-        {[["employees", "Employees"], ["calendar", "Calendar"], ["schedule", "Schedule"], ["rules", "Rules"]].map(([k, l]) => (
-          <button key={k} onClick={() => setTab(k)} style={{
-            padding: "11px 18px", fontSize: 13, fontWeight: 600, cursor: "pointer", border: "none", background: "none",
-            color: tab === k ? "#111827" : "#9CA3AF",
-            borderBottom: tab === k ? "2px solid #F59E0B" : "2px solid transparent",
-            fontFamily: "'DM Sans',sans-serif",
-          }}>
-            {l}
-            {k === "calendar" && (
-              <span style={{ marginLeft: 6, padding: "1px 7px", borderRadius: 10, fontSize: 10, fontWeight: 700, background: "#DBEAFE", color: "#1D4ED8" }}>📅</span>
-            )}
-            {k === "schedule" && (
-              <span style={{ marginLeft: 6, padding: "1px 7px", borderRadius: 10, fontSize: 10, fontWeight: 700, background: "#F0FDF4", color: "#16A34A" }}>⚡</span>
-            )}
-            {k === "rules" && (
-              <span style={{ marginLeft: 6, padding: "1px 7px", borderRadius: 10, fontSize: 10, fontWeight: 700, background: "#EDE9FE", color: "#6D28D9" }}>⚙</span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab Content */}
-      {tab === "employees" && (
-        <EmployeesTab employees={employees} setEmployees={setEmployees} timeOffs={timeOffs} />
-      )}
-      {tab === "rules" && (
-        <RulesTab rules={rules} setRules={setRules} employees={employees} />
-      )}
-      {tab === "calendar" && (
-        <SchoolCalendarTab schoolDates={schoolDates} setSchoolDates={setSchoolDates} />
-      )}
-      {tab === "schedule" && (
-        <ScheduleTab employees={employees} rules={rules} schoolDates={schoolDates} timeOffs={timeOffs} savedSchedules={savedSchedules} setSavedSchedules={setSavedSchedules} />
-      )}
+      {/* Content */}
+      {activeTab === "schedule" && <ScheduleTab employees={employees} rules={rules} schoolDates={schoolDates} timeOffs={timeOffs} savedSchedules={savedSchedules} setSavedSchedules={setSavedSchedules} />}
+      {activeTab === "employees" && <EmployeesTab employees={employees} setEmployees={setEmployees} />}
+      {activeTab === "rules" && <RulesTab rules={rules} setRules={setRules} employees={employees} />}
+      {activeTab === "calendar" && <SchoolCalendarTab schoolDates={schoolDates} setSchoolDates={setSchoolDates} />}
+      {activeTab === "timeoff" && <TimeOffTab employees={employees} timeOffs={timeOffs} setTimeOffs={setTimeOffs} />}
     </div>
   );
 }
