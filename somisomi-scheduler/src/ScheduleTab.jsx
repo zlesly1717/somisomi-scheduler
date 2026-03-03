@@ -187,6 +187,15 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       }
       if (con("no_fri_sat_night") && isSat && tm(slot.start) >= 1020 && nightMap[weekDates[4]]?.has(emp.id)) return false;
       if (con("no_sat_sun_night") && isSun && tm(slot.start) >= 1020 && nightMap[weekDates[5]]?.has(emp.id)) return false;
+      if (con("no_fri_sat_sun")) {
+        // Check if assigning this employee today would give them all 3 of Fri/Sat/Sun
+        const friIdx = 4, satIdx = 5, sunIdx = 6;
+        const hasFri = sd[emp.id].has(weekDates[friIdx]);
+        const hasSat = sd[emp.id].has(weekDates[satIdx]);
+        const hasSun = sd[emp.id].has(weekDates[sunIdx]);
+        const wouldHave = (isFri ? 1 : (hasFri ? 1 : 0)) + (isSat ? 1 : (hasSat ? 1 : 0)) + (isSun ? 1 : (hasSun ? 1 : 0));
+        if (wouldHave >= 3) return false;
+      }
       if (usedToday.has(emp.id)) return false;
       return true;
     };
