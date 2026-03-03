@@ -130,7 +130,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   const nightMap = {};
   const mcCount = {};
   active.forEach(e => { mcCount[e.id] = 0; });
-  const schedOrder = [4, 5, 6, 0, 1, 2, 3];
+  // Schedule hardest days first: Thu MC, Sun MC, Sat, Fri, then weekdays
+  const schedOrder = [3, 6, 5, 4, 0, 1, 2];
 
   schedOrder.forEach(dayIndex => {
     const dateStr = weekDates[dayIndex];
@@ -247,8 +248,11 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         schedule[dateStr].push({ ...slot, empId: null, empName: "\u26a0 UNFILLED", empRole: null });
       }
     };
-    slots.filter(s => s.slOnly).forEach(assign);
-    slots.filter(s => !s.slOnly).forEach(assign);
+    // Assign MC slots first (hardest to fill), then other SL-only, then rest
+    slots.filter(s => s.isMC && s.slOnly).forEach(assign);
+    slots.filter(s => s.isMC && !s.slOnly).forEach(assign);
+    slots.filter(s => s.slOnly && !s.isMC).forEach(assign);
+    slots.filter(s => !s.slOnly && !s.isMC).forEach(assign);
   });
 
   // PASS 1.5: Ensure shift leads hit their min shifts by filling regular slots
@@ -333,7 +337,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   // THIRD PASS: Fill unfilled slots with below-minimum employees (shifts OR hours)
   const belowMin = active.filter(e => sc[e.id] < e.minShifts || sh[e.id] < (e.minHours || 0));
   for (const emp of belowMin) {
-    const tryOrder = [4, 5, 6, 0, 1, 2, 3];
+    const tryOrder = [3, 6, 5, 4, 0, 1, 2];
     for (const di of tryOrder) {
       if ((sc[emp.id] >= emp.minShifts && sh[emp.id] >= (emp.minHours || 0)) || sc[emp.id] >= emp.maxShifts) break;
       const dateStr = weekDates[di];
