@@ -489,9 +489,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 
         schedule[dateStr][si2] = { ...slot, empId: emp.id, empName: emp.name, empRole: emp.role };
         sc[emp.id]++; sh[emp.id] += slot.hours; sd[emp.id].add(dateStr);
+        if (tm(slot.start) >= 1020) { if (!nightMap[dateStr]) nightMap[dateStr] = new Set(); nightMap[dateStr].add(emp.id); }
         break;
       }
-        if (tm(slot.start) >= 1020) { if (!nightMap[dateStr]) nightMap[dateStr] = new Set(); nightMap[dateStr].add(emp.id); }
     }
   }
 
