@@ -48,6 +48,14 @@ function parseTimeOffs(text, employees, weekDates) {
     monday: 0, mon: 0, tuesday: 1, tue: 1, tues: 1, wednesday: 2, wed: 2,
     thursday: 3, thu: 3, thurs: 3, friday: 4, fri: 4, saturday: 5, sat: 5, sunday: 6, sun: 6,
   };
+
+  // Build a lookup of date numbers to weekDates indices
+  const dateNumMap = {};
+  weekDates.forEach((d, i) => {
+    const dt = new Date(d + "T12:00:00");
+    dateNumMap[dt.getDate()] = i;
+  });
+
   const parts = text.split(/[,;.]|\band\b/i).map(s => s.trim()).filter(Boolean);
   let lastEmp = null;
   for (const part of parts) {
@@ -61,23 +69,50 @@ function parseTimeOffs(text, employees, weekDates) {
     if (foundEmp) lastEmp = foundEmp;
     const emp = foundEmp || lastEmp;
     if (!emp) continue;
+
+    const isAllDay = lower.includes("all day") || lower.includes("whole day") || lower.includes("off");
+
+    // Try to match date ranges like "19th-22nd", "19-22", "march 19-22"
+    const rangeMatch = lower.match(/(\d{1,2})\s*(?:st|nd|rd|th)?\s*[-\u2013to]+\s*(\d{1,2})\s*(?:st|nd|rd|th)?/);
+    if (rangeMatch) {
+      const startNum = +rangeMatch[1];
+      const endNum = +rangeMatch[2];
+      let found = false;
+      for (let n = startNum; n <= endNum; n++) {
+        if (dateNumMap[n] !== undefined) {
+          results.push({ empId: emp.id, empName: emp.name, date: weekDates[dateNumMap[n]], allDay: true, start: "", end: "" });
+          found = true;
+        }
+      }
+      if (found) continue;
+    }
+
+    // Try to match single date numbers like "the 19th", "on 19"
+    const singleDateMatch = lower.match(/\b(\d{1,2})\s*(?:st|nd|rd|th)?\b/);
+
+    // Try day name match
     let foundDay = null;
     for (const [name, idx] of Object.entries(dayMap)) { if (lower.includes(name)) { foundDay = idx; break; } }
-    if (foundDay === null) continue;
-    const date = weekDates[foundDay];
-    const allDay = lower.includes("all day") || lower.includes("whole day") || lower.includes("off " + Object.keys(dayMap).find(k => dayMap[k] === foundDay));
-    const timeMatch = part.match(/(\d{1,2})\s*(?::(\d{2}))?\s*(am|pm)?\s*[-\u2013to]+\s*(\d{1,2})\s*(?::(\d{2}))?\s*(am|pm)?/i);
-    if (timeMatch && !allDay) {
-      let [, h1, m1, ap1, h2, m2, ap2] = timeMatch;
-      h1 = +h1; m1 = m1 ? +m1 : 0; h2 = +h2; m2 = m2 ? +m2 : 0;
-      ap1 = (ap1 || "").toLowerCase(); ap2 = (ap2 || "").toLowerCase();
-      if (!ap1 && !ap2) { if (h1 < 8) { ap1 = "pm"; ap2 = "pm"; } else { ap1 = h1 >= 12 ? "pm" : "am"; ap2 = h2 >= 12 ? "pm" : "am"; } }
-      if (!ap1) ap1 = ap2; if (!ap2) ap2 = h2 < h1 ? "pm" : ap1;
-      if (ap1 === "pm" && h1 < 12) h1 += 12; if (ap1 === "am" && h1 === 12) h1 = 0;
-      if (ap2 === "pm" && h2 < 12) h2 += 12; if (ap2 === "am" && h2 === 12) h2 = 0;
-      results.push({ empId: emp.id, empName: emp.name, date, allDay: false, start: String(h1).padStart(2,"0")+":"+String(m1).padStart(2,"0"), end: String(h2).padStart(2,"0")+":"+String(m2).padStart(2,"0") });
-    } else {
-      results.push({ empId: emp.id, empName: emp.name, date, allDay: true, start: "", end: "" });
+
+    if (foundDay !== null) {
+      const date = weekDates[foundDay];
+      const timeMatch = part.match(/(\d{1,2})\s*(?::(\d{2}))?\s*(am|pm)?\s*[-\u2013to]+\s*(\d{1,2})\s*(?::(\d{2}))?\s*(am|pm)?/i);
+      if (timeMatch && !isAllDay) {
+        let [, h1, m1, ap1, h2, m2, ap2] = timeMatch;
+        h1 = +h1; m1 = m1 ? +m1 : 0; h2 = +h2; m2 = m2 ? +m2 : 0;
+        ap1 = (ap1 || "").toLowerCase(); ap2 = (ap2 || "").toLowerCase();
+        if (!ap1 && !ap2) { if (h1 < 8) { ap1 = "pm"; ap2 = "pm"; } else { ap1 = h1 >= 12 ? "pm" : "am"; ap2 = h2 >= 12 ? "pm" : "am"; } }
+        if (!ap1) ap1 = ap2; if (!ap2) ap2 = h2 < h1 ? "pm" : ap1;
+        if (ap1 === "pm" && h1 < 12) h1 += 12; if (ap1 === "am" && h1 === 12) h1 = 0;
+        if (ap2 === "pm" && h2 < 12) h2 += 12; if (ap2 === "am" && h2 === 12) h2 = 0;
+        results.push({ empId: emp.id, empName: emp.name, date, allDay: false, start: String(h1).padStart(2,"0")+":"+String(m1).padStart(2,"0"), end: String(h2).padStart(2,"0")+":"+String(m2).padStart(2,"0") });
+      } else {
+        results.push({ empId: emp.id, empName: emp.name, date, allDay: true, start: "", end: "" });
+      }
+    } else if (singleDateMatch && dateNumMap[+singleDateMatch[1]] !== undefined) {
+      // Match single date number that falls within the week
+      const idx = dateNumMap[+singleDateMatch[1]];
+      results.push({ empId: emp.id, empName: emp.name, date: weekDates[idx], allDay: true, start: "", end: "" });
     }
   }
   return results;
@@ -388,7 +423,35 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
   const handleAccept = () => {
     if (draft) { setSavedSchedules(prev => ({ ...prev, [weekKey]: { ...draft, notes, weeklyTOs, savedAt: new Date().toISOString() } })); setDraft(null); setNotes([]); }
   };
-  const handleReject = () => { if (!prompt.trim()) return; setNotes(prev => [...prev, prompt.trim()]); setPrompt(""); handleGenerate(); };
+  const handleReject = () => {
+    if (!prompt.trim()) return;
+    setNotes(prev => [...prev, prompt.trim()]);
+    // Try to parse the prompt for time-off instructions and add them
+    const parsed = parseTimeOffs(prompt, employees.filter(e => e.status === "active"), weekDates);
+    if (parsed.length > 0) {
+      setWeeklyTOs(prev => {
+        const combined = [...prev];
+        parsed.forEach(p => {
+          // Don't add duplicates
+          if (!combined.some(c => c.empId === p.empId && c.date === p.date && c.allDay === p.allDay)) {
+            combined.push(p);
+          }
+        });
+        return combined;
+      });
+    }
+    setPrompt("");
+    // Regenerate with updated time-offs (use timeout to let state update)
+    setTimeout(() => {
+      setGenerating(true); setStep("result");
+      const ds = dayStaffing || initDayStaffing(weekDates);
+      setTimeout(() => {
+        const currentTOs = [...(timeOffs || []), ...weeklyTOs, ...parsed];
+        const r = genSchedule(weekDates, employees, rules, schoolDates, currentTOs, ds);
+        setDraft(r); setGenerating(false);
+      }, 200);
+    }, 50);
+  };
   const handleUnsave = () => { setSavedSchedules(prev => { const n = { ...prev }; delete n[weekKey]; return n; }); setStep("timeoff"); };
   const removeTo = (idx) => setWeeklyTOs(prev => prev.filter((_, i) => i !== idx));
   const handleWeekChange = (val) => { setWeekStart(val); setDraft(null); setNotes([]); setWeeklyTOs([]); setToText(""); setStep("timeoff"); setDayStaffing(null); };
@@ -746,7 +809,7 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
               </div>
               <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 6 }}>What needs to change?</div>
               <div style={{ display: "flex", gap: 8 }}>
-                <input value={prompt} onChange={e => setPrompt(e.target.value)} onKeyDown={e => { if (e.key === "Enter") handleReject(); }} placeholder="e.g. Swap Kennedy and Gwen on Saturday..." style={{ ...si, flex: 1 }} />
+                <input value={prompt} onChange={e => setPrompt(e.target.value)} onKeyDown={e => { if (e.key === "Enter") handleReject(); }} placeholder="e.g. Kennedy off 19th-22nd all day, swap Gwen and Sam on Saturday..." style={{ ...si, flex: 1 }} />
                 <button onClick={handleReject} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#4A3F2F", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: font, whiteSpace: "nowrap" }}>{"\ud83d\udd04"} Regenerate</button>
               </div>
               {notes.length > 0 && (
