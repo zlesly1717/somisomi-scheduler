@@ -78,6 +78,13 @@ export default function App() {
         delete r.mcRotation.sundayLeaderPool;
         delete r.mcRotation.helperPool;
       }
+      // Migrate: add any new constraints that don't exist yet
+      const seedConstraints = SEED_RULES.constraints;
+      seedConstraints.forEach(sc => {
+        if (!r.constraints.find(c => c.id === sc.id)) {
+          r.constraints.push(sc);
+        }
+      });
       setEmployees(emps);
       setRules(r);
       setSchoolDates(data.schoolDates || SEED_SCHOOL_CALENDAR);
