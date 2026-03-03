@@ -3,7 +3,6 @@ import { EmployeesTab } from "./EmployeesTab";
 import { ScheduleTab } from "./ScheduleTab";
 import { RulesTab } from "./RulesTab";
 import { SchoolCalendarTab } from "./SchoolCalendarTab";
-import { TimeOffTab } from "./TimeOffTab";
 import { SEED_EMPLOYEES, SEED_RULES } from "./seedData";
 import { loadData, saveData } from "./storage";
 
@@ -46,7 +45,6 @@ const tabs = [
   { id: "employees", label: "Employees", icon: "\ud83d\udc65" },
   { id: "rules", label: "Rules", icon: "\u2699\ufe0f" },
   { id: "calendar", label: "School Calendar", icon: "\ud83c\udfeb" },
-  { id: "timeoff", label: "Time Off", icon: "\u23f0" },
 ];
 
 export default function App() {
@@ -58,11 +56,9 @@ export default function App() {
   const [savedSchedules, setSavedSchedules] = useState({});
   const [loaded, setLoaded] = useState(false);
 
-  // Load from localStorage
   useEffect(() => {
     const data = loadData();
     if (data) {
-      // Migrate: add minHours to old employees that don't have it
       const emps = (data.employees || SEED_EMPLOYEES).map(e => {
         if (e.minHours === undefined) {
           if (e.role === "shift_lead") e.minHours = 18;
@@ -71,7 +67,6 @@ export default function App() {
         }
         return e;
       });
-      // Migrate: convert old mcRotation format to new
       const r = data.rules || SEED_RULES;
       if (r.mcRotation && !r.mcRotation.shiftLeadPool) {
         r.mcRotation.shiftLeadPool = [
@@ -96,7 +91,6 @@ export default function App() {
     setLoaded(true);
   }, []);
 
-  // Save to localStorage on change
   useEffect(() => {
     if (!loaded || !rules) return;
     saveData({ employees, rules, schoolDates, timeOffs, savedSchedules });
@@ -106,13 +100,13 @@ export default function App() {
 
   return (
     <div style={{ fontFamily: font, minHeight: "100vh", background: "#F3F4F6" }}>
-      {/* Header */}
-      <div style={{ background: "#111827", padding: "14px 28px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      {/* Header - soft butter yellow */}
+      <div style={{ background: "#F5E6B8", padding: "14px 28px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1px solid #E8D5A0" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ fontSize: 22 }}>{"\ud83c\udf66"}</span>
           <div>
-            <div style={{ fontSize: 17, fontWeight: 800, color: "#fff", letterSpacing: -0.3 }}>SomiSomi Scheduler</div>
-            <div style={{ fontSize: 10, color: "#6B7280", fontWeight: 500 }}>The Woodlands</div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: "#4A3F2F", letterSpacing: -0.3 }}>SomiSomi Scheduler</div>
+            <div style={{ fontSize: 10, color: "#8B7D65", fontWeight: 500 }}>The Woodlands</div>
           </div>
         </div>
         <div style={{ display: "flex", gap: 2 }}>
@@ -120,8 +114,8 @@ export default function App() {
             <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
               padding: "8px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontFamily: font,
               display: "flex", alignItems: "center", gap: 6,
-              background: activeTab === t.id ? "#F59E0B" : "transparent",
-              color: activeTab === t.id ? "#111827" : "#9CA3AF",
+              background: activeTab === t.id ? "#4A3F2F" : "transparent",
+              color: activeTab === t.id ? "#F5E6B8" : "#6B5D45",
               fontSize: 12, fontWeight: activeTab === t.id ? 700 : 500,
               transition: "all 0.15s",
             }}>
@@ -131,12 +125,10 @@ export default function App() {
         </div>
       </div>
 
-      {/* Content */}
       {activeTab === "schedule" && <ScheduleTab employees={employees} rules={rules} schoolDates={schoolDates} timeOffs={timeOffs} savedSchedules={savedSchedules} setSavedSchedules={setSavedSchedules} />}
       {activeTab === "employees" && <EmployeesTab employees={employees} setEmployees={setEmployees} />}
       {activeTab === "rules" && <RulesTab rules={rules} setRules={setRules} employees={employees} />}
       {activeTab === "calendar" && <SchoolCalendarTab schoolDates={schoolDates} setSchoolDates={setSchoolDates} />}
-      {activeTab === "timeoff" && <TimeOffTab employees={employees} timeOffs={timeOffs} setTimeOffs={setTimeOffs} />}
     </div>
   );
 }

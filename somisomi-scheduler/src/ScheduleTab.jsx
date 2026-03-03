@@ -268,7 +268,7 @@ function EditShiftModal({ slot, date, employees, onSave, onClose }) {
       <div style={{ background: "#fff", borderRadius: 16, padding: 22, width: "100%", maxWidth: 400, boxShadow: "0 25px 60px rgba(0,0,0,0.3)" }} onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <div>
-            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#111827" }}>Edit Shift</h3>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#4A3F2F" }}>Edit Shift</h3>
             <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 2 }}>{dayName} {dt.getMonth()+1}/{dt.getDate()} &middot; {slot.label}</div>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#9CA3AF" }}>&times;</button>
@@ -289,7 +289,7 @@ function EditShiftModal({ slot, date, employees, onSave, onClose }) {
         </div>
         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
           <button onClick={onClose} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #D1D5DB", background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600, color: "#6B7280", fontFamily: font }}>Cancel</button>
-          <button onClick={handleSave} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: font }}>Save</button>
+          <button onClick={handleSave} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: "#4A3F2F", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: font }}>Save</button>
         </div>
       </div>
     </div>
@@ -454,11 +454,11 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
         <div style={{ background: "#fff", borderRadius: 12, padding: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginBottom: 16, border: "2px solid #3B82F6" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
             <span style={{ fontSize: 22 }}>{"\ud83d\udccb"}</span>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "#111827" }}>Step 1: Any time-off this week?</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#4A3F2F" }}>Step 1: Any time-off this week?</div>
           </div>
           <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 12 }}>Check your Homebase and type any time-off requests for this week. Or skip if none.</div>
           <textarea value={toText} onChange={e => setToText(e.target.value)} placeholder="e.g. Kennedy off Saturday all day, Gwen off Monday 12pm-6pm, Sam off Wednesday" style={{ ...si, minHeight: 80, resize: "vertical", marginBottom: 12 }} />
-          <button onClick={handleParseTimeOffs} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: font }}>
+          <button onClick={handleParseTimeOffs} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: "#4A3F2F", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: font }}>
             {toText.trim() ? "Next \u2192" : "Skip \u2014 No Time-Off \u2192"}
           </button>
         </div>
@@ -469,7 +469,7 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
         <div style={{ background: "#fff", borderRadius: 12, padding: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginBottom: 16, border: "2px solid #F59E0B" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
             <span style={{ fontSize: 22 }}>{"\u2705"}</span>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "#111827" }}>Step 2: Confirm time-off</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "#4A3F2F" }}>Step 2: Confirm time-off</div>
           </div>
           {weeklyTOs.length === 0 ? (
             <div style={{ fontSize: 13, color: "#6B7280", marginBottom: 12 }}>No time-off this week — ready to generate!</div>
@@ -497,7 +497,7 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
             <div style={{ marginBottom: 14 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                 <span style={{ fontSize: 16 }}>{"\ud83d\udc65"}</span>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#111827" }}>Staffing per day</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#4A3F2F" }}>Staffing per day</div>
                 <div style={{ fontSize: 11, color: "#9CA3AF" }}>— adjust before generating</div>
               </div>
               <div style={{ overflowX: "auto" }}>
@@ -522,7 +522,7 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
                           return (<td key={d} style={{ padding: "2px 2px", textAlign: "center" }}>
                             <div style={{ display: "inline-flex", alignItems: "center", gap: 1 }}>
                               <button onClick={() => setDayStaffing(prev => ({ ...prev, [d]: { ...prev[d], [row.key]: Math.max(0, val - 1) } }))} style={{ width: 20, height: 20, borderRadius: 4, border: "1px solid #D1D5DB", background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#374151", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>-</button>
-                              <span style={{ width: 18, textAlign: "center", fontSize: 13, fontWeight: 800, color: "#111827" }}>{val}</span>
+                              <span style={{ width: 18, textAlign: "center", fontSize: 13, fontWeight: 800, color: "#4A3F2F" }}>{val}</span>
                               <button onClick={() => setDayStaffing(prev => ({ ...prev, [d]: { ...prev[d], [row.key]: val + 1 } }))} style={{ width: 20, height: 20, borderRadius: 4, border: "1px solid #D1D5DB", background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "#374151", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>+</button>
                             </div>
                           </td>);
@@ -530,10 +530,10 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
                       </tr>
                     ))}
                     <tr>
-                      <td style={{ padding: "3px 6px", fontSize: 10, fontWeight: 800, color: "#111827" }}>Total</td>
+                      <td style={{ padding: "3px 6px", fontSize: 10, fontWeight: 800, color: "#4A3F2F" }}>Total</td>
                       {weekDates.map(d => {
                         const s = dayStaffing[d] || {};
-                        return <td key={d} style={{ padding: "2px 2px", textAlign: "center", fontSize: 12, fontWeight: 800, color: "#111827" }}>{(s.day||0)+(s.mid||0)+(s.evening||0)}</td>;
+                        return <td key={d} style={{ padding: "2px 2px", textAlign: "center", fontSize: 12, fontWeight: 800, color: "#4A3F2F" }}>{(s.day||0)+(s.mid||0)+(s.evening||0)}</td>;
                       })}
                     </tr>
                   </tbody>
@@ -543,7 +543,7 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
           )}
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={() => setStep("timeoff")} style={{ padding: "10px 18px", borderRadius: 8, border: "1px solid #D1D5DB", background: "#fff", color: "#6B7280", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: font }}>{"\u2190"} Back</button>
-            <button onClick={handleGenerate} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: font }}>{"\u26a1"} Generate Schedule</button>
+            <button onClick={handleGenerate} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: "#4A3F2F", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: font }}>{"\u26a1"} Generate Schedule</button>
           </div>
         </div>
       )}
@@ -569,7 +569,7 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
             ) : <div />}
             <div style={{ display: "flex", background: "#F3F4F6", borderRadius: 8, padding: 2 }}>
               {[["shift", "Shift View"], ["employee", "Employee View"]].map(([k, l]) => (
-                <button key={k} onClick={() => setViewMode(k)} style={{ padding: "5px 14px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer", border: "none", fontFamily: font, background: viewMode === k ? "#111827" : "transparent", color: viewMode === k ? "#fff" : "#6B7280" }}>{l}</button>
+                <button key={k} onClick={() => setViewMode(k)} style={{ padding: "5px 14px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer", border: "none", fontFamily: font, background: viewMode === k ? "#4A3F2F" : "transparent", color: viewMode === k ? "#fff" : "#6B7280" }}>{l}</button>
               ))}
             </div>
           </div>
@@ -738,7 +738,7 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
           {/* Accept / Reject */}
           {!isSaved && draft && (
             <div style={{ background: "#fff", borderRadius: 12, padding: 18, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginBottom: 16, border: "2px solid #F59E0B" }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#111827", marginBottom: 4 }}>Does this schedule look good?</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#4A3F2F", marginBottom: 4 }}>Does this schedule look good?</div>
               <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 12 }}>Accept to save, or describe what needs to change and regenerate.</div>
               <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
                 <button onClick={handleAccept} style={{ padding: "10px 28px", borderRadius: 8, border: "none", background: "#22C55E", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: font }}>{"\u2713"} Accept & Save</button>
@@ -747,7 +747,7 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
               <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 6 }}>What needs to change?</div>
               <div style={{ display: "flex", gap: 8 }}>
                 <input value={prompt} onChange={e => setPrompt(e.target.value)} onKeyDown={e => { if (e.key === "Enter") handleReject(); }} placeholder="e.g. Swap Kennedy and Gwen on Saturday..." style={{ ...si, flex: 1 }} />
-                <button onClick={handleReject} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: font, whiteSpace: "nowrap" }}>{"\ud83d\udd04"} Regenerate</button>
+                <button onClick={handleReject} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#4A3F2F", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: font, whiteSpace: "nowrap" }}>{"\ud83d\udd04"} Regenerate</button>
               </div>
               {notes.length > 0 && (
                 <div style={{ marginTop: 8 }}>
@@ -780,7 +780,7 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
 
           {/* Employee Summary */}
           <div style={{ background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#111827", marginBottom: 10 }}>Employee Summary</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#4A3F2F", marginBottom: 10 }}>Employee Summary</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 8 }}>
               {employees.filter(e => e.status === "active").sort((a, b) => {
                 const o = { shift_lead: 0, regular: 1, trainee: 2 };

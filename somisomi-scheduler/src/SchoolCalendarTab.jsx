@@ -155,7 +155,7 @@ export function SchoolCalendarTab({ schoolDates, setSchoolDates }) {
         {/* Calendar */}
         <div style={{ flex: "1 1 340px", minWidth: 320 }}>
           <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", overflow: "hidden" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px", background: "#111827" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px", background: "#4A3F2F" }}>
               <button onClick={() => navigate(-1)} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", fontSize: 18, padding: "4px 8px" }}>{"\u2039"}</button>
               <span style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>{MONTHS[month]} {year}</span>
               <button onClick={() => navigate(1)} style={{ background: "none", border: "none", color: "#fff", cursor: "pointer", fontSize: 18, padding: "4px 8px" }}>{"\u203a"}</button>
@@ -222,7 +222,7 @@ export function SchoolCalendarTab({ schoolDates, setSchoolDates }) {
               <div><label style={sl}>End (optional)</label><input type="date" value={addForm.endDate} onChange={e => setAddForm(f => ({ ...f, endDate: e.target.value }))} style={{ ...si, width: 140 }} /></div>
               <div style={{ flex: 1, minWidth: 120 }}><label style={sl}>Label</label><input value={addForm.label} onChange={e => setAddForm(f => ({ ...f, label: e.target.value }))} placeholder="e.g. Spring Break" style={si} /></div>
               <div><label style={sl}>Type</label><select value={addForm.type} onChange={e => setAddForm(f => ({ ...f, type: e.target.value }))} style={{ ...si, width: 120 }}><option value="holiday">Holiday</option><option value="early_release">Early Release</option><option value="summer">Summer</option></select></div>
-              <button onClick={addRange} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>Add</button>
+              <button onClick={addRange} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#4A3F2F", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>Add</button>
             </div>
           </div>
         </div>

@@ -71,7 +71,7 @@ function AddConstraintForm({ onAdd }) {
       <input value={label} onChange={e => setLabel(e.target.value)} placeholder="Rule name" style={{ ...si, marginBottom: 6 }} />
       <input value={desc} onChange={e => setDesc(e.target.value)} placeholder="Description (optional)" style={{ ...si, marginBottom: 8 }} />
       <div style={{ display: "flex", gap: 6 }}>
-        <button onClick={handleAdd} style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: font }}>+ Add</button>
+        <button onClick={handleAdd} style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: "#4A3F2F", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: font }}>+ Add</button>
         <button onClick={() => { setOpen(false); setLabel(""); setDesc(""); }} style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid #D1D5DB", background: "#fff", color: "#6B7280", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: font }}>Cancel</button>
       </div>
     </div>
@@ -96,7 +96,7 @@ export function RulesTab({ rules, setRules, employees }) {
   return (
     <div style={{ padding: "18px 28px" }}>
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 800, color: "#111827" }}>Scheduling Rules</h2>
+        <h2 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 800, color: "#4A3F2F" }}>Scheduling Rules</h2>
         <p style={{ margin: 0, fontSize: 12, color: "#9CA3AF" }}>Configure all rules the auto-generator follows. Changes save automatically.</p>
       </div>
 
@@ -107,7 +107,7 @@ export function RulesTab({ rules, setRules, employees }) {
             {categories.map(c => (
               <button key={c.id} onClick={() => setActiveTab(c.id)} style={{
                 width: "100%", padding: "11px 14px", display: "flex", alignItems: "center", gap: 8,
-                background: activeTab === c.id ? "#111827" : "transparent", border: "none", cursor: "pointer",
+                background: activeTab === c.id ? "#4A3F2F" : "transparent", border: "none", cursor: "pointer",
                 fontFamily: font, textAlign: "left", borderBottom: "1px solid #F3F4F6",
               }}>
                 <span style={{ fontSize: 14 }}>{c.icon}</span>
@@ -124,7 +124,7 @@ export function RulesTab({ rules, setRules, employees }) {
             {/* CONSTRAINTS */}
             {activeTab === "constraints" && (
               <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 4 }}>Hard Constraints</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "#4A3F2F", marginBottom: 4 }}>Hard Constraints</div>
                 <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 12 }}>The scheduler will never violate an enabled constraint.</div>
                 {rules.constraints.map(c => (
                   <div key={c.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 0", borderBottom: "1px solid #F3F4F6" }}>
@@ -135,7 +135,7 @@ export function RulesTab({ rules, setRules, employees }) {
                       <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "transform 0.2s", transform: c.enabled ? "translateX(18px)" : "translateX(0)" }} />
                     </button>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: c.enabled ? "#111827" : "#9CA3AF" }}>{c.label}</div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: c.enabled ? "#4A3F2F" : "#9CA3AF" }}>{c.label}</div>
                       {c.desc && <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 1, lineHeight: 1.4 }}>{c.desc}</div>}
                     </div>
                     {c.custom && (
@@ -154,7 +154,7 @@ export function RulesTab({ rules, setRules, employees }) {
             {/* PRIORITY LISTS */}
             {activeTab === "priorities" && (
               <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 4 }}>Priority Lists</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "#4A3F2F", marginBottom: 4 }}>Priority Lists</div>
                 <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 12 }}>Drag to reorder priority. Click "+ Add" to include, {"\u2715"} to remove.</div>
 
                 <PriorityList title="4th Shift Priority" items={rules.fourthShiftPriority || []} allNames={[...allNames, "Trainees"]}
@@ -177,7 +177,7 @@ export function RulesTab({ rules, setRules, employees }) {
             {/* MC ROTATION - Simplified to 2 pools */}
             {activeTab === "rotation" && (
               <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 4 }}>MC Rotation Pools</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "#4A3F2F", marginBottom: 4 }}>MC Rotation Pools</div>
                 <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 12 }}>Two pools: Shift Leads/SL Helpers lead MC nights. Assistants are the regular helpers.</div>
 
                 <PriorityList title="Shift Leads / SL Helpers" items={rules.mcRotation?.shiftLeadPool || []} allNames={allNames}
@@ -198,7 +198,7 @@ export function RulesTab({ rules, setRules, employees }) {
                     <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "transform 0.2s", transform: rules.mcRotation?.noBackToBackHelpers ? "translateX(18px)" : "translateX(0)" }} />
                   </button>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: rules.mcRotation?.noBackToBackHelpers ? "#111827" : "#9CA3AF" }}>No back-to-back MC helpers</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: rules.mcRotation?.noBackToBackHelpers ? "#4A3F2F" : "#9CA3AF" }}>No back-to-back MC helpers</div>
                     <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 1 }}>Don't assign same helper for both Thursday and Sunday MC</div>
                   </div>
                 </div>
@@ -208,7 +208,7 @@ export function RulesTab({ rules, setRules, employees }) {
             {/* EMPLOYEE-SPECIFIC RULES */}
             {activeTab === "employee_rules" && (
               <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 4 }}>Employee-Specific Rules</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: "#4A3F2F", marginBottom: 4 }}>Employee-Specific Rules</div>
                 <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 12 }}>Special rules for individual employees. These override general rules.</div>
 
                 {(rules.fixedRules || []).map(fr => (
@@ -242,7 +242,7 @@ export function RulesTab({ rules, setRules, employees }) {
                       update(r => { r.fixedRules = [...(r.fixedRules || []), { id: `fr-${Date.now()}`, ...newFixedRule }]; });
                       setNewFixedRule({ empName: "", rule: "", desc: "" });
                     }} style={{
-                      padding: "8px 18px", borderRadius: 8, border: "none", background: "#111827", color: "#fff",
+                      padding: "8px 18px", borderRadius: 8, border: "none", background: "#4A3F2F", color: "#fff",
                       cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: font, alignSelf: "flex-start",
                     }}>+ Add Rule</button>
                   </div>

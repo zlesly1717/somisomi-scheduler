@@ -118,7 +118,10 @@ function EmpCard({ emp, onEdit, onAction }) {
             {off && <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 8, background: "#FEE2E2", color: "#DC2626", fontWeight: 700 }}>INACTIVE</span>}
           </div>
           <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>
-            {emp.minShifts}-{emp.maxShifts} shifts &middot; {emp.minHours || 0}-{emp.maxHours}h/wk
+            {emp.minShifts}-{emp.maxShifts} shifts/wk
+          <div style={{ fontSize: 11, color: "#6D8B4E", marginTop: 1, fontWeight: 600 }}>
+            {emp.minHours || 0}–{emp.maxHours} hrs/wk
+          </div>
           </div>
         </div>
         <div style={{ display: "flex", gap: 4 }}>
@@ -207,7 +210,7 @@ export function EmployeesTab({ employees, setEmployees }) {
         ))}
         <div style={{ flex: 1 }} />
         <button onClick={() => setViewMode(v => v === "cards" ? "table" : "cards")} style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #D1D5DB", background: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#6B7280", fontFamily: font }}>{viewMode === "cards" ? "\u2261 Table" : "\u229e Cards"}</button>
-        <button onClick={() => setEditing(null)} style={{ padding: "6px 16px", borderRadius: 8, border: "none", background: "#F59E0B", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: font }}>+ Add</button>
+        <button onClick={() => setEditing(null)} style={{ padding: "6px 16px", borderRadius: 8, border: "none", background: "#4A3F2F", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: font }}>+ Add</button>
       </div>
 
       <div style={{ padding: "16px 28px" }}>
@@ -270,7 +273,7 @@ export function EmployeesTab({ employees, setEmployees }) {
               <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 16 }}>Deactivating keeps their data. Deleting removes permanently.</div>
               <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
                 <button onClick={() => setConfirmId(null)} style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid #D1D5DB", background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: font }}>Cancel</button>
-                <button onClick={() => { togStatus(confirmId); setConfirmId(null); }} style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: "#F59E0B", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: font }}>{emp.status === "inactive" ? "Reactivate" : "Deactivate"}</button>
+                <button onClick={() => { togStatus(confirmId); setConfirmId(null); }} style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: "#4A3F2F", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: font }}>{emp.status === "inactive" ? "Reactivate" : "Deactivate"}</button>
                 <button onClick={() => delEmp(confirmId)} style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: "#DC2626", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: font }}>Delete</button>
               </div>
             </div>
