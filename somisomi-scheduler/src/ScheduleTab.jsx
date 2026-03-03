@@ -528,10 +528,10 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         const ch = cands[0];
         schedule[dateStr][idx] = { ...slot, empId: ch.id, empName: ch.name, empRole: ch.role };
         sc[ch.id]++; sh[ch.id] += slot.hours; sd[ch.id].add(dateStr);
+        if (tm(slot.start) >= 1020) { if (!nightMap[dateStr]) nightMap[dateStr] = new Set(); nightMap[dateStr].add(ch.id); }
       }
     });
   });
-        if (tm(slot.start) >= 1020) { if (!nightMap[dateStr]) nightMap[dateStr] = new Set(); nightMap[dateStr].add(ch.id); }
 
   const warnings2 = [];
   weekDates.forEach(d => { schedule[d].forEach(slot => { if (!slot.empId) warnings2.push({ date: d, msg: "No available employee for " + slot.label }); }); });
