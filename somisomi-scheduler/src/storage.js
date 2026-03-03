@@ -1,5 +1,4 @@
 const KEY = "somisomi-sched-v3";
-
 export function loadData() {
   try {
     const raw = localStorage.getItem(KEY);
@@ -9,7 +8,6 @@ export function loadData() {
   }
   return null;
 }
-
 export function saveData(data) {
   try {
     localStorage.setItem(KEY, JSON.stringify(data));

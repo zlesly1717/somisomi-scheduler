@@ -3,14 +3,14 @@ import { newUnavail } from './constants';
 export const SEED_EMPLOYEES = [
   {
     id:"sl-1",name:"Chan In",role:"shift_lead",status:"active",
-    maxShifts:4,minShifts:4,maxHours:24,
+    maxShifts:4,minShifts:4,maxHours:24,minHours:18,
     tags:["can_mc","good_weekend","mc_rotation_sun","day_lead_eligible"],
     unavailability:newUnavail(),
     notes:"Fully available all week.",traineeCumulative:0,
   },
   {
     id:"sl-2",name:"Zoe Rains",role:"shift_lead",status:"active",
-    maxShifts:4,minShifts:4,maxHours:24,
+    maxShifts:4,minShifts:4,maxHours:24,minHours:18,
     tags:["can_mc","mc_rotation_thu","day_lead_eligible"],
     unavailability:{
       mon:{allDay:false,start:"09:00",end:"15:00"},
@@ -25,24 +25,24 @@ export const SEED_EMPLOYEES = [
   },
   {
     id:"sl-3",name:"Kaitlyn Trevino",role:"shift_lead",status:"active",
-    maxShifts:4,minShifts:4,maxHours:24,
+    maxShifts:4,minShifts:4,maxHours:24,minHours:18,
     tags:["can_mc","good_weekend","mc_rotation_sun","day_lead_eligible"],
     unavailability:{
       ...newUnavail(),
       wed:{allDay:false,start:"19:00",end:"22:30"},
     },
-    notes:"Only restriction: Wed 7pm–10:30pm.",traineeCumulative:0,
+    notes:"Only restriction: Wed 7pm-10:30pm.",traineeCumulative:0,
   },
   {
     id:"sl-4",name:"Spencer Losch",role:"shift_lead",status:"active",
-    maxShifts:4,minShifts:4,maxHours:24,
+    maxShifts:4,minShifts:4,maxHours:24,minHours:18,
     tags:["can_mc","good_weekend","mc_rotation_sun","day_lead_eligible"],
     unavailability:newUnavail(),
     notes:"Fully available all week.",traineeCumulative:0,
   },
   {
     id:"sl-5",name:"Crystal Guel",role:"shift_lead",status:"active",
-    maxShifts:4,minShifts:4,maxHours:24,
+    maxShifts:4,minShifts:4,maxHours:24,minHours:18,
     tags:["can_mc","mc_rotation_thu","day_lead_eligible"],
     unavailability:{
       mon:{allDay:false,start:"",end:""},
@@ -57,7 +57,7 @@ export const SEED_EMPLOYEES = [
   },
   {
     id:"reg-1",name:"Kennedy Bean",role:"regular",status:"active",
-    maxShifts:4,minShifts:3,maxHours:20,
+    maxShifts:4,minShifts:3,maxHours:20,minHours:12,
     tags:["good_weekend","can_mc"],
     unavailability:{
       mon:{allDay:false,start:"09:00",end:"15:00"},
@@ -72,7 +72,7 @@ export const SEED_EMPLOYEES = [
   },
   {
     id:"reg-2",name:"Sam Castillo",role:"regular",status:"active",
-    maxShifts:4,minShifts:3,maxHours:20,
+    maxShifts:4,minShifts:3,maxHours:20,minHours:12,
     tags:["fourth_shift_priority","can_mc"],
     unavailability:{
       mon:{allDay:true,start:"",end:""},
@@ -87,7 +87,7 @@ export const SEED_EMPLOYEES = [
   },
   {
     id:"reg-3",name:"Lena Maslak",role:"regular",status:"active",
-    maxShifts:4,minShifts:3,maxHours:20,
+    maxShifts:4,minShifts:3,maxHours:20,minHours:12,
     tags:["fourth_shift_priority","second_day_priority","can_mc"],
     unavailability:{
       mon:{allDay:false,start:"11:00",end:"13:00"},
@@ -98,21 +98,21 @@ export const SEED_EMPLOYEES = [
       sat:{allDay:false,start:"",end:""},
       sun:{allDay:false,start:"",end:""},
     },
-    notes:"2nd Day & 4th shift priority. Tue/Thu can start at 12pm. Fri–Sun clear.",traineeCumulative:0,
+    notes:"2nd Day & 4th shift priority. Tue/Thu can start at 12pm. Fri-Sun clear.",traineeCumulative:0,
   },
   {
     id:"reg-4",name:"Gwen Ursua",role:"regular",status:"active",
-    maxShifts:4,minShifts:3,maxHours:20,
+    maxShifts:4,minShifts:3,maxHours:20,minHours:12,
     tags:["good_weekend","can_mc"],
     unavailability:{
       ...newUnavail(),
       sun:{allDay:false,start:"09:00",end:"18:00"},
     },
-    notes:"Good person. Can do 4 shifts. Sun unavailable 9am–6pm.",traineeCumulative:0,
+    notes:"Good person. Can do 4 shifts. Sun unavailable 9am-6pm.",traineeCumulative:0,
   },
   {
     id:"reg-5",name:"Susan Thai",role:"regular",status:"active",
-    maxShifts:4,minShifts:3,maxHours:20,
+    maxShifts:4,minShifts:3,maxHours:20,minHours:12,
     tags:["fourth_shift_priority","can_mc"],
     unavailability:{
       mon:{allDay:false,start:"",end:""},
@@ -123,11 +123,11 @@ export const SEED_EMPLOYEES = [
       sat:{allDay:false,start:"",end:""},
       sun:{allDay:false,start:"",end:""},
     },
-    notes:"Can do Thu MC (6pm+). 4th shift priority. Fri–Sun clear.",traineeCumulative:0,
+    notes:"Can do Thu MC (6pm+). 4th shift priority. Fri-Sun clear.",traineeCumulative:0,
   },
   {
     id:"reg-6",name:"Abrar Uddin",role:"regular",status:"active",
-    maxShifts:4,minShifts:3,maxHours:20,
+    maxShifts:4,minShifts:3,maxHours:20,minHours:12,
     tags:["fourth_shift_priority","second_day_priority","good_weekend","no_weekday_nights"],
     unavailability:{
       mon:{allDay:false,start:"",end:""},
@@ -142,7 +142,7 @@ export const SEED_EMPLOYEES = [
   },
   {
     id:"reg-7",name:"Grae McKown",role:"regular",status:"active",
-    maxShifts:2,minShifts:2,maxHours:12,
+    maxShifts:2,minShifts:2,maxHours:12,minHours:8,
     tags:["good_weekend"],
     unavailability:{
       mon:{allDay:true,start:"",end:""},
@@ -153,11 +153,11 @@ export const SEED_EMPLOYEES = [
       sat:{allDay:false,start:"",end:""},
       sun:{allDay:false,start:"",end:""},
     },
-    notes:"2 shifts max. Mon off. Tue–Fri evenings only. Sat/Sun available.",traineeCumulative:0,
+    notes:"2 shifts max. Mon off. Tue-Fri evenings only. Sat/Sun available.",traineeCumulative:0,
   },
   {
     id:"reg-8",name:"Christina Mullins",role:"regular",status:"active",
-    maxShifts:4,minShifts:3,maxHours:20,
+    maxShifts:4,minShifts:3,maxHours:20,minHours:12,
     tags:["can_mc"],
     unavailability:{
       mon:{allDay:false,start:"09:00",end:"15:00"},
@@ -168,17 +168,17 @@ export const SEED_EMPLOYEES = [
       sat:{allDay:false,start:"",end:""},
       sun:{allDay:false,start:"",end:""},
     },
-    notes:"Mon–Thu unavailable 9am–3pm. Gets 4th shift after Sam/Lena/Susan/Abrar.",traineeCumulative:0,
+    notes:"Mon-Thu unavailable 9am-3pm. Gets 4th shift after Sam/Lena/Susan/Abrar.",traineeCumulative:0,
   },
   {
     id:"tr-1",name:"Yise Moya",role:"trainee",status:"active",
-    maxShifts:3,minShifts:1,maxHours:15,
+    maxShifts:3,minShifts:1,maxHours:15,minHours:0,
     tags:[],unavailability:newUnavail(),
     notes:"Fully available.",traineeCumulative:8.0,
   },
   {
     id:"tr-2",name:"Tiernan Hollister",role:"trainee",status:"active",
-    maxShifts:3,minShifts:1,maxHours:15,
+    maxShifts:3,minShifts:1,maxHours:15,minHours:0,
     tags:[],unavailability:newUnavail(),
     notes:"Fully available.",traineeCumulative:10.0,
   },
@@ -190,14 +190,14 @@ export const SEED_RULES = {
     {id:"no_day_after_mc",label:"No day shift after MC night",desc:"Employee who MCs at night cannot work day shift next day. Evening/night next day is OK.",enabled:true},
     {id:"no_fri_sat_night",label:"No Fri + Sat night same person",desc:"Cannot schedule same employee for both Friday and Saturday night shifts",enabled:true},
     {id:"no_sat_sun_night",label:"No Sat + Sun night same person",desc:"Cannot schedule same employee for both Saturday and Sunday night shifts",enabled:true},
-    {id:"sat_night_sl_neq_sun_sl",label:"Sat night SL ≠ Sun SL/MC",desc:"Saturday night Shift Lead must be different from Sunday Shift Lead / MC leader",enabled:true},
+    {id:"sat_night_sl_neq_sun_sl",label:"Sat night SL \u2260 Sun SL/MC",desc:"Saturday night Shift Lead must be different from Sunday Shift Lead / MC leader",enabled:true},
     {id:"only_sl_lead",label:"Only SLs can be DL or evening SL",desc:"Day Lead and evening Shift Lead roles are restricted to Shift Leads",enabled:true},
     {id:"overlap_blocks",label:"Any unavailability overlap blocks shift",desc:"If any part of a shift overlaps with an employee's unavailability, they cannot work that shift",enabled:true},
     {id:"no_trainees_mc",label:"No trainees on MC nights",desc:"Trainees cannot be assigned to machine cleaning shifts",enabled:true},
-    {id:"mc_evening_sl_leads",label:"Evening SL leads MC",desc:"The Evening SL on MC night IS the MC leader — not a separate person. MC crew = Evening SL + 1 SL helper + 2 regulars (4 total).",enabled:true},
+    {id:"mc_evening_sl_leads",label:"Evening SL leads MC",desc:"The Evening SL on MC night IS the MC leader. MC crew = Evening SL + 1 SL helper + 2 regulars (4 total).",enabled:true},
     {id:"no_two_trainees",label:"No two trainees on same day",desc:"Avoid scheduling two trainees on the same day to ensure proper supervision",enabled:true},
     {id:"no_mc_twice",label:"No MC more than once per week",desc:"No employee can be assigned to machine cleaning more than once per week",enabled:true},
-    {id:"no_trainees_weekday_day",label:"No trainees on weekday day shifts",desc:"Trainees cannot work Mon–Fri day shifts (Day Lead or 2nd Day)",enabled:true},
+    {id:"no_trainees_weekday_day",label:"No trainees on weekday day shifts",desc:"Trainees cannot work Mon-Fri day shifts (Day Lead or 2nd Day)",enabled:true},
   ],
   shiftLead: { shiftsPerWeek:{min:4,max:4}, minWeekendShifts:2, mcPerWeek:1, alternateDayLeads:true },
   regular: { shiftsPerWeek:{min:3,max:4} },
@@ -235,9 +235,8 @@ export const SEED_RULES = {
     {id:"fr-3",empName:"Grae McKown",rule:"Max 2 shifts per week",desc:"Grae limited to 2 shifts maximum"},
   ],
   mcRotation: {
-    sundayLeaderPool:["Chan In","Spencer Losch","Kaitlyn Trevino"],
-    thursdayLeaders:["Zoe Rains","Crystal Guel"],
-    helperPool:["Sam Castillo","Lena Maslak","Gwen Ursua","Susan Thai","Abrar Uddin","Kennedy Bean","Christina Mullins"],
+    shiftLeadPool:["Chan In","Zoe Rains","Kaitlyn Trevino","Spencer Losch","Crystal Guel"],
+    assistantPool:["Sam Castillo","Lena Maslak","Gwen Ursua","Susan Thai","Abrar Uddin","Kennedy Bean","Christina Mullins"],
     noBackToBackHelpers:true,
   },
   weekendSLRotation: {

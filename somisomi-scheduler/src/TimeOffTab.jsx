@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { fmtTime } from "./constants";
 
 const si = { padding: "8px 12px", border: "1px solid #D1D5DB", borderRadius: 8, fontSize: 13, outline: "none", fontFamily: "'DM Sans',sans-serif", boxSizing: "border-box", width: "100%" };
 const sl = { fontSize: 10.5, fontWeight: 700, color: "#6B7280", marginBottom: 4, display: "block", textTransform: "uppercase", letterSpacing: 0.5 };
@@ -8,7 +9,7 @@ export function TimeOffTab({ employees, timeOffs, setTimeOffs }) {
 
   const addTO = () => {
     if (!toForm.empId || !toForm.date) return;
-    setTimeOffs(p => [...p, { ...toForm, id: `to-${Date.now()}` }]);
+    setTimeOffs(p => [...p, { ...toForm, id: "to-" + Date.now() }]);
     setToForm({ empId: "", date: "", note: "" });
   };
 
@@ -20,12 +21,10 @@ export function TimeOffTab({ employees, timeOffs, setTimeOffs }) {
 
   return (
     <div style={{ padding: "18px 28px", maxWidth: 680 }}>
-      {/* Add form */}
       <div style={{ background: "#fff", borderRadius: 12, padding: 18, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginBottom: 16 }}>
         <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700, color: "#111827" }}>Add Time-Off</h3>
         <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
-          <div>
-            <label style={sl}>Employee</label>
+          <div><label style={sl}>Employee</label>
             <select value={toForm.empId} onChange={e => setToForm(f => ({ ...f, empId: e.target.value }))} style={{ ...si, width: 180 }}>
               <option value="">Select...</option>
               {employees.filter(e => e.status === "active").sort((a, b) => a.name.localeCompare(b.name)).map(e => (
@@ -33,22 +32,11 @@ export function TimeOffTab({ employees, timeOffs, setTimeOffs }) {
               ))}
             </select>
           </div>
-          <div>
-            <label style={sl}>Date</label>
-            <input type="date" value={toForm.date} onChange={e => setToForm(f => ({ ...f, date: e.target.value }))} style={{ ...si, width: 150 }} />
-          </div>
-          <div style={{ flex: 1, minWidth: 120 }}>
-            <label style={sl}>Note</label>
-            <input value={toForm.note} onChange={e => setToForm(f => ({ ...f, note: e.target.value }))} placeholder="Optional" style={si} />
-          </div>
-          <button onClick={addTO} style={{
-            padding: "8px 16px", borderRadius: 8, border: "none", background: "#111827",
-            color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "'DM Sans',sans-serif",
-          }}>Add</button>
+          <div><label style={sl}>Date</label><input type="date" value={toForm.date} onChange={e => setToForm(f => ({ ...f, date: e.target.value }))} style={{ ...si, width: 150 }} /></div>
+          <div style={{ flex: 1, minWidth: 120 }}><label style={sl}>Note</label><input value={toForm.note} onChange={e => setToForm(f => ({ ...f, note: e.target.value }))} placeholder="Optional" style={si} /></div>
+          <button onClick={addTO} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "'DM Sans',sans-serif" }}>Add</button>
         </div>
       </div>
-
-      {/* List */}
       <div style={{ background: "#fff", borderRadius: 12, padding: 18, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginBottom: 16 }}>
         <h3 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700, color: "#111827" }}>Upcoming</h3>
         {upcoming.length === 0 ? (
@@ -63,25 +51,14 @@ export function TimeOffTab({ employees, timeOffs, setTimeOffs }) {
                     {new Date(t.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
                   </span>
                   <span style={{ fontWeight: 600, color: "#111827" }}>{emp?.name || "?"}</span>
-                  {t.note && <span style={{ color: "#6B7280", fontStyle: "italic" }}>— {t.note}</span>}
+                  {t.note && <span style={{ color: "#6B7280", fontStyle: "italic" }}>&mdash; {t.note}</span>}
                   <div style={{ flex: 1 }} />
-                  <button onClick={() => delTO(t.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#DC2626", fontSize: 11, fontWeight: 600 }}>✕</button>
+                  <button onClick={() => delTO(t.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "#DC2626", fontSize: 11, fontWeight: 600 }}>{"\u2715"}</button>
                 </div>
               );
             })}
           </div>
         )}
-      </div>
-
-      {/* Screenshot hint */}
-      <div style={{ padding: 18, background: "#fff", borderRadius: 12, border: "2px dashed #D1D5DB", textAlign: "center" }}>
-        <div style={{ fontSize: 26, marginBottom: 6 }}>📸</div>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#111827", marginBottom: 3 }}>Homebase Screenshot Upload</div>
-        <div style={{ fontSize: 11.5, color: "#6B7280", lineHeight: 1.5 }}>
-          Upload your Homebase screenshot when building a schedule.<br />
-          Time-off will be auto-detected.
-        </div>
-        <div style={{ fontSize: 10.5, color: "#9CA3AF", marginTop: 6, fontStyle: "italic" }}>Coming in Schedule Builder phase</div>
       </div>
     </div>
   );

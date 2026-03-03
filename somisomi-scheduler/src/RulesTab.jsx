@@ -4,36 +4,6 @@ import { fmtTime } from "./constants";
 const font = "'DM Sans',sans-serif";
 const si = { padding: "8px 12px", border: "1px solid #D1D5DB", borderRadius: 8, fontSize: 13, outline: "none", fontFamily: font, boxSizing: "border-box", width: "100%" };
 
-function Toggle({ checked, onChange, label, desc }) {
-  return (
-    <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 0", borderBottom: "1px solid #F3F4F6" }}>
-      <button onClick={() => onChange(!checked)} style={{
-        width: 40, height: 22, borderRadius: 11, border: "none", cursor: "pointer", padding: 2, flexShrink: 0, marginTop: 1,
-        background: checked ? "#22C55E" : "#D1D5DB", transition: "background 0.2s", display: "flex", alignItems: "center",
-      }}>
-        <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "transform 0.2s", transform: checked ? "translateX(18px)" : "translateX(0)" }} />
-      </button>
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 600, color: checked ? "#111827" : "#9CA3AF" }}>{label}</div>
-        {desc && <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 1, lineHeight: 1.4 }}>{desc}</div>}
-      </div>
-    </div>
-  );
-}
-
-function Num({ label, value, onChange, min = 0, max = 20 }) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-      <span style={{ fontSize: 12, color: "#6B7280", fontWeight: 600, flex: 1 }}>{label}</span>
-      <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-        <button onClick={() => onChange(Math.max(min, value - 1))} style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid #D1D5DB", background: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#374151", display: "flex", alignItems: "center", justifyContent: "center" }}>-</button>
-        <span style={{ width: 30, textAlign: "center", fontSize: 14, fontWeight: 800, color: "#111827" }}>{value}</span>
-        <button onClick={() => onChange(Math.min(max, value + 1))} style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid #D1D5DB", background: "#fff", cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#374151", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
-      </div>
-    </div>
-  );
-}
-
 function PriorityList({ title, items, onReorder, onAdd, onRemove, allNames }) {
   const [dragIdx, setDragIdx] = useState(null);
   const [adding, setAdding] = useState(false);
@@ -69,10 +39,10 @@ function PriorityList({ title, items, onReorder, onAdd, onRemove, allNames }) {
               background: dragIdx === i ? "#DBEAFE" : "#fff", borderRadius: 6, cursor: "grab",
               border: "1px solid #E5E7EB", fontSize: 12, userSelect: "none",
             }}>
-            <span style={{ color: "#D1D5DB", fontSize: 12, cursor: "grab" }}>⠿</span>
+            <span style={{ color: "#D1D5DB", fontSize: 12, cursor: "grab" }}>{"\u2807"}</span>
             <span style={{ color: "#F59E0B", fontWeight: 800, fontSize: 10, width: 18 }}>#{i + 1}</span>
             <span style={{ color: "#374151", fontWeight: 600, flex: 1 }}>{item}</span>
-            {onRemove && <button onClick={() => onRemove(item)} style={{ background: "none", border: "none", cursor: "pointer", color: "#DC2626", fontSize: 10, fontWeight: 600 }}>✕</button>}
+            {onRemove && <button onClick={() => onRemove(item)} style={{ background: "none", border: "none", cursor: "pointer", color: "#DC2626", fontSize: 10, fontWeight: 600 }}>{"\u2715"}</button>}
           </div>
         ))}
         {items.length === 0 && <div style={{ fontSize: 11, color: "#9CA3AF", padding: 4 }}>No entries yet. Click "+ Add" to add.</div>}
@@ -85,13 +55,7 @@ function AddConstraintForm({ onAdd }) {
   const [open, setOpen] = useState(false);
   const [label, setLabel] = useState("");
   const [desc, setDesc] = useState("");
-
-  const handleAdd = () => {
-    if (!label.trim()) return;
-    onAdd(label.trim(), desc.trim());
-    setLabel(""); setDesc(""); setOpen(false);
-  };
-
+  const handleAdd = () => { if (!label.trim()) return; onAdd(label.trim(), desc.trim()); setLabel(""); setDesc(""); setOpen(false); };
   if (!open) {
     return (
       <button onClick={() => setOpen(true)} style={{
@@ -101,11 +65,10 @@ function AddConstraintForm({ onAdd }) {
       }}>+ Add Custom Constraint</button>
     );
   }
-
   return (
     <div style={{ marginTop: 14, padding: 14, background: "#F9FAFB", borderRadius: 10, border: "1px solid #E5E7EB" }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 8 }}>New Constraint</div>
-      <input value={label} onChange={e => setLabel(e.target.value)} placeholder="Rule name (e.g. No trainees on weekday day shifts)" style={{ ...si, marginBottom: 6 }} />
+      <input value={label} onChange={e => setLabel(e.target.value)} placeholder="Rule name" style={{ ...si, marginBottom: 6 }} />
       <input value={desc} onChange={e => setDesc(e.target.value)} placeholder="Description (optional)" style={{ ...si, marginBottom: 8 }} />
       <div style={{ display: "flex", gap: 6 }}>
         <button onClick={handleAdd} style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: font }}>+ Add</button>
@@ -116,11 +79,10 @@ function AddConstraintForm({ onAdd }) {
 }
 
 const categories = [
-  { id: "constraints", label: "Constraints", icon: "🚫" },
-  { id: "staffing", label: "Staffing Levels", icon: "👥" },
-  { id: "priorities", label: "Priority Lists", icon: "📋" },
-  { id: "rotation", label: "MC Rotation", icon: "🔄" },
-  { id: "employee_rules", label: "Employee Rules", icon: "📌" },
+  { id: "constraints", label: "Constraints", icon: "\ud83d\udeab" },
+  { id: "priorities", label: "Priority Lists", icon: "\ud83d\udccb" },
+  { id: "rotation", label: "MC Rotation", icon: "\ud83d\udd04" },
+  { id: "employee_rules", label: "Employee Rules", icon: "\ud83d\udccc" },
 ];
 
 export function RulesTab({ rules, setRules, employees }) {
@@ -159,7 +121,7 @@ export function RulesTab({ rules, setRules, employees }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ background: "#fff", borderRadius: 12, padding: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
 
-            {/* ── CONSTRAINTS ── */}
+            {/* CONSTRAINTS */}
             {activeTab === "constraints" && (
               <div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 4 }}>Hard Constraints</div>
@@ -179,55 +141,21 @@ export function RulesTab({ rules, setRules, employees }) {
                     {c.custom && (
                       <button onClick={() => update(r => { r.constraints = r.constraints.filter(x => x.id !== c.id); })} style={{
                         background: "none", border: "none", cursor: "pointer", color: "#DC2626", fontSize: 10, fontWeight: 600, flexShrink: 0, marginTop: 2,
-                      }}>✕</button>
+                      }}>{"\u2715"}</button>
                     )}
                   </div>
                 ))}
-
-                {/* Add new constraint */}
                 <AddConstraintForm onAdd={(label, desc) => {
-                  update(r => {
-                    r.constraints.push({ id: `custom-${Date.now()}`, label, desc, enabled: true, custom: true });
-                  });
+                  update(r => { r.constraints.push({ id: `custom-${Date.now()}`, label, desc, enabled: true, custom: true }); });
                 }} />
               </div>
             )}
 
-            {/* ── STAFFING LEVELS ── */}
-            {activeTab === "staffing" && (
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 4 }}>Staffing Levels</div>
-                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 12 }}>How many people per shift type for each day. Weekend includes a mid shift (3pm–7pm).</div>
-                {[
-                  ["weekday", "Weekday (Mon–Thu)", false],
-                  ["weekdayHoliday", "Weekday Holiday", false],
-                  ["friday", "Friday", false],
-                  ["fridayHoliday", "Friday Holiday", false],
-                  ["saturday", "Saturday", true],
-                  ["sunday", "Sunday", true],
-                ].map(([key, label, hasMid]) => {
-                  const s = rules.staffing[key];
-                  const total = (s.day || 0) + (s.mid || 0) + (s.evening || 0);
-                  return (
-                    <div key={key} style={{ marginBottom: 14, padding: 14, background: "#F9FAFB", borderRadius: 10, border: "1px solid #E5E7EB" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>{label}</span>
-                        <span style={{ fontSize: 13, fontWeight: 800, color: "#111827", background: "#FEF3C7", padding: "2px 10px", borderRadius: 8 }}>Total: {total}</span>
-                      </div>
-                      <Num label="Day shift" value={s.day} onChange={v => update(r => { r.staffing[key].day = v; })} />
-                      {hasMid && <Num label="Mid shift (3–7pm)" value={s.mid || 0} onChange={v => update(r => { r.staffing[key].mid = v; })} />}
-                      <Num label="Evening shift" value={s.evening} onChange={v => update(r => { r.staffing[key].evening = v; })} />
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* ── PRIORITY LISTS ── */}
+            {/* PRIORITY LISTS */}
             {activeTab === "priorities" && (
               <div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 4 }}>Priority Lists</div>
-                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 12 }}>Drag to reorder priority. Click "+ Add" to include, ✕ to remove.</div>
+                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 12 }}>Drag to reorder priority. Click "+ Add" to include, {"\u2715"} to remove.</div>
 
                 <PriorityList title="4th Shift Priority" items={rules.fourthShiftPriority || []} allNames={[...allNames, "Trainees"]}
                   onReorder={arr => update(r => { r.fourthShiftPriority = arr; })}
@@ -246,33 +174,38 @@ export function RulesTab({ rules, setRules, employees }) {
               </div>
             )}
 
-            {/* ── MC ROTATION ── */}
+            {/* MC ROTATION - Simplified to 2 pools */}
             {activeTab === "rotation" && (
               <div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 4 }}>MC Rotation Pools</div>
-                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 12 }}>Who leads and helps with machine cleaning. Thu MC = 3 people, Sun MC = 4 people.</div>
+                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 12 }}>Two pools: Shift Leads/SL Helpers lead MC nights. Assistants are the regular helpers.</div>
 
-                <PriorityList title="Thursday MC Leaders" items={rules.mcRotation.thursdayLeaders || []} allNames={allNames}
-                  onReorder={arr => update(r => { r.mcRotation.thursdayLeaders = arr; })}
-                  onAdd={name => update(r => { r.mcRotation.thursdayLeaders.push(name); })}
-                  onRemove={name => update(r => { r.mcRotation.thursdayLeaders = r.mcRotation.thursdayLeaders.filter(n => n !== name); })} />
+                <PriorityList title="Shift Leads / SL Helpers" items={rules.mcRotation?.shiftLeadPool || []} allNames={allNames}
+                  onReorder={arr => update(r => { r.mcRotation.shiftLeadPool = arr; })}
+                  onAdd={name => update(r => { if (!r.mcRotation.shiftLeadPool) r.mcRotation.shiftLeadPool = []; r.mcRotation.shiftLeadPool.push(name); })}
+                  onRemove={name => update(r => { r.mcRotation.shiftLeadPool = r.mcRotation.shiftLeadPool.filter(n => n !== name); })} />
 
-                <PriorityList title="Sunday MC Leader Pool" items={rules.mcRotation.sundayLeaderPool || []} allNames={allNames}
-                  onReorder={arr => update(r => { r.mcRotation.sundayLeaderPool = arr; })}
-                  onAdd={name => update(r => { r.mcRotation.sundayLeaderPool.push(name); })}
-                  onRemove={name => update(r => { r.mcRotation.sundayLeaderPool = r.mcRotation.sundayLeaderPool.filter(n => n !== name); })} />
+                <PriorityList title="Assistants" items={rules.mcRotation?.assistantPool || []} allNames={allNames}
+                  onReorder={arr => update(r => { r.mcRotation.assistantPool = arr; })}
+                  onAdd={name => update(r => { if (!r.mcRotation.assistantPool) r.mcRotation.assistantPool = []; r.mcRotation.assistantPool.push(name); })}
+                  onRemove={name => update(r => { r.mcRotation.assistantPool = r.mcRotation.assistantPool.filter(n => n !== name); })} />
 
-                <PriorityList title="MC Helper Pool" items={rules.mcRotation.helperPool || []} allNames={allNames}
-                  onReorder={arr => update(r => { r.mcRotation.helperPool = arr; })}
-                  onAdd={name => update(r => { r.mcRotation.helperPool.push(name); })}
-                  onRemove={name => update(r => { r.mcRotation.helperPool = r.mcRotation.helperPool.filter(n => n !== name); })} />
-
-                <Toggle checked={rules.mcRotation.noBackToBackHelpers} label="No back-to-back MC helpers" desc="Don't assign same helper for both Thursday and Sunday MC"
-                  onChange={v => update(r => { r.mcRotation.noBackToBackHelpers = v; })} />
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 0", borderTop: "1px solid #F3F4F6" }}>
+                  <button onClick={() => update(r => { r.mcRotation.noBackToBackHelpers = !r.mcRotation.noBackToBackHelpers; })} style={{
+                    width: 40, height: 22, borderRadius: 11, border: "none", cursor: "pointer", padding: 2, flexShrink: 0, marginTop: 1,
+                    background: rules.mcRotation?.noBackToBackHelpers ? "#22C55E" : "#D1D5DB", transition: "background 0.2s", display: "flex", alignItems: "center",
+                  }}>
+                    <div style={{ width: 18, height: 18, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,0.2)", transition: "transform 0.2s", transform: rules.mcRotation?.noBackToBackHelpers ? "translateX(18px)" : "translateX(0)" }} />
+                  </button>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: rules.mcRotation?.noBackToBackHelpers ? "#111827" : "#9CA3AF" }}>No back-to-back MC helpers</div>
+                    <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 1 }}>Don't assign same helper for both Thursday and Sunday MC</div>
+                  </div>
+                </div>
               </div>
             )}
 
-            {/* ── EMPLOYEE-SPECIFIC RULES ── */}
+            {/* EMPLOYEE-SPECIFIC RULES */}
             {activeTab === "employee_rules" && (
               <div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: "#111827", marginBottom: 4 }}>Employee-Specific Rules</div>
@@ -287,7 +220,7 @@ export function RulesTab({ rules, setRules, employees }) {
                     </div>
                     <button onClick={() => update(r => { r.fixedRules = r.fixedRules.filter(x => x.id !== fr.id); })} style={{
                       background: "none", border: "none", cursor: "pointer", color: "#DC2626", fontSize: 11, fontWeight: 600, flexShrink: 0,
-                    }}>✕ Remove</button>
+                    }}>{"\u2715"} Remove</button>
                   </div>
                 ))}
 
@@ -296,9 +229,9 @@ export function RulesTab({ rules, setRules, employees }) {
                 )}
 
                 <div style={{ padding: 14, background: "#F9FAFB", borderRadius: 10, border: "1px solid #E5E7EB", marginTop: 12 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 8 }}>➕ Add New Rule</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 8 }}>{"\u2795"} Add New Rule</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <select value={newFixedRule.empName} onChange={e => setNewFixedRule(p => ({ ...p, empName: e.target.value }))} style={{ ...si }}>
+                    <select value={newFixedRule.empName} onChange={e => setNewFixedRule(p => ({ ...p, empName: e.target.value }))} style={si}>
                       <option value="">Select employee...</option>
                       {activeEmps.map(e => <option key={e.id} value={e.name}>{e.name}</option>)}
                     </select>
