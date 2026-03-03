@@ -133,6 +133,31 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   const active = employees.filter(e => e.status === "active");
   active.forEach(e => { sc[e.id] = 0; sh[e.id] = 0; sd[e.id] = new Set(); });
   weekDates.forEach(d => { schedule[d] = []; });
+
+  // Scale down minShifts/minHours for employees with time off
+  // If someone is off 4 of 7 days, they only have 3 available days — scale minimums proportionally
+  active.forEach(e => {
+    let offDays = 0;
+    weekDates.forEach(d => {
+      // Check all-day time-off
+      const hasTO = weeklyTimeOffs.some(t => t.empId === e.id && t.date === d && t.allDay);
+      // Check all-day unavailability
+      const dow = new Date(d + "T12:00:00").getDay();
+      const dayKeys = ["sun","mon","tue","wed","thu","fri","sat"];
+      const unavail = e.unavailability?.[dayKeys[dow]];
+      const hasUnavail = unavail?.allDay;
+      if (hasTO || hasUnavail) offDays++;
+    });
+    if (offDays > 0) {
+      const availDays = 7 - offDays;
+      const ratio = availDays / 7;
+      e._effMinShifts = Math.max(0, Math.round(e.minShifts * ratio));
+      e._effMinHours = Math.max(0, Math.round((e.minHours || 0) * ratio));
+    } else {
+      e._effMinShifts = e.minShifts;
+      e._effMinHours = e.minHours || 0;
+    }
+  });
   const con = id => { const c = rules.constraints.find(x => x.id === id); return c ? c.enabled : true; };
   const T = rules.shiftTimes;
   const nightMap = {};
@@ -291,8 +316,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         const nonTr = cands.filter(e => e.role !== "trainee");
         const trainees = cands.filter(e => e.role === "trainee");
         if (nonTr.length > 0) {
-          const traineesBelowMin = trainees.filter(e => sc[e.id] < e.minShifts);
-          const regsAllAboveMin = nonTr.every(e => sc[e.id] >= e.minShifts);
+          const traineesBelowMin = trainees.filter(e => sc[e.id] < e._effMinShifts);
+          const regsAllAboveMin = nonTr.every(e => sc[e.id] >= e._effMinShifts);
           if (regsAllAboveMin && traineesBelowMin.length > 0) { cands = [...traineesBelowMin, ...nonTr]; }
           else { cands = [...nonTr, ...trainees]; }
         }
@@ -302,21 +327,25 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         const aG = (a.guaranteedDays || []).includes(dayKey) ? 1 : 0;
         const bG = (b.guaranteedDays || []).includes(dayKey) ? 1 : 0;
         if (bG !== aG) return bG - aG;
-        // Priority 0.5: SL needs weekend shifts (Sat/Sun, or Fri night only)
-        const isWeekendSlot = isWE || (isFri && tm(slot.start) >= 1020);
-        if (isWeekendSlot) {
+        // Priority 0.5: SL needs weekend night shifts (Fri/Sat/Sun nights only)
+        const isWeekendNight = (isWE || isFri) && tm(slot.start) >= 1020;
+        if (isWeekendNight) {
           const minWE = rules.shiftLead?.minWeekendShifts || 2;
           const aWE = (a.role === "shift_lead" && weCount[a.id] < minWE) ? 1 : 0;
           const bWE = (b.role === "shift_lead" && weCount[b.id] < minWE) ? 1 : 0;
           if (bWE !== aWE) return bWE - aWE;
+          // Trainee mix: if trainee already has 1 weekend shift, prefer weekday for balance
+          const aTraineeWE = (a.role === "trainee" && weCount[a.id] >= 1) ? 1 : 0;
+          const bTraineeWE = (b.role === "trainee" && weCount[b.id] >= 1) ? 1 : 0;
+          if (aTraineeWE !== bTraineeWE) return aTraineeWE - bTraineeWE; // push trainee with WE shift down
         }
         // Priority 1: below min shifts
-        const aBs = sc[a.id] < a.minShifts ? 1 : 0;
-        const bBs = sc[b.id] < b.minShifts ? 1 : 0;
+        const aBs = sc[a.id] < a._effMinShifts ? 1 : 0;
+        const bBs = sc[b.id] < b._effMinShifts ? 1 : 0;
         if (bBs !== aBs) return bBs - aBs;
         // Priority 2: below min hours
-        const aBh = sh[a.id] < (a.minHours || 0) ? 1 : 0;
-        const bBh = sh[b.id] < (b.minHours || 0) ? 1 : 0;
+        const aBh = sh[a.id] < a._effMinHours ? 1 : 0;
+        const bBh = sh[b.id] < b._effMinHours ? 1 : 0;
         if (bBh !== aBh) return bBh - aBh;
         // Priority 3: fewest shifts so far
         return sc[a.id] - sc[b.id];
@@ -326,7 +355,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         schedule[dateStr].push({ ...slot, empId: ch.id, empName: ch.name, empRole: ch.role });
         sc[ch.id]++; sh[ch.id] += slot.hours; sd[ch.id].add(dateStr); usedToday.add(ch.id);
         if (slot.isMC) mcCount[ch.id]++;
-        if (isWE) weCount[ch.id]++;
+        if (isWE && tm(slot.start) >= 1020) weCount[ch.id]++; // Sat/Sun night only
         if (isFri && tm(slot.start) >= 1020) weCount[ch.id]++; // Fri night only
         if (tm(slot.start) >= 1020 || slot.isMC) { if (!nightMap[dateStr]) nightMap[dateStr] = new Set(); nightMap[dateStr].add(ch.id); }
       } else {
@@ -341,7 +370,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   });
 
   // PASS 1.5: Ensure shift leads hit their min shifts by filling regular slots
-  const slsBelowMin = active.filter(e => e.role === "shift_lead" && sc[e.id] < e.minShifts);
+  const slsBelowMin = active.filter(e => e.role === "shift_lead" && sc[e.id] < e._effMinShifts);
   // Sort by who was short most recently (rotate the burden)
   const shortHistory = rules.slShortWeekHistory || [];
   slsBelowMin.sort((a, b) => {
@@ -351,7 +380,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   });
   for (const sl of slsBelowMin) {
     for (const dayIndex of schedOrder) {
-      if (sc[sl.id] >= sl.minShifts) break;
+      if (sc[sl.id] >= sl._effMinShifts) break;
       if (sc[sl.id] >= sl.maxShifts) break;
       const dateStr = weekDates[dayIndex];
       if (sd[sl.id].has(dateStr)) continue;
@@ -389,7 +418,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (!weekendNightOK(sl, dateStr, slot.start)) continue;
         if (sh[sl.id] + slot.hours > sl.maxHours) continue;
         const holder = active.find(e => e.id === slot.empId);
-        if (!holder || sc[holder.id] <= holder.minShifts) continue;
+        if (!holder || sc[holder.id] <= holder._effMinShifts) continue;
         // Swap SL in
         sc[holder.id]--; sh[holder.id] -= slot.hours;
         const holderOther = schedule[dateStr].filter((s, idx) => idx !== si2 && s.empId === holder.id);
@@ -414,9 +443,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
         return true;
       }).sort((a, b) => {
-        const aBs = sc[a.id] < a.minShifts ? 1 : 0; const bBs = sc[b.id] < b.minShifts ? 1 : 0;
+        const aBs = sc[a.id] < a._effMinShifts ? 1 : 0; const bBs = sc[b.id] < b._effMinShifts ? 1 : 0;
         if (bBs !== aBs) return bBs - aBs;
-        const aBh = sh[a.id] < (a.minHours || 0) ? 1 : 0; const bBh = sh[b.id] < (b.minHours || 0) ? 1 : 0;
+        const aBh = sh[a.id] < a._effMinHours ? 1 : 0; const bBh = sh[b.id] < b._effMinHours ? 1 : 0;
         if (bBh !== aBh) return bBh - aBh;
         return sc[a.id] - sc[b.id];
       });
@@ -425,11 +454,11 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   });
 
   // THIRD PASS: Fill unfilled slots with below-minimum employees (shifts OR hours)
-  const belowMin = active.filter(e => sc[e.id] < e.minShifts || sh[e.id] < (e.minHours || 0));
+  const belowMin = active.filter(e => sc[e.id] < e._effMinShifts || sh[e.id] < e._effMinHours);
   for (const emp of belowMin) {
     const tryOrder = [3, 6, 5, 4, 0, 1, 2];
     for (const di of tryOrder) {
-      if ((sc[emp.id] >= emp.minShifts && sh[emp.id] >= (emp.minHours || 0)) || sc[emp.id] >= emp.maxShifts) break;
+      if ((sc[emp.id] >= emp._effMinShifts && sh[emp.id] >= emp._effMinHours) || sc[emp.id] >= emp.maxShifts) break;
       const dateStr = weekDates[di];
       if (sd[emp.id].has(dateStr)) continue;
       const unfilledIdx = schedule[dateStr].findIndex(slot => {
@@ -451,11 +480,11 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   }
 
   // FOURTH PASS: Swap — if someone is below min shifts/hours, steal a slot from someone above their min
-  const stillBelow = active.filter(e => sc[e.id] < e.minShifts || sh[e.id] < (e.minHours || 0));
+  const stillBelow = active.filter(e => sc[e.id] < e._effMinShifts || sh[e.id] < e._effMinHours);
   for (const emp of stillBelow) {
     const tryOrder = [0, 1, 2, 3, 4, 5, 6];
     for (const di of tryOrder) {
-      if ((sc[emp.id] >= emp.minShifts && sh[emp.id] >= (emp.minHours || 0)) || sc[emp.id] >= emp.maxShifts) break;
+      if ((sc[emp.id] >= emp._effMinShifts && sh[emp.id] >= emp._effMinHours) || sc[emp.id] >= emp.maxShifts) break;
       const dateStr = weekDates[di];
       if (sd[emp.id].has(dateStr)) continue;
 
@@ -484,9 +513,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         const currentHolder = slot.empId;
         const holderEmp = active.find(e => e.id === currentHolder);
         if (!holderEmp) continue;
-        if (sc[currentHolder] <= holderEmp.minShifts && sh[currentHolder] <= (holderEmp.minHours || 0)) continue;
+        if (sc[currentHolder] <= holderEmp._effMinShifts && sh[currentHolder] <= holderEmp._effMinHours) continue;
         // Don't steal if it would put them below their min shifts
-        if (sc[currentHolder] - 1 < holderEmp.minShifts && sc[currentHolder] <= holderEmp.minShifts) continue;
+        if (sc[currentHolder] - 1 < holderEmp._effMinShifts && sc[currentHolder] <= holderEmp._effMinShifts) continue;
 
         // Do the swap
         sc[currentHolder]--; sh[currentHolder] -= slot.hours;
@@ -543,10 +572,10 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   const warnings2 = [];
   weekDates.forEach(d => { schedule[d].forEach(slot => { if (!slot.empId) warnings2.push({ date: d, msg: "No available employee for " + slot.label }); }); });
   active.forEach(e => {
-    if (sc[e.id] < e.minShifts) warnings2.push({ date: "", msg: e.name + " has " + sc[e.id] + " shifts (minimum: " + e.minShifts + ")" });
-    if (sh[e.id] < (e.minHours || 0)) warnings2.push({ date: "", msg: e.name + " has " + sh[e.id].toFixed(1) + "h (minimum: " + e.minHours + "h)" });
+    if (sc[e.id] < e._effMinShifts) warnings2.push({ date: "", msg: e.name + " has " + sc[e.id] + " shifts (minimum: " + e._effMinShifts + ")" });
+    if (sh[e.id] < e._effMinHours) warnings2.push({ date: "", msg: e.name + " has " + sh[e.id].toFixed(1) + "h (minimum: " + e._effMinHours + "h)" });
     if (e.role === "shift_lead" && weCount[e.id] < (rules.shiftLead?.minWeekendShifts || 2)) {
-      warnings2.push({ date: "", msg: e.name + " has " + weCount[e.id] + " weekend shifts (minimum: " + (rules.shiftLead?.minWeekendShifts || 2) + ")" });
+      warnings2.push({ date: "", msg: e.name + " has " + weCount[e.id] + " weekend night shifts (minimum: " + (rules.shiftLead?.minWeekendShifts || 2) + ")" });
     }
   });
   // Track which SLs got a short week for rotation
