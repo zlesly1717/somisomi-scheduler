@@ -10,7 +10,7 @@ function EditEmpModal({ emp, onSave, onClose }) {
   const [f, setF] = useState(() => JSON.parse(JSON.stringify(emp || {
     id: "", name: "", role: "regular", status: "active",
     maxShifts: 3, minShifts: 3, maxHours: 20, minHours: 12,
-    tags: [], unavailability: newUnavail(), notes: "", traineeCumulative: 0
+    tags: [], unavailability: newUnavail(), notes: "", traineeCumulative: 0, guaranteedDays: []
   })));
   const ref = useRef(null);
   useEffect(() => { ref.current?.focus(); }, []);
@@ -63,6 +63,26 @@ function EditEmpModal({ emp, onSave, onClose }) {
                 color: f.tags.includes(t.id) ? "#1D4ED8" : "#6B7280", fontFamily: font,
               }}>{t.label}</button>
             ))}
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={sl}>Guaranteed Days <span style={{ fontWeight: 400, textTransform: "none", color: "#9CA3AF" }}>(must be scheduled these days)</span></label>
+          <div style={{ display: "flex", gap: 6 }}>
+            {DAYS.map(d => {
+              const has = (f.guaranteedDays || []).includes(d);
+              return (
+                <button key={d} onClick={() => setF(p => {
+                  const gd = p.guaranteedDays || [];
+                  return { ...p, guaranteedDays: has ? gd.filter(x => x !== d) : [...gd, d] };
+                })} style={{
+                  padding: "6px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                  border: has ? "2px solid #16A34A" : "1px solid #D1D5DB",
+                  background: has ? "#F0FDF4" : "#fff",
+                  color: has ? "#16A34A" : "#9CA3AF", fontFamily: font, minWidth: 36, textAlign: "center",
+                }}>{DAY_LABELS[d]}</button>
+              );
+            })}
           </div>
         </div>
 
@@ -153,6 +173,15 @@ function EmpCard({ emp, onEdit, onAction }) {
       {emp.tags.length > 0 && (
         <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
           {emp.tags.map(t => <span key={t} style={{ padding: "2px 7px", borderRadius: 10, fontSize: 9, fontWeight: 600, background: "#F3F4F6", color: "#6B7280" }}>{TAG_OPTIONS.find(o => o.id === t)?.label || t}</span>)}
+        </div>
+      )}
+
+      {(emp.guaranteedDays || []).length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ fontSize: 10, color: "#16A34A", fontWeight: 700 }}>Must work:</span>
+          {emp.guaranteedDays.map(d => (
+            <span key={d} style={{ padding: "2px 7px", borderRadius: 10, fontSize: 9, fontWeight: 700, background: "#F0FDF4", color: "#16A34A", border: "1px solid #BBF7D0" }}>{DAY_LABELS[d]}</span>
+          ))}
         </div>
       )}
 

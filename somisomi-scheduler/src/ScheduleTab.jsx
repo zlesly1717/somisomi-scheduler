@@ -142,6 +142,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     const isWE = dow === 0 || dow === 6;
     const isFri = dow === 5; const isSat = dow === 6; const isSun = dow === 0; const isThu = dow === 4;
     const isMC = isThu || isSun;
+    const dayKey = DAYS[dow === 0 ? 6 : dow - 1]; // mon,tue,...,sun
     let dayS, dayE, eveS, eveE;
     if (isWE) { dayS = T.weekendDay.start; dayE = T.weekendDay.end; eveS = T.weekendEvening.start; eveE = T.weekendEvening.end; }
     else if (isFri) { dayS = T.fridayDay.start; dayE = T.fridayDay.end || T.weekdayDay.end; eveS = T.weekdayEvening.start; eveE = T.weekdayEvening.end; }
@@ -221,6 +222,10 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         }
       }
       cands.sort((a, b) => {
+        // Priority 0: guaranteed day (must work this day)
+        const aG = (a.guaranteedDays || []).includes(dayKey) ? 1 : 0;
+        const bG = (b.guaranteedDays || []).includes(dayKey) ? 1 : 0;
+        if (bG !== aG) return bG - aG;
         // Priority 1: below min shifts
         const aBs = sc[a.id] < a.minShifts ? 1 : 0;
         const bBs = sc[b.id] < b.minShifts ? 1 : 0;
@@ -245,6 +250,63 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     slots.filter(s => s.slOnly).forEach(assign);
     slots.filter(s => !s.slOnly).forEach(assign);
   });
+
+  // PASS 1.5: Ensure shift leads hit their min shifts by filling regular slots
+  const slsBelowMin = active.filter(e => e.role === "shift_lead" && sc[e.id] < e.minShifts);
+  // Sort by who was short most recently (rotate the burden)
+  const shortHistory = rules.slShortWeekHistory || [];
+  slsBelowMin.sort((a, b) => {
+    const aLast = shortHistory.lastIndexOf(a.id);
+    const bLast = shortHistory.lastIndexOf(b.id);
+    return aLast - bLast; // person who was short longest ago gets priority
+  });
+  for (const sl of slsBelowMin) {
+    for (const dayIndex of schedOrder) {
+      if (sc[sl.id] >= sl.minShifts) break;
+      if (sc[sl.id] >= sl.maxShifts) break;
+      const dateStr = weekDates[dayIndex];
+      if (sd[sl.id].has(dateStr)) continue;
+      if (!isAvail(sl, dateStr, "12:00", "22:30", weeklyTimeOffs)) continue;
+      // Check fri-sat-sun constraint
+      if (con("no_fri_sat_sun")) {
+        const ddt = new Date(dateStr + "T12:00:00").getDay();
+        const hasFri = sd[sl.id].has(weekDates[4]);
+        const hasSat = sd[sl.id].has(weekDates[5]);
+        const hasSun = sd[sl.id].has(weekDates[6]);
+        const wouldHave = (ddt===5?1:(hasFri?1:0)) + (ddt===6?1:(hasSat?1:0)) + (ddt===0?1:(hasSun?1:0));
+        if (wouldHave >= 3) continue;
+      }
+      // Find an unfilled non-SL slot this day
+      const emptyIdx = schedule[dateStr].findIndex(slot => {
+        if (slot.empId !== null) return false;
+        if (!isAvail(sl, dateStr, slot.start, slot.end, weeklyTimeOffs)) return false;
+        if (sh[sl.id] + slot.hours > sl.maxHours) return false;
+        return true;
+      });
+      if (emptyIdx >= 0) {
+        const slot = schedule[dateStr][emptyIdx];
+        schedule[dateStr][emptyIdx] = { ...slot, empId: sl.id, empName: sl.name, empRole: sl.role };
+        sc[sl.id]++; sh[sl.id] += slot.hours; sd[sl.id].add(dateStr);
+        continue;
+      }
+      // No empty slot — try to take a regular slot from someone above their min
+      for (let si2 = 0; si2 < schedule[dateStr].length; si2++) {
+        const slot = schedule[dateStr][si2];
+        if (!slot.empId || slot.slOnly) continue;
+        if (!isAvail(sl, dateStr, slot.start, slot.end, weeklyTimeOffs)) continue;
+        if (sh[sl.id] + slot.hours > sl.maxHours) continue;
+        const holder = active.find(e => e.id === slot.empId);
+        if (!holder || sc[holder.id] <= holder.minShifts) continue;
+        // Swap SL in
+        sc[holder.id]--; sh[holder.id] -= slot.hours;
+        const holderOther = schedule[dateStr].filter((s, idx) => idx !== si2 && s.empId === holder.id);
+        if (holderOther.length === 0) sd[holder.id].delete(dateStr);
+        schedule[dateStr][si2] = { ...slot, empId: sl.id, empName: sl.name, empRole: sl.role };
+        sc[sl.id]++; sh[sl.id] += slot.hours; sd[sl.id].add(dateStr);
+        break;
+      }
+    }
+  }
 
   // SECOND PASS
   weekDates.forEach(dateStr => {
@@ -346,16 +408,19 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   weekDates.forEach(dateStr => {
     schedule[dateStr].forEach((slot, idx) => {
       if (slot.empId !== null) return;
-      // Relaxed search — skip the doubles check if needed, just find someone available
       const cands = active.filter(emp => {
         if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs)) return false;
         if (slot.slOnly && emp.role !== "shift_lead") return false;
         if (sc[emp.id] >= emp.maxShifts || sh[emp.id] + slot.hours > emp.maxHours) return false;
         if (slot.isMC && emp.role === "trainee") return false;
-        // Allow doubles as last resort for unfilled MC slots
-        if (schedule[dateStr].some(a => a.empId === emp.id) && !slot.isMC) return false;
+        // Never allow doubles
+        if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
         return true;
-      }).sort((a, b) => sc[a.id] - sc[b.id]);
+      }).sort((a, b) => {
+        const aBh = sh[a.id] < (a.minHours || 0) ? 1 : 0; const bBh = sh[b.id] < (b.minHours || 0) ? 1 : 0;
+        if (bBh !== aBh) return bBh - aBh;
+        return sc[a.id] - sc[b.id];
+      });
       if (cands.length > 0) {
         const ch = cands[0];
         schedule[dateStr][idx] = { ...slot, empId: ch.id, empName: ch.name, empRole: ch.role };
@@ -370,7 +435,10 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     if (sc[e.id] < e.minShifts) warnings2.push({ date: "", msg: e.name + " has " + sc[e.id] + " shifts (minimum: " + e.minShifts + ")" });
     if (sh[e.id] < (e.minHours || 0)) warnings2.push({ date: "", msg: e.name + " has " + sh[e.id].toFixed(1) + "h (minimum: " + e.minHours + "h)" });
   });
-  return { schedule, empShiftCount: sc, empHours: sh, warnings: warnings2 };
+  // Track which SLs got a short week for rotation
+  const shortSLs = active.filter(e => e.role === "shift_lead" && sc[e.id] < e.minShifts).map(e => e.id);
+
+  return { schedule, empShiftCount: sc, empHours: sh, warnings: warnings2, shortSLs };
 }
 
 // === EDIT SHIFT MODAL ===
@@ -522,7 +590,13 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
   };
 
   const handleAccept = () => {
-    if (draft) { setSavedSchedules(prev => ({ ...prev, [weekKey]: { ...draft, notes, weeklyTOs, savedAt: new Date().toISOString() } })); setDraft(null); setNotes([]); }
+    if (draft) {
+      setSavedSchedules(prev => ({
+        ...prev,
+        [weekKey]: { ...draft, notes, weeklyTOs, savedAt: new Date().toISOString() }
+      }));
+      setDraft(null); setNotes([]);
+    }
   };
   const handleReject = () => {
     if (!prompt.trim()) return;

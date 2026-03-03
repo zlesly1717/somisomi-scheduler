@@ -65,6 +65,7 @@ export default function App() {
           else if (e.role === "regular") e.minHours = 12;
           else e.minHours = 0;
         }
+        if (!e.guaranteedDays) e.guaranteedDays = [];
         return e;
       });
       const r = data.rules || SEED_RULES;

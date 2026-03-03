@@ -6,7 +6,7 @@ export const SEED_EMPLOYEES = [
     maxShifts:4,minShifts:4,maxHours:24,minHours:18,
     tags:["can_mc","good_weekend","mc_rotation_sun","day_lead_eligible"],
     unavailability:newUnavail(),
-    notes:"Fully available all week.",traineeCumulative:0,
+    notes:"Fully available all week.",traineeCumulative:0,guaranteedDays:[],
   },
   {
     id:"sl-2",name:"Zoe Rains",role:"shift_lead",status:"active",
@@ -21,7 +21,7 @@ export const SEED_EMPLOYEES = [
       sat:{allDay:false,start:"",end:""},
       sun:{allDay:false,start:"",end:""},
     },
-    notes:"Always MCs Thursday with Crystal.",traineeCumulative:0,
+    notes:"Always MCs Thursday with Crystal.",traineeCumulative:0,guaranteedDays:[],
   },
   {
     id:"sl-3",name:"Kaitlyn Trevino",role:"shift_lead",status:"active",
@@ -31,14 +31,14 @@ export const SEED_EMPLOYEES = [
       ...newUnavail(),
       wed:{allDay:false,start:"19:00",end:"22:30"},
     },
-    notes:"Only restriction: Wed 7pm-10:30pm.",traineeCumulative:0,
+    notes:"Only restriction: Wed 7pm-10:30pm.",traineeCumulative:0,guaranteedDays:[],
   },
   {
     id:"sl-4",name:"Spencer Losch",role:"shift_lead",status:"active",
     maxShifts:4,minShifts:4,maxHours:24,minHours:18,
     tags:["can_mc","good_weekend","mc_rotation_sun","day_lead_eligible"],
     unavailability:newUnavail(),
-    notes:"Fully available all week.",traineeCumulative:0,
+    notes:"Fully available all week.",traineeCumulative:0,guaranteedDays:[],
   },
   {
     id:"sl-5",name:"Crystal Guel",role:"shift_lead",status:"active",
@@ -53,7 +53,7 @@ export const SEED_EMPLOYEES = [
       sat:{allDay:false,start:"",end:""},
       sun:{allDay:true,start:"",end:""},
     },
-    notes:"Always MCs Thursday (Sun all day off).",traineeCumulative:0,
+    notes:"Always MCs Thursday (Sun all day off).",traineeCumulative:0,guaranteedDays:["fri","sat"],
   },
   {
     id:"reg-1",name:"Kennedy Bean",role:"regular",status:"active",
@@ -68,7 +68,7 @@ export const SEED_EMPLOYEES = [
       sat:{allDay:false,start:"",end:""},
       sun:{allDay:false,start:"",end:""},
     },
-    notes:"Good person. Can do 4 shifts.",traineeCumulative:0,
+    notes:"Good person. Can do 4 shifts.",traineeCumulative:0,guaranteedDays:[],
   },
   {
     id:"reg-2",name:"Sam Castillo",role:"regular",status:"active",
@@ -83,7 +83,7 @@ export const SEED_EMPLOYEES = [
       sat:{allDay:false,start:"",end:""},
       sun:{allDay:false,start:"",end:""},
     },
-    notes:"Mon & Wed all day off. 4th shift priority.",traineeCumulative:0,
+    notes:"Mon & Wed all day off. 4th shift priority.",traineeCumulative:0,guaranteedDays:[],
   },
   {
     id:"reg-3",name:"Lena Maslak",role:"regular",status:"active",
@@ -98,7 +98,7 @@ export const SEED_EMPLOYEES = [
       sat:{allDay:false,start:"",end:""},
       sun:{allDay:false,start:"",end:""},
     },
-    notes:"2nd Day & 4th shift priority. Tue/Thu can start at 12pm. Fri-Sun clear.",traineeCumulative:0,
+    notes:"2nd Day & 4th shift priority. Tue/Thu can start at 12pm. Fri-Sun clear.",traineeCumulative:0,guaranteedDays:[],
   },
   {
     id:"reg-4",name:"Gwen Ursua",role:"regular",status:"active",
@@ -108,7 +108,7 @@ export const SEED_EMPLOYEES = [
       ...newUnavail(),
       sun:{allDay:false,start:"09:00",end:"18:00"},
     },
-    notes:"Good person. Can do 4 shifts. Sun unavailable 9am-6pm.",traineeCumulative:0,
+    notes:"Good person. Can do 4 shifts. Sun unavailable 9am-6pm.",traineeCumulative:0,guaranteedDays:[],
   },
   {
     id:"reg-5",name:"Susan Thai",role:"regular",status:"active",
@@ -123,7 +123,7 @@ export const SEED_EMPLOYEES = [
       sat:{allDay:false,start:"",end:""},
       sun:{allDay:false,start:"",end:""},
     },
-    notes:"Can do Thu MC (6pm+). 4th shift priority. Fri-Sun clear.",traineeCumulative:0,
+    notes:"Can do Thu MC (6pm+). 4th shift priority. Fri-Sun clear.",traineeCumulative:0,guaranteedDays:[],
   },
   {
     id:"reg-6",name:"Abrar Uddin",role:"regular",status:"active",
@@ -138,7 +138,7 @@ export const SEED_EMPLOYEES = [
       sat:{allDay:false,start:"",end:""},
       sun:{allDay:false,start:"",end:""},
     },
-    notes:"Tue & Thu all day off. No weekday nights. Weekend nights OK.",traineeCumulative:0,
+    notes:"Tue & Thu all day off. No weekday nights. Weekend nights OK.",traineeCumulative:0,guaranteedDays:[],
   },
   {
     id:"reg-7",name:"Grae McKown",role:"regular",status:"active",
@@ -153,7 +153,7 @@ export const SEED_EMPLOYEES = [
       sat:{allDay:false,start:"",end:""},
       sun:{allDay:false,start:"",end:""},
     },
-    notes:"2 shifts max. Mon off. Tue-Fri evenings only. Sat/Sun available.",traineeCumulative:0,
+    notes:"2 shifts max. Mon off. Tue-Fri evenings only. Sat/Sun available.",traineeCumulative:0,guaranteedDays:[],
   },
   {
     id:"reg-8",name:"Christina Mullins",role:"regular",status:"active",
@@ -168,19 +168,19 @@ export const SEED_EMPLOYEES = [
       sat:{allDay:false,start:"",end:""},
       sun:{allDay:false,start:"",end:""},
     },
-    notes:"Mon-Thu unavailable 9am-3pm. Gets 4th shift after Sam/Lena/Susan/Abrar.",traineeCumulative:0,
+    notes:"Mon-Thu unavailable 9am-3pm. Gets 4th shift after Sam/Lena/Susan/Abrar.",traineeCumulative:0,guaranteedDays:[],
   },
   {
     id:"tr-1",name:"Yise Moya",role:"trainee",status:"active",
     maxShifts:3,minShifts:1,maxHours:15,minHours:0,
     tags:[],unavailability:newUnavail(),
-    notes:"Fully available.",traineeCumulative:8.0,
+    notes:"Fully available.",traineeCumulative:8.0,guaranteedDays:[],
   },
   {
     id:"tr-2",name:"Tiernan Hollister",role:"trainee",status:"active",
     maxShifts:3,minShifts:1,maxHours:15,minHours:0,
     tags:[],unavailability:newUnavail(),
-    notes:"Fully available.",traineeCumulative:10.0,
+    notes:"Fully available.",traineeCumulative:10.0,guaranteedDays:[],
   },
 ];
 
@@ -246,4 +246,5 @@ export const SEED_RULES = {
     saturdayDayPool:["Chan In","Spencer Losch","Crystal Guel","Kaitlyn Trevino"],
   },
   secondDay: { alternateDifferentPersonEachDay:true, startsAt:"12:00", mustBeAvailableAtStart:true },
+  slShortWeekHistory: [],
 };
