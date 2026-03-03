@@ -129,7 +129,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   const T = rules.shiftTimes;
   const nightMap = {};
   const mcCount = {};
-  active.forEach(e => { mcCount[e.id] = 0; });
+  const weCount = {}; // weekend shift count per employee
+  active.forEach(e => { mcCount[e.id] = 0; weCount[e.id] = 0; });
   // Schedule hardest days first: Thu MC, Sun MC, Sat, Fri, then weekdays
   const schedOrder = [3, 6, 5, 4, 0, 1, 2];
 
@@ -227,6 +228,13 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         const aG = (a.guaranteedDays || []).includes(dayKey) ? 1 : 0;
         const bG = (b.guaranteedDays || []).includes(dayKey) ? 1 : 0;
         if (bG !== aG) return bG - aG;
+        // Priority 0.5: SL needs weekend shifts (Fri/Sat/Sun only)
+        if (isWE || isFri) {
+          const minWE = rules.shiftLead?.minWeekendShifts || 2;
+          const aWE = (a.role === "shift_lead" && weCount[a.id] < minWE) ? 1 : 0;
+          const bWE = (b.role === "shift_lead" && weCount[b.id] < minWE) ? 1 : 0;
+          if (bWE !== aWE) return bWE - aWE;
+        }
         // Priority 1: below min shifts
         const aBs = sc[a.id] < a.minShifts ? 1 : 0;
         const bBs = sc[b.id] < b.minShifts ? 1 : 0;
@@ -243,6 +251,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         schedule[dateStr].push({ ...slot, empId: ch.id, empName: ch.name, empRole: ch.role });
         sc[ch.id]++; sh[ch.id] += slot.hours; sd[ch.id].add(dateStr); usedToday.add(ch.id);
         if (slot.isMC) mcCount[ch.id]++;
+        if (isWE || isFri) weCount[ch.id]++;
         if (tm(slot.start) >= 1020 || slot.isMC) { if (!nightMap[dateStr]) nightMap[dateStr] = new Set(); nightMap[dateStr].add(ch.id); }
       } else {
         schedule[dateStr].push({ ...slot, empId: null, empName: "\u26a0 UNFILLED", empRole: null });
@@ -438,6 +447,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   active.forEach(e => {
     if (sc[e.id] < e.minShifts) warnings2.push({ date: "", msg: e.name + " has " + sc[e.id] + " shifts (minimum: " + e.minShifts + ")" });
     if (sh[e.id] < (e.minHours || 0)) warnings2.push({ date: "", msg: e.name + " has " + sh[e.id].toFixed(1) + "h (minimum: " + e.minHours + "h)" });
+    if (e.role === "shift_lead" && weCount[e.id] < (rules.shiftLead?.minWeekendShifts || 2)) {
+      warnings2.push({ date: "", msg: e.name + " has " + weCount[e.id] + " weekend shifts (minimum: " + (rules.shiftLead?.minWeekendShifts || 2) + ")" });
+    }
   });
   // Track which SLs got a short week for rotation
   const shortSLs = active.filter(e => e.role === "shift_lead" && sc[e.id] < e.minShifts).map(e => e.id);
