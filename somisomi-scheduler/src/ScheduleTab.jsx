@@ -122,11 +122,11 @@ function parseTimeOffs(text, employees, weekDates) {
 function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, dayStaffingOverrides) {
   const schedule = {};
   // Helper: check if employee can fill an SL-only slot (with day_lead fallback)
-  const slCheck = (slot, emp) => {
+  const slCheck = (slot, emp, fallback = false) => {
     if (!slot.slOnly) return true;
     if (emp.role === "shift_lead") return true;
-    // Allow day_lead_eligible regulars for Day Lead as fallback
-    if (slot.type === "day_lead" && (emp.tags || []).includes("day_lead_eligible")) return true;
+    // For Day Lead: allow any non-trainee as fallback
+    if (slot.type === "day_lead" && emp.role !== "trainee" && fallback) return true;
     return false;
   };
   const sc = {}, sh = {}, sd = {};
@@ -213,6 +213,18 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 
     const assign = (slot) => {
       let cands = active.filter(e => canA(e, slot));
+      // If Day Lead has no candidates, retry with fallback (allow regulars)
+      if (cands.length === 0 && slot.type === "day_lead") {
+        cands = active.filter(e => {
+          // Re-run canA logic but with fallback slCheck
+          if (e.role === "trainee") return false;
+          if (sd[e.id].has(dateStr) && con("no_doubles")) return false;
+          if (usedToday.has(e.id)) return false;
+          if (!isAvail(e, dateStr, slot.start, slot.end, weeklyTimeOffs)) return false;
+          if (sc[e.id] >= e.maxShifts || sh[e.id] + slot.hours > e.maxHours) return false;
+          return true;
+        });
+      }
       if (slot.type === "mc_leader") {
         const pool = rules.mcRotation.shiftLeadPool || [];
         const f = cands.filter(e => (pool || []).includes(e.name));
@@ -425,19 +437,29 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     }
   }
 
-  // FIFTH PASS: Try again to fill any remaining unfilled slots (like MC helpers)
+  // FIFTH PASS: Try again to fill any remaining unfilled slots (with Day Lead fallback)
   weekDates.forEach(dateStr => {
     schedule[dateStr].forEach((slot, idx) => {
       if (slot.empId !== null) return;
-      const cands = active.filter(emp => {
+      let cands = active.filter(emp => {
         if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs)) return false;
         if (!slCheck(slot, emp)) return false;
         if (sc[emp.id] >= emp.maxShifts || sh[emp.id] + slot.hours > emp.maxHours) return false;
         if (slot.isMC && emp.role === "trainee") return false;
-        // Never allow doubles
         if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
         return true;
-      }).sort((a, b) => {
+      });
+      // Day Lead fallback: if still empty, allow any non-trainee
+      if (cands.length === 0 && slot.type === "day_lead") {
+        cands = active.filter(emp => {
+          if (emp.role === "trainee") return false;
+          if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs)) return false;
+          if (sc[emp.id] >= emp.maxShifts || sh[emp.id] + slot.hours > emp.maxHours) return false;
+          if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
+          return true;
+        });
+      }
+      cands.sort((a, b) => {
         const aBh = sh[a.id] < (a.minHours || 0) ? 1 : 0; const bBh = sh[b.id] < (b.minHours || 0) ? 1 : 0;
         if (bBh !== aBh) return bBh - aBh;
         return sc[a.id] - sc[b.id];
