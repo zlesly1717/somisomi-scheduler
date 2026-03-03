@@ -283,6 +283,11 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (slot.type === "day") { const f = cands.filter(e => (rules.secondDayPriority || []).includes(e.name)); if (f.length > 0) cands = f; }
       if (isWE && !slot.isMC && !slot.slOnly) { const f = cands.filter(e => (rules.goodWeekendPeople || []).includes(e.name)); if (f.length > 0) cands = f; }
       if (!slot.slOnly && !slot.isMC) {
+        // On Mon-Fri day shifts, prefer regulars over SLs (don't stack 2 SLs on a non-busy day shift)
+        if (!isWE && (slot.type === "day" || slot.type === "mid")) {
+          const regs = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee");
+          if (regs.length > 0) cands = regs;
+        }
         const nonTr = cands.filter(e => e.role !== "trainee");
         const trainees = cands.filter(e => e.role === "trainee");
         if (nonTr.length > 0) {
@@ -297,8 +302,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         const aG = (a.guaranteedDays || []).includes(dayKey) ? 1 : 0;
         const bG = (b.guaranteedDays || []).includes(dayKey) ? 1 : 0;
         if (bG !== aG) return bG - aG;
-        // Priority 0.5: SL needs weekend shifts (Fri/Sat/Sun only)
-        if (isWE || isFri) {
+        // Priority 0.5: SL needs weekend shifts (Sat/Sun, or Fri night only)
+        const isWeekendSlot = isWE || (isFri && tm(slot.start) >= 1020);
+        if (isWeekendSlot) {
           const minWE = rules.shiftLead?.minWeekendShifts || 2;
           const aWE = (a.role === "shift_lead" && weCount[a.id] < minWE) ? 1 : 0;
           const bWE = (b.role === "shift_lead" && weCount[b.id] < minWE) ? 1 : 0;
@@ -320,7 +326,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         schedule[dateStr].push({ ...slot, empId: ch.id, empName: ch.name, empRole: ch.role });
         sc[ch.id]++; sh[ch.id] += slot.hours; sd[ch.id].add(dateStr); usedToday.add(ch.id);
         if (slot.isMC) mcCount[ch.id]++;
-        if (isWE || isFri) weCount[ch.id]++;
+        if (isWE) weCount[ch.id]++;
+        if (isFri && tm(slot.start) >= 1020) weCount[ch.id]++; // Fri night only
         if (tm(slot.start) >= 1020 || slot.isMC) { if (!nightMap[dateStr]) nightMap[dateStr] = new Set(); nightMap[dateStr].add(ch.id); }
       } else {
         schedule[dateStr].push({ ...slot, empId: null, empName: "\u26a0 UNFILLED", empRole: null });
