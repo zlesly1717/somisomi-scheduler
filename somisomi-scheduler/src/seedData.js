@@ -199,6 +199,7 @@ export const SEED_RULES = {
     {id:"no_mc_twice",label:"No MC more than once per week",desc:"No employee can be assigned to machine cleaning more than once per week",enabled:true},
     {id:"no_trainees_weekday_day",label:"No trainees on weekday day shifts",desc:"Trainees cannot work Mon-Fri day shifts (Day Lead or 2nd Day)",enabled:true},
     {id:"no_fri_sat_sun",label:"No Fri + Sat + Sun same person",desc:"Cannot schedule same employee for all 3 weekend days (Friday, Saturday, Sunday). Max 2 of 3.",enabled:true},
+    {id:"max_consecutive_3",label:"Max 3 consecutive work days",desc:"Avoid scheduling an employee more than 3 days in a row to prevent burnout.",enabled:true},
   ],
   shiftLead: { shiftsPerWeek:{min:4,max:4}, minWeekendShifts:2, mcPerWeek:1, alternateDayLeads:true },
   regular: { shiftsPerWeek:{min:3,max:4} },

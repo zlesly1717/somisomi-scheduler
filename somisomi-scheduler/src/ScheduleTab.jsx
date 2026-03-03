@@ -196,8 +196,15 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (prevIdx >= 0 && nightMap[weekDates[prevIdx]]?.has(emp.id)) return false;
         if (dayIndex === 0 && nightMap[weekDates[6]]?.has(emp.id)) return false;
       }
-      if (con("no_fri_sat_night") && isSat && tm(slot.start) >= 1020 && nightMap[weekDates[4]]?.has(emp.id)) return false;
-      if (con("no_sat_sun_night") && isSun && tm(slot.start) >= 1020 && nightMap[weekDates[5]]?.has(emp.id)) return false;
+      if (con("no_fri_sat_night") && (isFri || isSat) && tm(slot.start) >= 1020) {
+        // Block if this person already has the OTHER weekend night
+        if (isFri && nightMap[weekDates[5]]?.has(emp.id)) return false;
+        if (isSat && nightMap[weekDates[4]]?.has(emp.id)) return false;
+      }
+      if (con("no_sat_sun_night") && (isSat || isSun) && tm(slot.start) >= 1020) {
+        if (isSat && nightMap[weekDates[6]]?.has(emp.id)) return false;
+        if (isSun && nightMap[weekDates[5]]?.has(emp.id)) return false;
+      }
       if (con("no_fri_sat_sun")) {
         // Check if assigning this employee today would give them all 3 of Fri/Sat/Sun
         const friIdx = 4, satIdx = 5, sunIdx = 6;
@@ -206,6 +213,24 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         const hasSun = sd[emp.id].has(weekDates[sunIdx]);
         const wouldHave = (isFri ? 1 : (hasFri ? 1 : 0)) + (isSat ? 1 : (hasSat ? 1 : 0)) + (isSun ? 1 : (hasSun ? 1 : 0));
         if (wouldHave >= 3) return false;
+      }
+      // Max 3 consecutive work days
+      if (con("max_consecutive_3")) {
+        // Check if assigning today would create 4+ consecutive days
+        let consec = 1; // today
+        // Check forward
+        for (let c = 1; c <= 3; c++) {
+          const nextIdx = dayIndex + c;
+          if (nextIdx > 6) break;
+          if (sd[emp.id].has(weekDates[nextIdx])) consec++; else break;
+        }
+        // Check backward
+        for (let c = 1; c <= 3; c++) {
+          const prevIdx2 = dayIndex - c;
+          if (prevIdx2 < 0) break;
+          if (sd[emp.id].has(weekDates[prevIdx2])) consec++; else break;
+        }
+        if (consec > 3) return false;
       }
       if (usedToday.has(emp.id)) return false;
       return true;
