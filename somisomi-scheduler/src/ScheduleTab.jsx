@@ -137,8 +137,32 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   const T = rules.shiftTimes;
   const nightMap = {};
   const mcCount = {};
-  const weCount = {}; // weekend shift count per employee
+  const weCount = {};
   active.forEach(e => { mcCount[e.id] = 0; weCount[e.id] = 0; });
+
+  // Helper: check if assigning emp to a night slot on dateStr would violate weekend night rules
+  const weekendNightOK = (emp, dateStr, slotStart) => {
+    if (tm(slotStart) < 1020) return true;
+    const dow2 = new Date(dateStr + "T12:00:00").getDay();
+    if (con("no_fri_sat_night")) {
+      if (dow2 === 5 && nightMap[weekDates[5]]?.has(emp.id)) return false;
+      if (dow2 === 6 && nightMap[weekDates[4]]?.has(emp.id)) return false;
+    }
+    if (con("no_sat_sun_night")) {
+      if (dow2 === 6 && nightMap[weekDates[6]]?.has(emp.id)) return false;
+      if (dow2 === 0 && nightMap[weekDates[5]]?.has(emp.id)) return false;
+    }
+    return true;
+  };
+
+  // Helper: check max consecutive days
+  const consecOK = (emp, dayIndex2) => {
+    if (!con("max_consecutive_3")) return true;
+    let consec = 1;
+    for (let c = 1; c <= 3; c++) { if (dayIndex2 + c > 6) break; if (sd[emp.id].has(weekDates[dayIndex2 + c])) consec++; else break; }
+    for (let c = 1; c <= 3; c++) { if (dayIndex2 - c < 0) break; if (sd[emp.id].has(weekDates[dayIndex2 - c])) consec++; else break; }
+    return consec <= 3;
+  };
   // Schedule hardest days first: Thu MC, Sun MC, Sat, Fri, then weekdays
   const schedOrder = [3, 6, 5, 4, 0, 1, 2];
 
@@ -339,12 +363,15 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (slot.empId !== null) return false;
         if (!isAvail(sl, dateStr, slot.start, slot.end, weeklyTimeOffs)) return false;
         if (sh[sl.id] + slot.hours > sl.maxHours) return false;
+        if (!weekendNightOK(sl, dateStr, slot.start)) return false;
+        if (!consecOK(sl, dayIndex)) return false;
         return true;
       });
       if (emptyIdx >= 0) {
         const slot = schedule[dateStr][emptyIdx];
         schedule[dateStr][emptyIdx] = { ...slot, empId: sl.id, empName: sl.name, empRole: sl.role };
         sc[sl.id]++; sh[sl.id] += slot.hours; sd[sl.id].add(dateStr);
+        if (tm(slot.start) >= 1020 || slot.isMC) { if (!nightMap[dateStr]) nightMap[dateStr] = new Set(); nightMap[dateStr].add(sl.id); }
         continue;
       }
       // No empty slot — try to take a regular slot from someone above their min
@@ -352,6 +379,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         const slot = schedule[dateStr][si2];
         if (!slot.empId || slot.slOnly) continue;
         if (!isAvail(sl, dateStr, slot.start, slot.end, weeklyTimeOffs)) continue;
+        if (!weekendNightOK(sl, dateStr, slot.start)) continue;
         if (sh[sl.id] + slot.hours > sl.maxHours) continue;
         const holder = active.find(e => e.id === slot.empId);
         if (!holder || sc[holder.id] <= holder.minShifts) continue;
@@ -361,6 +389,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (holderOther.length === 0) sd[holder.id].delete(dateStr);
         schedule[dateStr][si2] = { ...slot, empId: sl.id, empName: sl.name, empRole: sl.role };
         sc[sl.id]++; sh[sl.id] += slot.hours; sd[sl.id].add(dateStr);
+        if (tm(slot.start) >= 1020 || slot.isMC) { if (!nightMap[dateStr]) nightMap[dateStr] = new Set(); nightMap[dateStr].add(sl.id); }
         break;
       }
     }
@@ -399,6 +428,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       const unfilledIdx = schedule[dateStr].findIndex(slot => {
         if (slot.empId !== null) return false;
         if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs)) return false;
+        if (!weekendNightOK(emp, dateStr, slot.start)) return false;
         if (!slCheck(slot, emp)) return false;
         if (slot.isMC && emp.role === "trainee") return false;
         if (sh[emp.id] + slot.hours > emp.maxHours) return false;
@@ -408,6 +438,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         const slot = schedule[dateStr][unfilledIdx];
         schedule[dateStr][unfilledIdx] = { ...slot, empId: emp.id, empName: emp.name, empRole: emp.role };
         sc[emp.id]++; sh[emp.id] += slot.hours; sd[emp.id].add(dateStr);
+        if (tm(slot.start) >= 1020) { if (!nightMap[dateStr]) nightMap[dateStr] = new Set(); nightMap[dateStr].add(emp.id); }
       }
     }
   }
@@ -439,6 +470,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (slot.slOnly && emp.role !== "shift_lead") continue;
         if (slot.isMC && emp.role === "trainee") continue;
         if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs)) continue;
+        if (!weekendNightOK(emp, dateStr, slot.start)) continue;
         if (sh[emp.id] + slot.hours > emp.maxHours) continue;
 
         // Can we take this slot? Only if the current holder is ABOVE their minimums
@@ -459,6 +491,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         sc[emp.id]++; sh[emp.id] += slot.hours; sd[emp.id].add(dateStr);
         break;
       }
+        if (tm(slot.start) >= 1020) { if (!nightMap[dateStr]) nightMap[dateStr] = new Set(); nightMap[dateStr].add(emp.id); }
     }
   }
 
@@ -468,6 +501,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (slot.empId !== null) return;
       let cands = active.filter(emp => {
         if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs)) return false;
+        if (!weekendNightOK(emp, dateStr, slot.start)) return false;
         if (!slCheck(slot, emp)) return false;
         if (sc[emp.id] >= emp.maxShifts || sh[emp.id] + slot.hours > emp.maxHours) return false;
         if (slot.isMC && emp.role === "trainee") return false;
@@ -480,6 +514,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
           if (emp.role === "trainee") return false;
           if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs)) return false;
           if (sc[emp.id] >= emp.maxShifts || sh[emp.id] + slot.hours > emp.maxHours) return false;
+          if (!weekendNightOK(emp, dateStr, slot.start)) return false;
           if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
           return true;
         });
@@ -496,6 +531,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       }
     });
   });
+        if (tm(slot.start) >= 1020) { if (!nightMap[dateStr]) nightMap[dateStr] = new Set(); nightMap[dateStr].add(ch.id); }
 
   const warnings2 = [];
   weekDates.forEach(d => { schedule[d].forEach(slot => { if (!slot.empId) warnings2.push({ date: d, msg: "No available employee for " + slot.label }); }); });
