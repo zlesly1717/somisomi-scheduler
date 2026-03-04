@@ -820,7 +820,6 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
       }, 200);
     }
   };
-  };
   const handleUnsave = () => { setSavedSchedules(prev => { const n = { ...prev }; delete n[weekKey]; return n; }); setStep("timeoff"); };
   const removeTo = (idx) => setWeeklyTOs(prev => prev.filter((_, i) => i !== idx));
   const handleWeekChange = (val) => { setWeekStart(val); setDraft(null); setNotes([]); setWeeklyTOs([]); setToText(""); setStep("timeoff"); setDayStaffing(null); setAvailOverrides({}); };
