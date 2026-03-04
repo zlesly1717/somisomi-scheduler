@@ -308,9 +308,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     const dayKey = slot._dayKey;
 
     let cands = active.filter(emp => {
-      if (emp.name === "Crystal Guel" && slot.isMC && dateStr.endsWith("-22")) console.log("CRYSTAL PRE-CHECK:", slot.type, "dateStr:", dateStr, "start:", slot.start, "isAvail:", isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides), "sc:", sc[emp.id], "sd:", [...sd[emp.id]]);
+      if (emp.name === "Crystal Guel" && slot.isMC && dateStr.endsWith("-22")) console.log("CRYSTAL PRE:", slot.type, dateStr, slot.start, "avail:", isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides), "sc:", sc[emp.id]);
       if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
-      }
       if (!slCheck(slot, emp)) return false;
       if (con("no_doubles") && sd[emp.id].has(dateStr)) return false;
       if (sc[emp.id] >= emp.maxShifts) return false;
