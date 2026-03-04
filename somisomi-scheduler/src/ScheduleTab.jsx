@@ -290,12 +290,32 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   // NOW assign in priority order: SL-only/MC across all days first, then regular
   // This prevents SLs from being used up on regular slots before all SL-only slots are filled
   const slMcSlots = allSlots.filter(s => s.slOnly || s.isMC);
-  const regularSlots = allSlots.filter(s => !s.slOnly && !s.isMC);
+  let regularSlots = allSlots.filter(s => !s.slOnly && !s.isMC);
+
+  // Move 1 Fri evening slot and 1 Sat evening slot into Phase 1 as "SL backup" slots
+  // These get processed with SL-only slots so SLs are reserved for them
+  const friEveBackup = regularSlots.find(s => s.type === "evening" && s._isFri);
+  const satEveBackup = regularSlots.find(s => s.type === "evening" && s._isSat);
+  if (friEveBackup) {
+    regularSlots = regularSlots.filter(s => s !== friEveBackup);
+    slMcSlots.push({ ...friEveBackup, _slBackup: true });
+  }
+  if (satEveBackup) {
+    regularSlots = regularSlots.filter(s => s !== satEveBackup);
+    slMcSlots.push({ ...satEveBackup, _slBackup: true });
+  }
 
   // Sort SL-only slots: MC nights first (hardest), then weekend SL, then weekday SL
   slMcSlots.sort((a, b) => {
-    if (a.isMC !== b.isMC) return a.isMC ? -1 : 1;
-    if (a._isWE !== b._isWE) return a._isWE ? -1 : 1;
+    // Priority: MC first, then weekend SL/backup, then weekday SL
+    const getPri = (s) => {
+      if (s.isMC) return 0;
+      if (s._slBackup) return 1; // Fri/Sat eve backup — after MC, before other SL
+      if (s._isWE || s._isFri) return 2; // Weekend SL-only
+      return 3; // Weekday SL-only
+    };
+    const aP = getPri(a), bP = getPri(b);
+    if (aP !== bP) return aP - bP;
     return a.order - b.order;
   });
 
@@ -368,6 +388,12 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     if (slot.type === "evening" && !isWE && !isFri) {
       const regs = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee");
       if (regs.length > 0) cands = regs;
+    }
+
+    // Fri/Sat evening SL backup: ONLY SLs for these slots
+    if (slot._slBackup) {
+      const slOnly = cands.filter(e => e.role === "shift_lead");
+      if (slOnly.length > 0) cands = slOnly;
     }
 
     // Fri/Sat evening (regular slot): WANT an SL as backup — prefer SLs
