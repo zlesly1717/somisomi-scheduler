@@ -301,6 +301,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 
   const assignSlot = (slot) => {
     const dateStr = slot._dateStr;
+    if (slot.isMC && slot.slOnly) console.log("PHASE1 MC SL:", slot.type, slot._dateStr, "cands after filter:", "...");
     const dayIndex = slot._dayIndex;
     const isWE = slot._isWE;
     const isFri = slot._isFri;
@@ -428,6 +429,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       return sc[a.id] - sc[b.id];
     });
 
+    if (slot.isMC) console.log("ASSIGN:", slot.type, slot._dateStr, "day:" + new Date(slot._dateStr+"T12:00:00").getDay(), "cands:", cands.slice(0,5).map(e=>e.name+"(sc:"+sc[e.id]+")").join(","), "total:", cands.length);
     if (cands.length > 0) {
       const ch = cands[0];
       schedule[dateStr].push({ ...slot, empId: ch.id, empName: ch.name, empRole: ch.role });
