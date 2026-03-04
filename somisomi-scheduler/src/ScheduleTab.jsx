@@ -329,7 +329,15 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       }
       if (slot.type === "mc_helper") { const f = cands.filter(e => (rules.mcRotation.assistantPool || []).includes(e.name)); if (f.length > 0) cands = f; }
       if (slot.type === "day") { const f = cands.filter(e => (rules.secondDayPriority || []).includes(e.name)); if (f.length > 0) cands = f; }
-      if (isWE && !slot.isMC && !slot.slOnly) { const f = cands.filter(e => (rules.goodWeekendPeople || []).includes(e.name)); if (f.length > 0) cands = f; }
+      if (isWE && !slot.isMC && !slot.slOnly) {
+        const goodWE = (rules.goodWeekendPeople || []);
+        const f = cands.filter(e => goodWE.includes(e.name));
+        // Don't force low-shift employees (<=2 min) into a 2nd weekend slot via good_weekend filter
+        if (f.length > 0) {
+          const fWithoutLowDups = f.filter(e => !(e._effMinShifts <= 2 && [4,5,6].some(wi => sd[e.id].has(weekDates[wi]))));
+          cands = fWithoutLowDups.length > 0 ? fWithoutLowDups : f;
+        }
+      }
       if (!slot.slOnly && !slot.isMC) {
         // On Mon-Fri day shifts, prefer regulars over SLs (don't stack 2 SLs on a non-busy day shift)
         if (!isWE && (slot.type === "day" || slot.type === "mid")) {
@@ -356,9 +364,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
           else { cands = [...nonTr, ...trainees]; }
         }
       }
-      // Pre-sort filters for weekend balance
+      // Pre-sort filters for weekend balance (skip for SL-only and MC slots - those have limited candidate pools)
       const isWeekendSlot2 = isWE || (isFri && tm(slot.start) >= 1020);
-      if (isWeekendSlot2 && cands.length > 1) {
+      if (isWeekendSlot2 && cands.length > 1 && !slot.slOnly && !slot.isMC) {
         // Low-shift employees (<=2 min): don't give 2nd weekend if others available
         const lowWEhave = cands.filter(e => e._effMinShifts <= 2 && [4,5,6].some(wi => sd[e.id].has(weekDates[wi])));
         const othersAvail = cands.filter(e => !(e._effMinShifts <= 2 && [4,5,6].some(wi => sd[e.id].has(weekDates[wi]))));
