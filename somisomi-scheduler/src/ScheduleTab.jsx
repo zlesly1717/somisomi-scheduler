@@ -472,71 +472,68 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         schedule[dateStr].push({ ...slot, empId: null, empName: "\u26a0 UNFILLED", empRole: null });
       }
     };
-    // PHASE 1: Assign SL-only and MC slots first (across all days before regular slots)
+    // Assign MC slots first, then SL-only, then regular
     slots.filter(s => s.isMC && s.slOnly).forEach(assign);
     slots.filter(s => s.isMC && !s.slOnly).forEach(assign);
     slots.filter(s => s.slOnly && !s.isMC).forEach(assign);
-  });
-
-  // PHASE 2: Now assign regular (non-SL, non-MC) slots across all days
-  schedOrder.forEach(dayIndex => {
-    const dateStr = weekDates[dayIndex];
-    const usedToday2 = new Set();
-    schedule[dateStr].forEach(s => { if (s.empId) usedToday2.add(s.empId); });
-    const d = new Date(dateStr + "T12:00:00");
-    const dow = d.getDay();
-    const isWE = dow === 0 || dow === 6;
-    const isFri = dow === 5;
-    const dayKey = DAYS[dow === 0 ? 6 : dow - 1];
-
-    const regularSlots = schedule[dateStr].filter(s => !s.slOnly && !s.isMC && !s.empId);
-    regularSlots.forEach(slot => {
-      let cands = active.filter(emp => {
-        if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
-        if (con("no_doubles") && sd[emp.id].has(dateStr)) return false;
-        if (usedToday2.has(emp.id)) return false;
-        if (sc[emp.id] >= emp.maxShifts) return false;
-        if (sh[emp.id] + slot.hours > emp.maxHours) return false;
-        if (!friSatSunOK(emp, dateStr)) return false;
-        if (!weekendNightOK(emp, dateStr, slot.start)) return false;
-        if (!lowShiftWeekendOK(emp, dateStr, slot.start)) return false;
-        if (!traineeOK(emp, dateStr)) return false;
-        if (!consecOK(emp, dayIndex)) return false;
-        if (con("no_trainees_weekday_day") && emp.role === "trainee" && !isWE && (slot.type === "day_lead" || slot.type === "day")) return false;
-        return true;
-      });
-      // Weekday evening: prefer non-SLs
-      if (slot.type === "evening" && !isWE) {
-        const eveRegs = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee");
-        if (eveRegs.length > 0) cands = eveRegs;
+    // For regular slots: check if assigning an SL would leave a future SL-only slot unfillable
+    slots.filter(s => !s.slOnly && !s.isMC).forEach(s => {
+      // Before assigning, filter out SLs if they're needed for future SL-only slots
+      const origCands = active.filter(e => canA(e, s));
+      let cands = [...origCands];
+      // Count unfilled SL-only evening slots remaining across future days in schedOrder
+      if (s.type === "evening" || s.type === "day") {
+        const futureSlOnlyNeeded = schedOrder.filter(fi => {
+          const fd = weekDates[fi];
+          if (!schedule[fd]) return false;
+          return schedule[fd].some(fs => fs.slOnly && !fs.empId && !fs.isMC);
+        }).length;
+        const availSLs = active.filter(e => e.role === "shift_lead" && sc[e.id] < e.maxShifts).length;
+        // If SLs are scarce relative to future needs, prefer non-SLs for regular slots
+        if (futureSlOnlyNeeded > 0 && availSLs <= futureSlOnlyNeeded + 1) {
+          const nonSLs = cands.filter(e => e.role !== "shift_lead");
+          if (nonSLs.length > 0) cands = nonSLs;
+        }
       }
-      // Weekday day: prefer non-SLs
-      if (!isWE && (slot.type === "day" || slot.type === "mid")) {
-        const regs = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee");
-        if (regs.length > 0) cands = regs;
-      }
-      // Weekend balance filters
-      const isWeekendSlot2 = isWE || (isFri && tm(slot.start) >= 1020);
-      if (isWeekendSlot2 && cands.length > 1) {
-        const lowWEhave = cands.filter(e => e._effMinShifts <= 2 && [4,5,6].some(wi => sd[e.id].has(weekDates[wi])));
-        const othersAvail = cands.filter(e => !(e._effMinShifts <= 2 && [4,5,6].some(wi => sd[e.id].has(weekDates[wi]))));
-        if (lowWEhave.length > 0 && othersAvail.length > 0) cands = othersAvail;
-      }
-      // Good weekend people
-      if (isWE && !slot.isMC && !slot.slOnly) {
+      // Apply existing filters
+      if (isWE && !s.isMC && !s.slOnly) {
         const goodWE = (rules.goodWeekendPeople || []);
         const f = cands.filter(e => goodWE.includes(e.name));
         if (f.length > 0) {
-          const fWithoutLowDups = f.filter(e => !(e._effMinShifts <= 2 && [4,5,6].some(wi => sd[e.id].has(weekDates[wi]))));
-          cands = fWithoutLowDups.length > 0 ? fWithoutLowDups : f;
+          const fNoLow = f.filter(e => !(e._effMinShifts <= 2 && [4,5,6].some(wi => sd[e.id].has(weekDates[wi]))));
+          cands = fNoLow.length > 0 ? fNoLow : f;
         }
       }
-      // Sort
+      if (!isWE && (s.type === "day" || s.type === "mid")) {
+        const regs = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee");
+        if (regs.length > 0) cands = regs;
+      }
+      if (s.type === "evening" && !isWE) {
+        const eveRegs = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee");
+        if (eveRegs.length > 0) cands = eveRegs;
+      }
+      // Weekend balance
+      const isWS = isWE || (isFri && tm(s.start) >= 1020);
+      if (isWS && cands.length > 1 && !s.slOnly && !s.isMC) {
+        const lowWH = cands.filter(e => e._effMinShifts <= 2 && [4,5,6].some(wi => sd[e.id].has(weekDates[wi])));
+        const oth = cands.filter(e => !(e._effMinShifts <= 2 && [4,5,6].some(wi => sd[e.id].has(weekDates[wi]))));
+        if (lowWH.length > 0 && oth.length > 0) cands = oth;
+      }
+      // Trainee handling
+      if (!s.slOnly && !s.isMC) {
+        const nonTr = cands.filter(e => e.role !== "trainee");
+        const trainees = cands.filter(e => e.role === "trainee");
+        if (nonTr.length > 0) cands = [...nonTr, ...trainees]; else cands = trainees;
+      }
       cands.sort((a, b) => {
         const aG = (a.guaranteedDays || []).includes(dayKey) ? 1 : 0;
         const bG = (b.guaranteedDays || []).includes(dayKey) ? 1 : 0;
         if (bG !== aG) return bG - aG;
-        if (isWeekendSlot2) {
+        if (isWS) {
+          const minWE = rules.shiftLead?.minWeekendShifts || 2;
+          const aWE = (a.role === "shift_lead" && weCount[a.id] < minWE) ? 1 : 0;
+          const bWE = (b.role === "shift_lead" && weCount[b.id] < minWE) ? 1 : 0;
+          if (bWE !== aWE) return bWE - aWE;
           const aWEc = [4,5,6].reduce((c, wi) => c + (sd[a.id].has(weekDates[wi]) ? 1 : 0), 0);
           const bWEc = [4,5,6].reduce((c, wi) => c + (sd[b.id].has(weekDates[wi]) ? 1 : 0), 0);
           if (aWEc !== bWEc) return aWEc - bWEc;
@@ -544,21 +541,18 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         const aBs = sc[a.id] < a._effMinShifts ? 1 : 0;
         const bBs = sc[b.id] < b._effMinShifts ? 1 : 0;
         if (bBs !== aBs) return bBs - aBs;
-        const aBh = sh[a.id] < a._effMinHours ? 1 : 0;
-        const bBh = sh[b.id] < b._effMinHours ? 1 : 0;
-        if (bBh !== aBh) return bBh - aBh;
         return sc[a.id] - sc[b.id];
       });
       if (cands.length > 0) {
         const ch = cands[0];
-        const idx = schedule[dateStr].findIndex(s => s.type === slot.type && s.order === slot.order && !s.empId);
-        if (idx >= 0) {
-          schedule[dateStr][idx] = { ...slot, empId: ch.id, empName: ch.name, empRole: ch.role };
-          sc[ch.id]++; sh[ch.id] += slot.hours; sd[ch.id].add(dateStr); usedToday2.add(ch.id);
-          if (isWE) weCount[ch.id]++;
-          if (isFri && tm(slot.start) >= 1020) weCount[ch.id]++;
-          if (tm(slot.start) >= 1020 || slot.isMC) { if (!nightMap[dateStr]) nightMap[dateStr] = new Set(); nightMap[dateStr].add(ch.id); }
-        }
+        schedule[dateStr].push({ ...s, empId: ch.id, empName: ch.name, empRole: ch.role });
+        sc[ch.id]++; sh[ch.id] += s.hours; sd[ch.id].add(dateStr); usedToday.add(ch.id);
+        if (s.isMC) mcCount[ch.id]++;
+        if (isWE) weCount[ch.id]++;
+        if (isFri && tm(s.start) >= 1020) weCount[ch.id]++;
+        if (tm(s.start) >= 1020 || s.isMC) { if (!nightMap[dateStr]) nightMap[dateStr] = new Set(); nightMap[dateStr].add(ch.id); }
+      } else {
+        schedule[dateStr].push({ ...s, empId: null, empName: "\u26a0 UNFILLED", empRole: null });
       }
     });
   });
