@@ -31,6 +31,7 @@ function isAvail(emp, dateStr, s, e, weeklyTimeOffs, availOverrides) {
   const overrideKey = dateStr + ":" + emp.id;
   const ov = availOverrides?.[overrideKey];
   // Check for explicit override: "all" = all day, "morning" = before 6pm, "evening" = 6pm+
+  if (emp.name === "Crystal Guel" && dateStr.endsWith("-22")) console.log("isAvail Crystal 3/22:", "key:", overrideKey, "ov:", ov, "s:", s, "tm(s):", tm(s), "overrideKeys:", Object.keys(availOverrides || {}));
   if (ov) {
     if (ov === "all") return true;
     if (ov === "morning" && tm(e) <= 1080) return true; // shift ends by 6pm
