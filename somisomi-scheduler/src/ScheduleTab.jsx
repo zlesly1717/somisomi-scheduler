@@ -684,12 +684,12 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
           if (sc[emp.id] >= emp.maxShifts || sh[emp.id] + slot.hours > emp.maxHours) return false;
           if (!weekendNightOK(emp, dateStr, slot.start)) return false;
           if (!friSatSunOK(emp, dateStr)) return false;
+          if (!lowShiftWeekendOK(emp, dateStr, slot.start)) return false;
+          if (!traineeOK(emp, dateStr)) return false;
           if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
           return true;
-          if (!lowShiftWeekendOK(emp, dateStr, slot.start)) return false;
         });
       }
-          if (!traineeOK(emp, dateStr)) return false;
       cands.sort((a, b) => {
         const aBh = sh[a.id] < (a.minHours || 0) ? 1 : 0; const bBh = sh[b.id] < (b.minHours || 0) ? 1 : 0;
         if (bBh !== aBh) return bBh - aBh;
