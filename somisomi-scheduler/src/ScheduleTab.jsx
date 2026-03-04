@@ -204,6 +204,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   // Helper: check if assigning emp to dateStr would violate no_fri_sat_sun
   const friSatSunOK = (emp, dateStr) => {
     if (!con("no_fri_sat_sun")) return true;
+    // If this employee has an explicit availability override for this date, allow it
+    const overrideKey = dateStr + ":" + emp.id;
+    if (availOverrides && availOverrides[overrideKey]) return true;
     const d2 = new Date(dateStr + "T12:00:00").getDay();
     const hasFri = sd[emp.id].has(weekDates[4]);
     const hasSat = sd[emp.id].has(weekDates[5]);
@@ -443,11 +446,38 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 
   // ASSIGN PHASE 2: Regular slots, following schedule order (busiest days first)
   // Sort regular slots: Sat first, then Fri, then Sun, then weekdays
-  const dayPriority = { 6: 0, 5: 1, 0: 2, 4: 3, 3: 4, 2: 5, 1: 6 }; // Sat, Fri, Sun, Thu, Wed, Tue, Mon
+  // Sort regular slots: Friday/Saturday evenings FIRST (hardest to fill, most important)
+  // Then Saturday/Sunday day slots, then remaining weekday slots
   regularSlots.sort((a, b) => {
-    const aP = dayPriority[new Date(a._dateStr + "T12:00:00").getDay()] ?? 9;
-    const bP = dayPriority[new Date(b._dateStr + "T12:00:00").getDay()] ?? 9;
+    const aDow = new Date(a._dateStr + "T12:00:00").getDay();
+    const bDow = new Date(b._dateStr + "T12:00:00").getDay();
+    const aIsEvening = tm(a.start) >= 1020;
+    const bIsEvening = tm(b.start) >= 1020;
+    
+    // Priority tiers:
+    // 0: Fri/Sat evening slots (most critical)
+    // 1: Sat/Sun day slots (weekend coverage)
+    // 2: Sun evening (MC helpers already in Phase 1)
+    // 3: Fri day slots
+    // 4: Thu slots
+    // 5: Mon-Wed evening
+    // 6: Mon-Wed day
+    const getPriority = (dow, isEve, slot) => {
+      if ((dow === 5 || dow === 6) && isEve) return 0; // Fri/Sat evening
+      if ((dow === 0 || dow === 6) && !isEve) return 1; // Sat/Sun day
+      if (dow === 0 && isEve) return 2; // Sun evening
+      if (dow === 5 && !isEve) return 3; // Fri day
+      if (dow === 4) return 4; // Thu
+      if (isEve) return 5; // Mon-Wed evening
+      return 6; // Mon-Wed day
+    };
+    const aP = getPriority(aDow, aIsEvening, a);
+    const bP = getPriority(bDow, bIsEvening, b);
     if (aP !== bP) return aP - bP;
+    // Within same priority, Fri before Sat for evenings (to fill Fri first)
+    if (aP === 0) {
+      if (aDow !== bDow) return aDow === 5 ? -1 : 1; // Fri evening before Sat evening
+    }
     return a.order - b.order;
   });
   regularSlots.forEach(assignSlot);
