@@ -576,8 +576,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       const dateStr = weekDates[di];
       if (sd[emp.id].has(dateStr)) continue;
       if (!friSatSunOK(emp, dateStr)) continue;
-      const unfilledIdx = schedule[dateStr].findIndex(slot => {
       if (!lowShiftWeekendOK(emp, dateStr, "18:00")) continue;
+      const unfilledIdx = schedule[dateStr].findIndex(slot => {
         if (slot.empId !== null) return false;
         if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
         if (!weekendNightOK(emp, dateStr, slot.start)) return false;
