@@ -229,6 +229,12 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     return !(weekdayAvail || friDayAvail);
   };
   // Schedule hardest days first: Thu MC, Sun MC, Sat, Fri, then weekdays
+  // Helper: max 1 trainee per day
+  const traineeOK = (emp, dateStr) => {
+    if (emp.role !== "trainee") return true;
+    if (!con("no_two_trainees")) return true;
+    return !schedule[dateStr].some(a => a.empId && active.find(e => e.id === a.empId)?.role === "trainee");
+  };
   const schedOrder = [3, 6, 4, 5, 0, 1, 2]; // Thu MC, Sun MC, Fri (evening SL), Sat, then weekdays
 
   schedOrder.forEach(dayIndex => {
@@ -385,6 +391,11 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
               cands = cands.filter(e => e.role !== "shift_lead");
             }
           }
+        }
+        // For regular evening slots: prefer non-SLs to avoid stacking all SLs on one night
+        if (slot.type === "evening") {
+          const eveRegs = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee");
+          if (eveRegs.length > 0) cands = eveRegs;
         }
         const nonTr = cands.filter(e => e.role !== "trainee");
         const trainees = cands.filter(e => e.role === "trainee");
@@ -554,6 +565,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
         if (!friSatSunOK(emp, dateStr)) return false;
         if (!lowShiftWeekendOK(emp, dateStr, slot.start)) return false;
+        if (!traineeOK(emp, dateStr)) return false;
         if (!weekendNightOK(emp, dateStr, slot.start)) return false;
         return true;
       }).sort((a, b) => {
@@ -578,6 +590,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (!friSatSunOK(emp, dateStr)) continue;
       if (!lowShiftWeekendOK(emp, dateStr, "18:00")) continue;
       const unfilledIdx = schedule[dateStr].findIndex(slot => {
+      if (!traineeOK(emp, dateStr)) continue;
         if (slot.empId !== null) return false;
         if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
         if (!weekendNightOK(emp, dateStr, slot.start)) return false;
@@ -659,6 +672,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (!lowShiftWeekendOK(emp, dateStr, slot.start)) return false;
         if (sc[emp.id] >= emp.maxShifts || sh[emp.id] + slot.hours > emp.maxHours) return false;
         if (slot.isMC && emp.role === "trainee") return false;
+        if (!traineeOK(emp, dateStr)) return false;
         if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
         return true;
       });
@@ -675,6 +689,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
           if (!lowShiftWeekendOK(emp, dateStr, slot.start)) return false;
         });
       }
+          if (!traineeOK(emp, dateStr)) return false;
       cands.sort((a, b) => {
         const aBh = sh[a.id] < (a.minHours || 0) ? 1 : 0; const bBh = sh[b.id] < (b.minHours || 0) ? 1 : 0;
         if (bBh !== aBh) return bBh - aBh;
