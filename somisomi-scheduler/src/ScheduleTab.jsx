@@ -1261,7 +1261,6 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
                   <button onClick={() => setAvailOverrides({})} style={{ marginLeft: "auto", padding: "3px 8px", borderRadius: 6, border: "1px solid #D1D5DB", background: "#fff", color: "#9CA3AF", cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: font }}>Clear all</button>
                 </div>
               )}
-              </div>
               {notes.length > 0 && (
                 <div style={{ marginTop: 8 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: "#9CA3AF", marginBottom: 4 }}>CHANGE LOG:</div>
