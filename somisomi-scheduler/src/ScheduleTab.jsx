@@ -311,7 +311,18 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         // On Mon-Fri day shifts, prefer regulars over SLs (don't stack 2 SLs on a non-busy day shift)
         if (!isWE && (slot.type === "day" || slot.type === "mid")) {
           const regs = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee");
-          if (regs.length > 0) cands = regs;
+          // Only use regulars if at least one is available; otherwise check if SL really needs this slot
+          if (regs.length > 0) {
+            cands = regs;
+          } else {
+            // Filter out SLs who already have enough shifts or are above effective min
+            const slsNeedingShifts = cands.filter(e => e.role === "shift_lead" && sc[e.id] < e._effMinShifts);
+            const slsAboveMin = cands.filter(e => e.role === "shift_lead" && sc[e.id] >= e._effMinShifts);
+            if (slsAboveMin.length > 0 && slsNeedingShifts.length === 0) {
+              // All SL candidates are above min - skip them, leave slot for later passes
+              cands = cands.filter(e => e.role !== "shift_lead");
+            }
+          }
         }
         const nonTr = cands.filter(e => e.role !== "trainee");
         const trainees = cands.filter(e => e.role === "trainee");
@@ -401,6 +412,13 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (sh[sl.id] + slot.hours > sl.maxHours) return false;
         if (!weekendNightOK(sl, dateStr, slot.start)) return false;
         if (!consecOK(sl, dayIndex)) return false;
+        // Avoid 2 SLs on weekday day shifts
+        const ddt2 = new Date(dateStr + "T12:00:00").getDay();
+        const isWeekday = ddt2 >= 1 && ddt2 <= 5;
+        if (isWeekday && (slot.type === "day" || slot.type === "mid") && tm(slot.start) < 1020) {
+          const dayHasSL = schedule[dateStr].some(s => s.empId && s.type === "day_lead" && active.find(e => e.id === s.empId)?.role === "shift_lead");
+          if (dayHasSL) return false;
+        }
         return true;
       });
       if (emptyIdx >= 0) {
@@ -417,6 +435,12 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (!isAvail(sl, dateStr, slot.start, slot.end, weeklyTimeOffs)) continue;
         if (!weekendNightOK(sl, dateStr, slot.start)) continue;
         if (sh[sl.id] + slot.hours > sl.maxHours) continue;
+        // Avoid 2 SLs on weekday day shifts
+        const ddt3 = new Date(dateStr + "T12:00:00").getDay();
+        if (ddt3 >= 1 && ddt3 <= 5 && (slot.type === "day" || slot.type === "mid") && tm(slot.start) < 1020) {
+          const dayHasSL = schedule[dateStr].some(s => s.empId && s.type === "day_lead" && active.find(e => e.id === s.empId)?.role === "shift_lead");
+          if (dayHasSL) continue;
+        }
         const holder = active.find(e => e.id === slot.empId);
         if (!holder || sc[holder.id] <= holder._effMinShifts) continue;
         // Swap SL in
