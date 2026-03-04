@@ -308,7 +308,6 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     const dayKey = slot._dayKey;
 
     let cands = active.filter(emp => {
-      if (emp.name === "Crystal Guel" && slot.isMC && dateStr.endsWith("-22")) console.log("CRYSTAL PRE:", slot.type, dateStr, slot.start, "avail:", isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides), "sc:", sc[emp.id]);
       if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
       if (!slCheck(slot, emp)) return false;
       if (con("no_doubles") && sd[emp.id].has(dateStr)) return false;
@@ -412,6 +411,10 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 
     // Sort candidates
     cands.sort((a, b) => {
+      // Priority -1: Employees with explicit availability override for this date (they NEED this slot)
+      const aOv = availOverrides?.[dateStr + ":" + a.id] ? 1 : 0;
+      const bOv = availOverrides?.[dateStr + ":" + b.id] ? 1 : 0;
+      if (bOv !== aOv) return bOv - aOv;
       const aG = (a.guaranteedDays || []).includes(dayKey) ? 1 : 0;
       const bG = (b.guaranteedDays || []).includes(dayKey) ? 1 : 0;
       if (bG !== aG) return bG - aG;
