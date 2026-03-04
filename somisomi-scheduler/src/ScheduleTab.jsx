@@ -308,22 +308,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     const dayKey = slot._dayKey;
 
     let cands = active.filter(emp => {
+      if (emp.name === "Crystal Guel" && slot.isMC && dateStr.endsWith("-22")) console.log("CRYSTAL PRE-CHECK:", slot.type, "dateStr:", dateStr, "start:", slot.start, "isAvail:", isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides), "sc:", sc[emp.id], "sd:", [...sd[emp.id]]);
       if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
-      // Debug Crystal Sunday MC
-      if (emp.name === "Crystal Guel" && dateStr.endsWith("-22") && slot.isMC) {
-        const checks = [
-          ["isAvail", isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)],
-          ["slCheck", slCheck(slot, emp)],
-          ["no_doubles", !(con("no_doubles") && sd[emp.id].has(dateStr))],
-          ["maxShifts", sc[emp.id] < emp.maxShifts],
-          ["maxHours", sh[emp.id] + slot.hours <= emp.maxHours],
-          ["no_mc_twice", !(con("no_mc_twice") && slot.isMC && mcCount[emp.id] >= 1)],
-          ["friSatSunOK", friSatSunOK(emp, dateStr)],
-          ["weekendNightOK", weekendNightOK(emp, dateStr, slot.start)],
-          ["consecOK", consecOK(emp, dayIndex)],
-          ["sc", sc[emp.id], "mc", mcCount[emp.id]]
-        ];
-        console.log("CRYSTAL MC DEBUG:", slot.type, checks.filter(c => c.length === 2 && !c[1]).map(c => c[0] + "=FAIL").join(", ") || "ALL PASS", JSON.stringify(checks));
       }
       if (!slCheck(slot, emp)) return false;
       if (con("no_doubles") && sd[emp.id].has(dateStr)) return false;
