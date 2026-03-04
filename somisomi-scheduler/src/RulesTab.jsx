@@ -171,6 +171,24 @@ export function RulesTab({ rules, setRules, employees }) {
                   onReorder={arr => update(r => { r.goodWeekendPeople = arr; })}
                   onAdd={name => update(r => { r.goodWeekendPeople = [...(r.goodWeekendPeople || []), name]; })}
                   onRemove={name => update(r => { r.goodWeekendPeople = r.goodWeekendPeople.filter(n => n !== name); })} />
+
+                <div style={{ marginTop: 20, padding: 14, background: "#FFFBEB", borderRadius: 10, border: "1px solid #FDE68A" }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "#92400E", marginBottom: 4 }}>{"\ud83c\udf66"} Swirlers</div>
+                  <div style={{ fontSize: 11, color: "#B45309", marginBottom: 8 }}>Employees who can operate the soft serve machine. Min {rules.swirl?.minPerShift || 2} per shift on Fri night - Sun.</div>
+                  <PriorityList title="Can Swirl" items={rules.swirl?.swirlers || allNames.filter(n => {
+                    const emp = employees.find(e => e.name === n);
+                    return emp && (emp.tags || []).includes("can_swirl");
+                  })} allNames={allNames}
+                    onReorder={arr => update(r => { if (!r.swirl) r.swirl = {}; r.swirl.swirlers = arr; })}
+                    onAdd={name => update(r => { if (!r.swirl) r.swirl = {}; if (!r.swirl.swirlers) r.swirl.swirlers = []; r.swirl.swirlers.push(name); })}
+                    onRemove={name => update(r => { if (r.swirl?.swirlers) r.swirl.swirlers = r.swirl.swirlers.filter(n => n !== name); })} />
+                  <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#92400E" }}>Min per shift:</span>
+                    <input type="number" min={1} max={5} value={rules.swirl?.minPerShift || 2}
+                      onChange={e => update(r => { if (!r.swirl) r.swirl = {}; r.swirl.minPerShift = parseInt(e.target.value) || 2; })}
+                      style={{ width: 50, padding: "4px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 12, fontFamily: "Inter,sans-serif" }} />
+                  </div>
+                </div>
               </div>
             )}
 

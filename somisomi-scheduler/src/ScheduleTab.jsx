@@ -235,6 +235,12 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     if (!con("no_two_trainees")) return true;
     return !schedule[dateStr].some(a => a.empId && active.find(e => e.id === a.empId)?.role === "trainee");
   };
+  // Helper: check if employee can swirl
+  const canSwirl = (emp) => {
+    const swirlList = rules.swirl?.swirlers || [];
+    if (swirlList.length > 0) return swirlList.includes(emp.name);
+    return (emp.tags || []).includes("can_swirl");
+  };
   const schedOrder = [3, 6, 5, 4, 0, 1, 2];
   const allSlots = []; // Collect all slots first, assign after
 
@@ -377,6 +383,27 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       const lowWH = cands.filter(e => e._effMinShifts <= 2 && [4,5,6].some(wi => sd[e.id].has(weekDates[wi])));
       const oth = cands.filter(e => !(e._effMinShifts <= 2 && [4,5,6].some(wi => sd[e.id].has(weekDates[wi]))));
       if (lowWH.length > 0 && oth.length > 0) cands = oth;
+    }
+
+    // Swirl priority: on Fri night - Sun, prefer swirlers if we don't have enough yet
+    const isWeekendPeriod = isWE || (isFri && tm(slot.start) >= 1020);
+    if (isWeekendPeriod && con("min_swirlers_weekend")) {
+      const minSwirl = rules.swirl?.minPerShift || 2;
+      // Count swirlers already assigned to this shift period on this day
+      const swirlersOnShift = schedule[dateStr].filter(a => {
+        if (!a.empId) return false;
+        // Same time period: both evening/MC or both day
+        const sameEvePeriod = tm(a.start) >= 1020 && tm(slot.start) >= 1020;
+        const sameDayPeriod = tm(a.start) < 1020 && tm(slot.start) < 1020;
+        if (!sameEvePeriod && !sameDayPeriod) return false;
+        const emp2 = active.find(e => e.id === a.empId);
+        return emp2 && canSwirl(emp2);
+      }).length;
+      if (swirlersOnShift < minSwirl) {
+        // Need more swirlers — strongly prefer them
+        const swirlers = cands.filter(e => canSwirl(e));
+        if (swirlers.length > 0) cands = swirlers;
+      }
     }
 
     // Sort candidates
@@ -652,6 +679,42 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   });
 
   const warnings2 = [];
+
+  // SWIRL CHECK: Verify minimum swirlers per weekend shift period
+  if (con("min_swirlers_weekend")) {
+    const minSwirl = rules.swirl?.minPerShift || 2;
+    weekDates.forEach(d => {
+      const dt = new Date(d + "T12:00:00");
+      const dow = dt.getDay();
+      const isWEday = dow === 0 || dow === 6;
+      const isFriday = dow === 5;
+      if (!isWEday && !isFriday) return;
+      
+      // Check evening/night period (6pm+)
+      const eveningSlots = schedule[d].filter(s => s.empId && tm(s.start) >= 1020);
+      const eveningSwirlers = eveningSlots.filter(s => {
+        const emp = active.find(e => e.id === s.empId);
+        return emp && canSwirl(emp);
+      }).length;
+      if (isFriday && eveningSwirlers < minSwirl) {
+        warnings2.push({ date: d, msg: "\u26a0 Friday night has " + eveningSwirlers + " swirler(s) (minimum: " + minSwirl + ")" });
+      } else if (isWEday && eveningSwirlers < minSwirl) {
+        warnings2.push({ date: d, msg: "\u26a0 " + (dow === 6 ? "Saturday" : "Sunday") + " night has " + eveningSwirlers + " swirler(s) (minimum: " + minSwirl + ")" });
+      }
+      
+      // Check day period for Sat/Sun (before 6pm)
+      if (isWEday) {
+        const daySlots = schedule[d].filter(s => s.empId && tm(s.start) < 1020);
+        const daySwirlers = daySlots.filter(s => {
+          const emp = active.find(e => e.id === s.empId);
+          return emp && canSwirl(emp);
+        }).length;
+        if (daySwirlers < minSwirl) {
+          warnings2.push({ date: d, msg: "\u26a0 " + (dow === 6 ? "Saturday" : "Sunday") + " day has " + daySwirlers + " swirler(s) (minimum: " + minSwirl + ")" });
+        }
+      }
+    });
+  }
   weekDates.forEach(d => { schedule[d].forEach(slot => { if (!slot.empId) warnings2.push({ date: d, msg: "No available employee for " + slot.label }); }); });
   active.forEach(e => {
     if (sc[e.id] < e._effMinShifts) warnings2.push({ date: "", msg: e.name + " has " + sc[e.id] + " shifts (minimum: " + e._effMinShifts + ")" });

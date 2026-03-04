@@ -7,6 +7,7 @@ export const ROLE_CONFIG = {
   trainee:{label:"Trainee",color:"#6D28D9",bg:"#EDE9FE",accent:"#8B5CF6"},
 };
 export const TAG_OPTIONS = [
+  {id:"can_swirl",label:"Can Swirl \ud83c\udf66"},
   {id:"can_mc",label:"Can MC"},
   {id:"good_weekend",label:"Good Weekend"},
   {id:"mc_rotation_sun",label:"MC Sun"},

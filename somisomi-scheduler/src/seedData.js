@@ -4,14 +4,14 @@ export const SEED_EMPLOYEES = [
   {
     id:"sl-1",name:"Chan In",role:"shift_lead",status:"active",
     maxShifts:4,minShifts:4,maxHours:24,minHours:18,
-    tags:["can_mc","good_weekend","mc_rotation_sun","day_lead_eligible"],
+    tags:["can_swirl","can_mc","good_weekend","mc_rotation_sun","day_lead_eligible"],
     unavailability:newUnavail(),
     notes:"Fully available all week.",traineeCumulative:0,guaranteedDays:[],
   },
   {
     id:"sl-2",name:"Zoe Rains",role:"shift_lead",status:"active",
     maxShifts:4,minShifts:4,maxHours:24,minHours:18,
-    tags:["can_mc","mc_rotation_thu","day_lead_eligible"],
+    tags:["can_swirl","can_mc","mc_rotation_thu","day_lead_eligible"],
     unavailability:{
       mon:{allDay:false,start:"09:00",end:"15:00"},
       tue:{allDay:true,start:"",end:""},
@@ -26,7 +26,7 @@ export const SEED_EMPLOYEES = [
   {
     id:"sl-3",name:"Kaitlyn Trevino",role:"shift_lead",status:"active",
     maxShifts:4,minShifts:4,maxHours:24,minHours:18,
-    tags:["can_mc","good_weekend","mc_rotation_sun","day_lead_eligible"],
+    tags:["can_swirl","can_mc","good_weekend","mc_rotation_sun","day_lead_eligible"],
     unavailability:{
       ...newUnavail(),
       wed:{allDay:false,start:"19:00",end:"22:30"},
@@ -36,14 +36,14 @@ export const SEED_EMPLOYEES = [
   {
     id:"sl-4",name:"Spencer Losch",role:"shift_lead",status:"active",
     maxShifts:4,minShifts:4,maxHours:24,minHours:18,
-    tags:["can_mc","good_weekend","mc_rotation_sun","day_lead_eligible"],
+    tags:["can_swirl","can_mc","good_weekend","mc_rotation_sun","day_lead_eligible"],
     unavailability:newUnavail(),
     notes:"Fully available all week.",traineeCumulative:0,guaranteedDays:[],
   },
   {
     id:"sl-5",name:"Crystal Guel",role:"shift_lead",status:"active",
     maxShifts:4,minShifts:4,maxHours:24,minHours:18,
-    tags:["can_mc","mc_rotation_thu","day_lead_eligible"],
+    tags:["can_swirl","can_mc","mc_rotation_thu","day_lead_eligible"],
     unavailability:{
       mon:{allDay:false,start:"",end:""},
       tue:{allDay:false,start:"09:00",end:"12:30"},
@@ -58,7 +58,7 @@ export const SEED_EMPLOYEES = [
   {
     id:"reg-1",name:"Kennedy Bean",role:"regular",status:"active",
     maxShifts:4,minShifts:3,maxHours:20,minHours:12,
-    tags:["good_weekend","can_mc"],
+    tags:["can_swirl","good_weekend","can_mc"],
     unavailability:{
       mon:{allDay:false,start:"09:00",end:"15:00"},
       tue:{allDay:false,start:"",end:""},
@@ -73,7 +73,7 @@ export const SEED_EMPLOYEES = [
   {
     id:"reg-2",name:"Sam Castillo",role:"regular",status:"active",
     maxShifts:4,minShifts:3,maxHours:20,minHours:12,
-    tags:["fourth_shift_priority","can_mc"],
+    tags:["can_swirl","fourth_shift_priority","can_mc"],
     unavailability:{
       mon:{allDay:true,start:"",end:""},
       tue:{allDay:false,start:"",end:""},
@@ -88,7 +88,7 @@ export const SEED_EMPLOYEES = [
   {
     id:"reg-3",name:"Lena Maslak",role:"regular",status:"active",
     maxShifts:4,minShifts:3,maxHours:20,minHours:12,
-    tags:["fourth_shift_priority","second_day_priority","can_mc"],
+    tags:["can_swirl","fourth_shift_priority","second_day_priority","can_mc"],
     unavailability:{
       mon:{allDay:false,start:"11:00",end:"13:00"},
       tue:{allDay:false,start:"08:00",end:"12:00"},
@@ -103,7 +103,7 @@ export const SEED_EMPLOYEES = [
   {
     id:"reg-4",name:"Gwen Ursua",role:"regular",status:"active",
     maxShifts:4,minShifts:3,maxHours:20,minHours:12,
-    tags:["good_weekend","can_mc"],
+    tags:["can_swirl","good_weekend","can_mc"],
     unavailability:{
       ...newUnavail(),
       sun:{allDay:false,start:"09:00",end:"18:00"},
@@ -113,7 +113,7 @@ export const SEED_EMPLOYEES = [
   {
     id:"reg-5",name:"Susan Thai",role:"regular",status:"active",
     maxShifts:4,minShifts:3,maxHours:20,minHours:12,
-    tags:["fourth_shift_priority","can_mc"],
+    tags:["can_swirl","fourth_shift_priority","can_mc"],
     unavailability:{
       mon:{allDay:false,start:"",end:""},
       tue:{allDay:false,start:"08:00",end:"15:30"},
@@ -128,7 +128,7 @@ export const SEED_EMPLOYEES = [
   {
     id:"reg-6",name:"Abrar Uddin",role:"regular",status:"active",
     maxShifts:4,minShifts:3,maxHours:20,minHours:12,
-    tags:["fourth_shift_priority","second_day_priority","good_weekend","no_weekday_nights"],
+    tags:["can_swirl","fourth_shift_priority","second_day_priority","good_weekend","no_weekday_nights"],
     unavailability:{
       mon:{allDay:false,start:"",end:""},
       tue:{allDay:true,start:"",end:""},
@@ -200,6 +200,7 @@ export const SEED_RULES = {
     {id:"no_trainees_weekday_day",label:"No trainees on weekday day shifts",desc:"Trainees cannot work Mon-Fri day shifts (Day Lead or 2nd Day)",enabled:true},
     {id:"no_fri_sat_sun",label:"No Fri + Sat + Sun same person",desc:"Cannot schedule same employee for all 3 weekend days (Friday, Saturday, Sunday). Max 2 of 3.",enabled:true},
     {id:"max_consecutive_3",label:"Max 3 consecutive work days",desc:"Avoid scheduling an employee more than 3 days in a row to prevent burnout.",enabled:true},
+    {id:"min_swirlers_weekend",label:"Min 2 swirlers per weekend shift",desc:"Friday night through Sunday must have at least 2 employees who can swirl (make soft serve) per shift period.",enabled:true},
   ],
   shiftLead: { shiftsPerWeek:{min:4,max:4}, minWeekendShifts:2, mcPerWeek:1, alternateDayLeads:true },
   regular: { shiftsPerWeek:{min:3,max:4} },
@@ -231,6 +232,11 @@ export const SEED_RULES = {
   fourthShiftPriority:["Sam Castillo","Lena Maslak","Susan Thai","Abrar Uddin","Christina Mullins","Trainees"],
   secondDayPriority:["Lena Maslak","Abrar Uddin"],
   goodWeekendPeople:["Kennedy Bean","Gwen Ursua","Abrar Uddin","Grae McKown"],
+  swirl:{
+    minPerShift: 2,
+    weekendOnly: true,
+    swirlers: ["Chan In","Zoe Rains","Kaitlyn Trevino","Spencer Losch","Crystal Guel","Kennedy Bean","Sam Castillo","Lena Maslak","Gwen Ursua","Susan Thai","Abrar Uddin"],
+  },
   fixedRules: [
     {id:"fr-1",empName:"Crystal Guel",rule:"Always MCs Thursday",desc:"Crystal is off Sundays, so she must MC on Thursday every week"},
     {id:"fr-2",empName:"Zoe Rains",rule:"Always MCs Thursday",desc:"Zoe is paired with Crystal for Thursday MC"},

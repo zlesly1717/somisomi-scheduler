@@ -86,6 +86,8 @@ export default function App() {
           r.constraints.push(sc);
         }
       });
+      // Migrate: add swirl config if missing
+      if (!r.swirl) r.swirl = SEED_RULES.swirl || { minPerShift: 2, weekendOnly: true, swirlers: [] };
       setEmployees(emps);
       setRules(r);
       setSchoolDates(data.schoolDates || SEED_SCHOOL_CALENDAR);
