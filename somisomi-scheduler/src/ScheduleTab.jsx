@@ -211,8 +211,25 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     const wouldHave = (d2 === 5 ? 1 : (hasFri ? 1 : 0)) + (d2 === 6 ? 1 : (hasSat ? 1 : 0)) + (d2 === 0 ? 1 : (hasSun ? 1 : 0));
     return wouldHave < 3;
   };
+
+  // Helper: block low-shift employees from 2nd weekend shift if they have weekday availability
+  const lowShiftWeekendOK = (emp, dateStr, slotStart) => {
+    if (emp._effMinShifts > 2) return true;
+    const d2 = new Date(dateStr + "T12:00:00").getDay();
+    const isWEslot = d2 === 0 || d2 === 6 || (d2 === 5 && tm(slotStart) >= 1020);
+    if (!isWEslot) return true;
+    const hasWeekendShift = [4,5,6].some(wi => sd[emp.id].has(weekDates[wi]));
+    if (!hasWeekendShift) return true;
+    // Check if they have any weekday availability remaining
+    const weekdayAvail = [0,1,2,3].some(wi => {
+      if (sd[emp.id].has(weekDates[wi])) return false;
+      return isAvail(emp, weekDates[wi], "18:00", "22:30", weeklyTimeOffs, availOverrides);
+    });
+    const friDayAvail = !sd[emp.id].has(weekDates[4]) && isAvail(emp, weekDates[4], "12:00", "18:00", weeklyTimeOffs, availOverrides);
+    return !(weekdayAvail || friDayAvail);
+  };
   // Schedule hardest days first: Thu MC, Sun MC, Sat, Fri, then weekdays
-  const schedOrder = [3, 6, 5, 4, 0, 1, 2];
+  const schedOrder = [3, 6, 4, 5, 0, 1, 2]; // Thu MC, Sun MC, Fri (evening SL), Sat, then weekdays
 
   schedOrder.forEach(dayIndex => {
     const dateStr = weekDates[dayIndex];
@@ -303,6 +320,20 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
           if (sd[emp.id].has(weekDates[prevIdx2])) consec++; else break;
         }
         if (consec > 3) return false;
+      }
+      // Low-shift employees (<=2 min): block 2nd weekend shift if they have weekday availability
+      if (emp._effMinShifts <= 2 && (isWE || (isFri && tm(slot.start) >= 1020))) {
+        const hasWeekendShift = [4,5,6].some(wi => sd[emp.id].has(weekDates[wi]));
+        if (hasWeekendShift) {
+          // Check if they have any weekday availability remaining
+          const weekdayAvail = [0,1,2,3].some(wi => { // Mon-Thu indices
+            if (sd[emp.id].has(weekDates[wi])) return false;
+            return isAvail(emp, weekDates[wi], "18:00", "22:30", weeklyTimeOffs, availOverrides);
+          });
+          // Also check Friday daytime
+          const friDayAvail = !sd[emp.id].has(weekDates[4]) && isAvail(emp, weekDates[4], "12:00", "18:00", weeklyTimeOffs, availOverrides);
+          if (weekdayAvail || friDayAvail) return false; // block - they can work a weekday instead
+        }
       }
       if (usedToday.has(emp.id)) return false;
       return true;
@@ -522,6 +553,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (slot.isMC && emp.role === "trainee") return false;
         if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
         if (!friSatSunOK(emp, dateStr)) return false;
+        if (!lowShiftWeekendOK(emp, dateStr, slot.start)) return false;
         if (!weekendNightOK(emp, dateStr, slot.start)) return false;
         return true;
       }).sort((a, b) => {
@@ -545,6 +577,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (sd[emp.id].has(dateStr)) continue;
       if (!friSatSunOK(emp, dateStr)) continue;
       const unfilledIdx = schedule[dateStr].findIndex(slot => {
+      if (!lowShiftWeekendOK(emp, dateStr, "18:00")) continue;
         if (slot.empId !== null) return false;
         if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
         if (!weekendNightOK(emp, dateStr, slot.start)) return false;
@@ -623,6 +656,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (!weekendNightOK(emp, dateStr, slot.start)) return false;
         if (!friSatSunOK(emp, dateStr)) return false;
         if (!slCheck(slot, emp)) return false;
+        if (!lowShiftWeekendOK(emp, dateStr, slot.start)) return false;
         if (sc[emp.id] >= emp.maxShifts || sh[emp.id] + slot.hours > emp.maxHours) return false;
         if (slot.isMC && emp.role === "trainee") return false;
         if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
@@ -638,6 +672,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
           if (!friSatSunOK(emp, dateStr)) return false;
           if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
           return true;
+          if (!lowShiftWeekendOK(emp, dateStr, slot.start)) return false;
         });
       }
       cands.sort((a, b) => {
