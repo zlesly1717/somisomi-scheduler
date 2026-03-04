@@ -301,7 +301,6 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 
   const assignSlot = (slot) => {
     const dateStr = slot._dateStr;
-    if (slot.isMC && slot.slOnly) console.log("PHASE1 MC SL:", slot.type, slot._dateStr, "cands after filter:", "...");
     const dayIndex = slot._dayIndex;
     const isWE = slot._isWE;
     const isFri = slot._isFri;
@@ -573,6 +572,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (!lowShiftWeekendOK(emp, dateStr, slot.start)) return false;
         if (!traineeOK(emp, dateStr)) return false;
         if (!weekendNightOK(emp, dateStr, slot.start)) return false;
+        if (con("no_trainees_weekday_day") && emp.role === "trainee" && !slot._isWE && (slot.type === "day_lead" || slot.type === "day")) return false;
         return true;
       }).sort((a, b) => {
         const aBs = sc[a.id] < a._effMinShifts ? 1 : 0; const bBs = sc[b.id] < b._effMinShifts ? 1 : 0;
@@ -603,6 +603,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (!slCheck(slot, emp)) return false;
         if (slot.isMC && emp.role === "trainee") return false;
         if (sh[emp.id] + slot.hours > emp.maxHours) return false;
+        { const d3 = new Date(dateStr+"T12:00:00").getDay(); if (con("no_trainees_weekday_day") && emp.role === "trainee" && d3 >= 1 && d3 <= 5 && (slot.type === "day_lead" || slot.type === "day")) return false; }
         return true;
       });
       if (unfilledIdx >= 0) {
@@ -680,6 +681,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (slot.isMC && emp.role === "trainee") return false;
         if (!traineeOK(emp, dateStr)) return false;
         if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
+        { const d5 = new Date(dateStr+"T12:00:00").getDay(); if (con("no_trainees_weekday_day") && emp.role === "trainee" && d5 >= 1 && d5 <= 5 && (slot.type === "day_lead" || slot.type === "day")) return false; }
         return true;
       });
       // Day Lead fallback: if still empty, allow any non-trainee
