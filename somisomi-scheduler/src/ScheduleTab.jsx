@@ -29,9 +29,13 @@ function tm(t) { if (!t) return 0; const [h, m] = t.split(":"); return +h * 60 +
 
 function isAvail(emp, dateStr, s, e, weeklyTimeOffs, availOverrides) {
   const overrideKey = dateStr + ":" + emp.id;
-  // Check for explicit override first
-  if (availOverrides && availOverrides[overrideKey] === true) return true; // forced available
-  if (availOverrides && availOverrides[overrideKey] === false) return false; // forced unavailable
+  const ov = availOverrides?.[overrideKey];
+  // Check for explicit override: "all" = all day, "morning" = before 6pm, "evening" = 6pm+
+  if (ov) {
+    if (ov === "all") return true;
+    if (ov === "morning" && tm(e) <= 1080) return true; // shift ends by 6pm
+    if (ov === "evening" && tm(s) >= 1080) return true; // shift starts 6pm or later
+  }
 
   const d = new Date(dateStr + "T12:00:00");
   const dk = DAYS[d.getDay() === 0 ? 6 : d.getDay() - 1];
@@ -145,10 +149,10 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     let offDays = 0;
     weekDates.forEach(d => {
       const overrideKey = d + ":" + e.id;
-      // If explicitly overridden to available, don't count as off
-      if (availOverrides && availOverrides[overrideKey] === true) return;
-      // If explicitly overridden to unavailable, count as off
-      if (availOverrides && availOverrides[overrideKey] === false) { offDays++; return; }
+      // If explicitly overridden to available all day, don't count as off
+      if (availOverrides && availOverrides[overrideKey] === "all") return;
+      // Partial overrides (morning/evening) still count as half-off — don't count as full off day
+      if (availOverrides && (availOverrides[overrideKey] === "morning" || availOverrides[overrideKey] === "evening")) return;
       const hasTO = weeklyTimeOffs.some(t => t.empId === e.id && t.date === d && t.allDay);
       const dow = new Date(d + "T12:00:00").getDay();
       const dayKeys = ["sun","mon","tue","wed","thu","fri","sat"];
@@ -688,8 +692,9 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
   const [notes, setNotes] = useState([]);
   const [toText, setToText] = useState("");
   const [weeklyTOs, setWeeklyTOs] = useState([]);
-  const [availOverrides, setAvailOverrides] = useState({}); // { "2026-03-19:sl-5": true/false }
-  const [dragSlot, setDragSlot] = useState(null); // { date, type, order, empId, empName }
+  const [availOverrides, setAvailOverrides] = useState({}); // { "2026-03-19:sl-5": "all"|"morning"|"evening" }
+  const [dragSlot, setDragSlot] = useState(null);
+  const [overridePopup, setOverridePopup] = useState(null); // { date, empId, x, y }
   const [step, setStep] = useState("timeoff");
   const [viewMode, setViewMode] = useState("shift");
   const [selected, setSelected] = useState(null);
@@ -776,33 +781,45 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
     }
   };
   const handleReject = () => {
-    if (!prompt.trim()) return;
-    setNotes(prev => [...prev, prompt.trim()]);
-    // Try to parse the prompt for time-off instructions and add them
-    const parsed = parseTimeOffs(prompt, employees.filter(e => e.status === "active"), weekDates);
-    if (parsed.length > 0) {
-      setWeeklyTOs(prev => {
-        const combined = [...prev];
-        parsed.forEach(p => {
-          // Don't add duplicates
-          if (!combined.some(c => c.empId === p.empId && c.date === p.date && c.allDay === p.allDay)) {
-            combined.push(p);
-          }
+    const hasOverrides = Object.keys(availOverrides).length > 0;
+    if (!prompt.trim() && !hasOverrides) return;
+    if (prompt.trim()) {
+      setNotes(prev => [...prev, prompt.trim()]);
+      // Try to parse the prompt for time-off instructions and add them
+      const parsed = parseTimeOffs(prompt, employees.filter(e => e.status === "active"), weekDates);
+      if (parsed.length > 0) {
+        setWeeklyTOs(prev => {
+          const combined = [...prev];
+          parsed.forEach(p => {
+            if (!combined.some(c => c.empId === p.empId && c.date === p.date && c.allDay === p.allDay)) {
+              combined.push(p);
+            }
+          });
+          return combined;
         });
-        return combined;
-      });
-    }
-    setPrompt("");
-    // Regenerate with updated time-offs (use timeout to let state update)
-    setTimeout(() => {
+      }
+      setPrompt("");
+      setTimeout(() => {
+        setGenerating(true); setStep("result");
+        const ds = dayStaffing || initDayStaffing(weekDates);
+        setTimeout(() => {
+          const currentTOs = [...(timeOffs || []), ...weeklyTOs, ...parsed];
+          const r = genSchedule(weekDates, employees, rules, schoolDates, currentTOs, ds, availOverrides);
+          setDraft(r); setGenerating(false);
+        }, 200);
+      }, 50);
+    } else {
+      // No text prompt but has overrides — just regenerate with current state
+      setNotes(prev => [...prev, "Regenerated with " + Object.keys(availOverrides).length + " availability override(s)"]);
       setGenerating(true); setStep("result");
       const ds = dayStaffing || initDayStaffing(weekDates);
       setTimeout(() => {
-        const currentTOs = [...(timeOffs || []), ...weeklyTOs, ...parsed];
-        const r = genSchedule(weekDates, employees, rules, schoolDates, currentTOs, ds, availOverrides);
+        const allTOs = [...(timeOffs || []), ...weeklyTOs];
+        const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs, ds, availOverrides);
         setDraft(r); setGenerating(false);
       }, 200);
-    }, 50);
+    }
+  };
   };
   const handleUnsave = () => { setSavedSchedules(prev => { const n = { ...prev }; delete n[weekKey]; return n; }); setStep("timeoff"); };
   const removeTo = (idx) => setWeeklyTOs(prev => prev.filter((_, i) => i !== idx));
@@ -1099,52 +1116,81 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
                           const hasTO = weekTO.length > 0;
                           const hasUnavail = u.allDay || (u.start && u.end);
                           const showUnavail = hasUnavail && shifts.length === 0;
-                          return (<td key={d} style={{ padding: "6px 4px", verticalAlign: "top", minHeight: 60 }}>
+                          return (<td key={d}
+                            onDragOver={!isSaved && draft ? (ev) => { ev.preventDefault(); ev.dataTransfer.dropEffect = "move"; } : undefined}
+                            onDrop={!isSaved && draft && dragSlot ? (ev) => {
+                              ev.preventDefault();
+                              // Find the first shift for this employee on this day to swap with
+                              const targetShifts = (result.schedule[d] || []).filter(a => a.empId === emp.id);
+                              if (targetShifts.length === 0) { setDragSlot(null); return; }
+                              const target = targetShifts[0];
+                              if (dragSlot.date === d && dragSlot.type === target.type && dragSlot.order === target.order) { setDragSlot(null); return; }
+                              const newSchedule = {};
+                              Object.keys(draft.schedule).forEach(dd => { newSchedule[dd] = [...draft.schedule[dd]]; });
+                              const fromIdx = newSchedule[dragSlot.date].findIndex(a => a.type === dragSlot.type && a.order === dragSlot.order);
+                              const toIdx = newSchedule[d].findIndex(a => a.type === target.type && a.order === target.order);
+                              if (fromIdx >= 0 && toIdx >= 0) {
+                                const fromSlot = newSchedule[dragSlot.date][fromIdx];
+                                const toSlot = newSchedule[d][toIdx];
+                                newSchedule[dragSlot.date][fromIdx] = { ...fromSlot, empId: toSlot.empId, empName: toSlot.empName, empRole: toSlot.empRole };
+                                newSchedule[d][toIdx] = { ...toSlot, empId: fromSlot.empId, empName: fromSlot.empName, empRole: fromSlot.empRole };
+                                const newSc = {}, newSh = {};
+                                employees.filter(e2 => e2.status === "active").forEach(e2 => { newSc[e2.id] = 0; newSh[e2.id] = 0; });
+                                Object.values(newSchedule).forEach(daySlots => { daySlots.forEach(slot => { if (slot.empId) { newSc[slot.empId] = (newSc[slot.empId] || 0) + 1; newSh[slot.empId] = (newSh[slot.empId] || 0) + slot.hours; } }); });
+                                setDraft({ ...draft, schedule: newSchedule, empShiftCount: newSc, empHours: newSh });
+                              }
+                              setDragSlot(null);
+                            } : undefined}
+                            style={{ padding: "6px 4px", verticalAlign: "top", minHeight: 60, background: dragSlot ? "#FEFCE8" : undefined }}>
                             {hasTO && weekTO.map((to, ti) => (
                               <div key={"to-" + ti} style={{ padding: "6px 8px", borderRadius: 6, marginBottom: 3, background: "#F3F4F6", border: "1px solid #D1D5DB" }}>
                                 <div style={{ fontSize: 10, color: "#6B7280", fontWeight: 600 }}>{"\u23f0"} Time-off</div>
                                 <div style={{ fontSize: 9, color: "#9CA3AF" }}>{to.allDay ? "All Day" : fmtTime(to.start) + "\u2013" + fmtTime(to.end)}</div>
                               </div>
                             ))}
-                            {showUnavail && !hasTO && (
-                              <div onClick={() => {
-                                if (!isSaved) {
-                                  const key = d + ":" + emp.id;
-                                  setAvailOverrides(prev => {
-                                    const n = { ...prev };
-                                    if (n[key] === true) delete n[key]; else n[key] = true;
-                                    return n;
-                                  });
-                                }
-                              }} style={{ padding: "6px 8px", borderRadius: 6, marginBottom: 3, background: availOverrides[d + ":" + emp.id] === true ? "#F0FDF4" : "#F9FAFB", border: availOverrides[d + ":" + emp.id] === true ? "2px solid #22C55E" : "1px dashed #D1D5DB", cursor: isSaved ? "default" : "pointer" }}>
-                                {availOverrides[d + ":" + emp.id] === true ? (
-                                  <>
-                                    <div style={{ fontSize: 10, color: "#22C55E", fontWeight: 700 }}>{"\u2713"} Available (override)</div>
-                                    <div style={{ fontSize: 9, color: "#6B7280" }}>Click to undo</div>
-                                  </>
-                                ) : (
-                                  <>
-                                    <div style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 600 }}>Unavailable</div>
-                                    <div style={{ fontSize: 9, color: "#D1D5DB" }}>{u.allDay ? "All Day" : fmtTime(u.start) + "\u2013" + fmtTime(u.end)}</div>
-                                    {!isSaved && <div style={{ fontSize: 8, color: "#9CA3AF", marginTop: 2 }}>Click to override</div>}
-                                  </>
-                                )}
-                              </div>
-                            )}
+                            {showUnavail && !hasTO && (() => {
+                              const ovKey = d + ":" + emp.id;
+                              const ov = availOverrides[ovKey];
+                              const ovLabels = { all: "All Day", morning: "Morning (until 6pm)", evening: "Evening (6pm+)" };
+                              return (
+                                <div style={{ position: "relative" }}>
+                                  <div onClick={(ev) => {
+                                    if (isSaved) return;
+                                    if (ov) { setAvailOverrides(prev => { const n = { ...prev }; delete n[ovKey]; return n; }); }
+                                    else { setOverridePopup({ date: d, empId: emp.id, x: ev.clientX, y: ev.clientY }); }
+                                  }} style={{ padding: "6px 8px", borderRadius: 6, marginBottom: 3, background: ov ? "#F0FDF4" : "#F9FAFB", border: ov ? "2px solid #22C55E" : "1px dashed #D1D5DB", cursor: isSaved ? "default" : "pointer" }}>
+                                    {ov ? (
+                                      <>
+                                        <div style={{ fontSize: 10, color: "#22C55E", fontWeight: 700 }}>{"\u2713"} Override: {ovLabels[ov]}</div>
+                                        <div style={{ fontSize: 8, color: "#6B7280" }}>Click to remove</div>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <div style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 600 }}>Unavailable</div>
+                                        <div style={{ fontSize: 9, color: "#D1D5DB" }}>{u.allDay ? "All Day" : fmtTime(u.start) + "\u2013" + fmtTime(u.end)}</div>
+                                        {!isSaved && <div style={{ fontSize: 8, color: "#9CA3AF", marginTop: 2 }}>Click to override</div>}
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })()}
                             {shifts.map((s, si2) => {
                               let sColors = shiftColors[s.type] || { bg: "#6B7280", text: "#fff", label: s.label };
                               if (isWE && (s.type === "day_lead" || s.type === "day")) sColors = { ...sColors, ...weekendDayColor, label: s.type === "day_lead" ? "Shift Lead" : "Weekend Day" };
                               if (s.type === "day_lead" && !isWE) sColors = { ...sColors, label: "Day Shift Lead" };
                               const canClick = !isSaved && draft;
                               const isDragging = dragSlot && dragSlot.date === d && dragSlot.type === s.type && dragSlot.order === s.order;
+                              const isDropTarget = dragSlot && !(dragSlot.date === d && dragSlot.type === s.type && dragSlot.order === s.order);
                               return (
                                 <div key={si2}
-                                  draggable={canClick && s.empId}
-                                  onDragStart={canClick ? (ev) => { ev.dataTransfer.effectAllowed = "move"; setDragSlot({ date: d, type: s.type, order: s.order, empId: s.empId, empName: s.empName }); } : undefined}
+                                  draggable={!!(canClick && s.empId)}
+                                  onDragStart={canClick && s.empId ? (ev) => { ev.dataTransfer.setData("text/plain", ""); ev.dataTransfer.effectAllowed = "move"; setDragSlot({ date: d, type: s.type, order: s.order, empId: s.empId, empName: s.empName }); } : undefined}
                                   onDragEnd={() => setDragSlot(null)}
-                                  onDragOver={canClick ? (ev) => { ev.preventDefault(); ev.dataTransfer.dropEffect = "move"; } : undefined}
+                                  onDragOver={(ev) => { ev.preventDefault(); ev.dataTransfer.dropEffect = "move"; }}
                                   onDrop={canClick ? (ev) => {
                                     ev.preventDefault();
+                                    ev.stopPropagation();
                                     if (!dragSlot || (dragSlot.date === d && dragSlot.type === s.type && dragSlot.order === s.order)) return;
                                     const newSchedule = {};
                                     Object.keys(draft.schedule).forEach(dd => { newSchedule[dd] = [...draft.schedule[dd]]; });
@@ -1156,14 +1202,14 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
                                       newSchedule[dragSlot.date][fromIdx] = { ...fromSlot, empId: toSlot.empId, empName: toSlot.empName, empRole: toSlot.empRole };
                                       newSchedule[d][toIdx] = { ...toSlot, empId: fromSlot.empId, empName: fromSlot.empName, empRole: fromSlot.empRole };
                                       const newSc = {}, newSh = {};
-                                      employees.filter(e => e.status === "active").forEach(e => { newSc[e.id] = 0; newSh[e.id] = 0; });
+                                      employees.filter(e2 => e2.status === "active").forEach(e2 => { newSc[e2.id] = 0; newSh[e2.id] = 0; });
                                       Object.values(newSchedule).forEach(daySlots => { daySlots.forEach(slot => { if (slot.empId) { newSc[slot.empId] = (newSc[slot.empId] || 0) + 1; newSh[slot.empId] = (newSh[slot.empId] || 0) + slot.hours; } }); });
                                       setDraft({ ...draft, schedule: newSchedule, empShiftCount: newSc, empHours: newSh });
                                     }
                                     setDragSlot(null);
                                   } : undefined}
                                   onClick={canClick ? () => setEditingShift({ date: d, type: s.type, order: s.order, slot: s }) : undefined}
-                                  style={{ padding: "7px 8px", borderRadius: 6, marginBottom: 3, background: sColors.bg, color: sColors.text, minHeight: 36, cursor: canClick ? "grab" : "default", opacity: isDragging ? 0.4 : 1, transition: "opacity 0.15s" }}>
+                                  style={{ padding: "7px 8px", borderRadius: 6, marginBottom: 3, background: isDropTarget ? "#FEF9C3" : sColors.bg, color: isDropTarget ? "#92400E" : sColors.text, minHeight: 36, cursor: canClick && s.empId ? "grab" : "pointer", opacity: isDragging ? 0.4 : 1, transition: "all 0.15s", border: isDropTarget ? "2px dashed #F59E0B" : "2px solid transparent" }}>
                                   <div style={{ fontSize: 11, fontWeight: 700 }}>{fmtTime(s.start)}{"\u2013"}{fmtTime(s.end)}</div>
                                   <div style={{ fontSize: 9, fontWeight: 600, opacity: 0.9 }}>{sColors.label}</div>
                                 </div>
@@ -1208,6 +1254,14 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
                 <input value={prompt} onChange={e => setPrompt(e.target.value)} onKeyDown={e => { if (e.key === "Enter") handleReject(); }} placeholder="e.g. Kennedy off 19th-22nd all day, swap Gwen and Sam on Saturday..." style={{ ...si, flex: 1 }} />
                 <button onClick={handleReject} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#4A3F2F", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: font, whiteSpace: "nowrap" }}>{"\ud83d\udd04"} Regenerate</button>
               </div>
+              {Object.keys(availOverrides).length > 0 && (
+                <div style={{ marginTop: 8, padding: "8px 12px", background: "#F0FDF4", borderRadius: 8, border: "1px solid #BBF7D0", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 11, color: "#16A34A", fontWeight: 600 }}>{"\u2713"} {Object.keys(availOverrides).length} availability override{Object.keys(availOverrides).length > 1 ? "s" : ""} set</span>
+                  <span style={{ fontSize: 10, color: "#6B7280" }}>— click Regenerate to apply</span>
+                  <button onClick={() => setAvailOverrides({})} style={{ marginLeft: "auto", padding: "3px 8px", borderRadius: 6, border: "1px solid #D1D5DB", background: "#fff", color: "#9CA3AF", cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: font }}>Clear all</button>
+                </div>
+              )}
+              </div>
               {notes.length > 0 && (
                 <div style={{ marginTop: 8 }}>
                   <div style={{ fontSize: 10, fontWeight: 700, color: "#9CA3AF", marginBottom: 4 }}>CHANGE LOG:</div>
@@ -1227,6 +1281,22 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
           )}
 
           {/* Edit Shift Modal */}
+          {overridePopup && (
+            <div onClick={() => setOverridePopup(null)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }}>
+              <div onClick={e => e.stopPropagation()} style={{ position: "fixed", top: Math.min(overridePopup.y, window.innerHeight - 160), left: Math.min(overridePopup.x, window.innerWidth - 200), background: "#fff", borderRadius: 10, boxShadow: "0 8px 30px rgba(0,0,0,0.2)", padding: 6, zIndex: 1000, minWidth: 180 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#374151", padding: "6px 10px" }}>Override availability for:</div>
+                <div style={{ fontSize: 10, color: "#6B7280", padding: "0 10px 6px", borderBottom: "1px solid #E5E7EB", marginBottom: 4 }}>{employees.find(e => e.id === overridePopup.empId)?.name} on {new Date(overridePopup.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</div>
+                {[["all", "\u2600\ufe0f All Day"], ["morning", "\ud83c\udf04 Morning (until 6pm)"], ["evening", "\ud83c\udf19 Evening (6pm+)"]].map(([val, label]) => (
+                  <div key={val} onClick={() => { setAvailOverrides(prev => ({ ...prev, [overridePopup.date + ":" + overridePopup.empId]: val })); setOverridePopup(null); }}
+                    style={{ padding: "8px 10px", fontSize: 12, cursor: "pointer", borderRadius: 6, fontWeight: 600, color: "#374151" }}
+                    onMouseEnter={e => e.currentTarget.style.background = "#F0FDF4"}
+                    onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                    {label}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {editingShift && !isSaved && (
             <EditShiftModal
               slot={editingShift.slot}
