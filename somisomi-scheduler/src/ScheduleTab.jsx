@@ -351,16 +351,27 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         const bG = (b.guaranteedDays || []).includes(dayKey) ? 1 : 0;
         if (bG !== aG) return bG - aG;
         // Priority 0.5: SL needs weekend night shifts (Fri/Sat/Sun nights only)
-        const isWeekendNight = (isWE || isFri) && tm(slot.start) >= 1020;
-        if (isWeekendNight) {
+        const isWeekendSlot = isWE || (isFri && tm(slot.start) >= 1020);
+        if (isWeekendSlot) {
           const minWE = rules.shiftLead?.minWeekendShifts || 2;
           const aWE = (a.role === "shift_lead" && weCount[a.id] < minWE) ? 1 : 0;
           const bWE = (b.role === "shift_lead" && weCount[b.id] < minWE) ? 1 : 0;
           if (bWE !== aWE) return bWE - aWE;
-          // Trainee mix: if trainee already has 1 weekend shift, prefer weekday for balance
-          const aTraineeWE = (a.role === "trainee" && weCount[a.id] >= 1) ? 1 : 0;
-          const bTraineeWE = (b.role === "trainee" && weCount[b.id] >= 1) ? 1 : 0;
-          if (aTraineeWE !== bTraineeWE) return aTraineeWE - bTraineeWE; // push trainee with WE shift down
+          // Low-shift employees (<=2 min): prefer spreading 1 weekday + 1 weekend
+          // Count ALL weekend shifts (not just nights) for balance check
+          const aWEtotal = [4,5,6].reduce((c, wi) => c + (sd[a.id].has(weekDates[wi]) ? 1 : 0), 0);
+          const bWEtotal = [4,5,6].reduce((c, wi) => c + (sd[b.id].has(weekDates[wi]) ? 1 : 0), 0);
+          const aLowWE = (a._effMinShifts <= 2 && aWEtotal >= 1) ? 1 : 0;
+          const bLowWE = (b._effMinShifts <= 2 && bWEtotal >= 1) ? 1 : 0;
+          if (aLowWE !== bLowWE) return aLowWE - bLowWE;
+        }
+        // For weekday slots: boost low-shift employees who have 0 weekday shifts but have weekend
+        if (!isWE && !isFri) {
+          const aWEtotal2 = [4,5,6].reduce((c, wi) => c + (sd[a.id].has(weekDates[wi]) ? 1 : 0), 0);
+          const bWEtotal2 = [4,5,6].reduce((c, wi) => c + (sd[b.id].has(weekDates[wi]) ? 1 : 0), 0);
+          const aBoost = (a._effMinShifts <= 2 && sc[a.id] - aWEtotal2 === 0 && aWEtotal2 > 0 && sc[a.id] < a._effMinShifts) ? 1 : 0;
+          const bBoost = (b._effMinShifts <= 2 && sc[b.id] - bWEtotal2 === 0 && bWEtotal2 > 0 && sc[b.id] < b._effMinShifts) ? 1 : 0;
+          if (bBoost !== aBoost) return bBoost - aBoost;
         }
         // Priority 1: below min shifts
         const aBs = sc[a.id] < a._effMinShifts ? 1 : 0;
@@ -1150,7 +1161,7 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
                             {showUnavail && !hasTO && (() => {
                               const ovKey = d + ":" + emp.id;
                               const ov = availOverrides[ovKey];
-                              const ovLabels = { all: "All Day", morning: "Morning (until 6pm)", evening: "Evening (6pm+)" };
+                              const ovLabels = { all: "Available All Day", morning: "Available Day Shift (before 6pm)", evening: "Available Night Shift (3pm+)" };
                               return (
                                 <div style={{ position: "relative" }}>
                                   <div onClick={(ev) => {
@@ -1282,9 +1293,9 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
           {overridePopup && (
             <div onClick={() => setOverridePopup(null)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 999 }}>
               <div onClick={e => e.stopPropagation()} style={{ position: "fixed", top: Math.min(overridePopup.y, window.innerHeight - 160), left: Math.min(overridePopup.x, window.innerWidth - 200), background: "#fff", borderRadius: 10, boxShadow: "0 8px 30px rgba(0,0,0,0.2)", padding: 6, zIndex: 1000, minWidth: 180 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#374151", padding: "6px 10px" }}>Override availability for:</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#374151", padding: "6px 10px" }}>Make available for:</div>
                 <div style={{ fontSize: 10, color: "#6B7280", padding: "0 10px 6px", borderBottom: "1px solid #E5E7EB", marginBottom: 4 }}>{employees.find(e => e.id === overridePopup.empId)?.name} on {new Date(overridePopup.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</div>
-                {[["all", "\u2600\ufe0f All Day"], ["morning", "\ud83c\udf04 Morning (until 6pm)"], ["evening", "\ud83c\udf19 Evening (6pm+)"]].map(([val, label]) => (
+                {[["all", "\u2600\ufe0f Available All Day"], ["morning", "\ud83c\udf04 Available for Day Shift (before 6pm)"], ["evening", "\ud83c\udf19 Available for Night Shift (3pm+)"]].map(([val, label]) => (
                   <div key={val} onClick={() => { setAvailOverrides(prev => ({ ...prev, [overridePopup.date + ":" + overridePopup.empId]: val })); setOverridePopup(null); }}
                     style={{ padding: "8px 10px", fontSize: 12, cursor: "pointer", borderRadius: 6, fontWeight: 600, color: "#374151" }}
                     onMouseEnter={e => e.currentTarget.style.background = "#F0FDF4"}
