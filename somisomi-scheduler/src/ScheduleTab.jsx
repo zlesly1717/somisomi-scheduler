@@ -356,6 +356,23 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
           else { cands = [...nonTr, ...trainees]; }
         }
       }
+      // Pre-sort filters for weekend balance
+      const isWeekendSlot2 = isWE || (isFri && tm(slot.start) >= 1020);
+      if (isWeekendSlot2 && cands.length > 1) {
+        // Low-shift employees (<=2 min): don't give 2nd weekend if others available
+        const lowWEhave = cands.filter(e => e._effMinShifts <= 2 && [4,5,6].some(wi => sd[e.id].has(weekDates[wi])));
+        const othersAvail = cands.filter(e => !(e._effMinShifts <= 2 && [4,5,6].some(wi => sd[e.id].has(weekDates[wi]))));
+        if (lowWEhave.length > 0 && othersAvail.length > 0) cands = othersAvail;
+        // General weekend distribution: prefer people with fewer weekend shifts
+        // If someone has 0 weekend shifts and another has 2, prefer the one with 0
+        const weShiftCount = (e) => [4,5,6].reduce((c, wi) => c + (sd[e.id].has(weekDates[wi]) ? 1 : 0), 0);
+        const hasZeroWE = cands.filter(e => weShiftCount(e) === 0 && sc[e.id] < e._effMinShifts);
+        const hasMultiWE = cands.filter(e => weShiftCount(e) >= 2);
+        if (hasZeroWE.length > 0 && hasMultiWE.length > 0) {
+          cands = cands.filter(e => weShiftCount(e) < 2 || sc[e.id] < e._effMinShifts);
+          if (cands.length === 0) cands = hasZeroWE; // fallback
+        }
+      }
       cands.sort((a, b) => {
         // Priority 0: guaranteed day (must work this day)
         const aG = (a.guaranteedDays || []).includes(dayKey) ? 1 : 0;
@@ -368,15 +385,12 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
           const aWE = (a.role === "shift_lead" && weCount[a.id] < minWE) ? 1 : 0;
           const bWE = (b.role === "shift_lead" && weCount[b.id] < minWE) ? 1 : 0;
           if (bWE !== aWE) return bWE - aWE;
-          // Low-shift employees (<=2 min): prefer spreading 1 weekday + 1 weekend
-          // Count ALL weekend shifts (not just nights) for balance check
-          const aWEtotal = [4,5,6].reduce((c, wi) => c + (sd[a.id].has(weekDates[wi]) ? 1 : 0), 0);
-          const bWEtotal = [4,5,6].reduce((c, wi) => c + (sd[b.id].has(weekDates[wi]) ? 1 : 0), 0);
-          const aLowWE = (a._effMinShifts <= 2 && aWEtotal >= 1) ? 1 : 0;
-          const bLowWE = (b._effMinShifts <= 2 && bWEtotal >= 1) ? 1 : 0;
-          if (aLowWE !== bLowWE) return aLowWE - bLowWE;
+          // Sort by fewer weekend shifts first
+          const aWEc = [4,5,6].reduce((c, wi) => c + (sd[a.id].has(weekDates[wi]) ? 1 : 0), 0);
+          const bWEc = [4,5,6].reduce((c, wi) => c + (sd[b.id].has(weekDates[wi]) ? 1 : 0), 0);
+          if (aWEc !== bWEc) return aWEc - bWEc;
         }
-        // For weekday slots: boost low-shift employees who have 0 weekday shifts but have weekend
+        // For weekday slots: boost low-shift employees who need a weekday shift
         if (!isWE && !isFri) {
           const aWEtotal2 = [4,5,6].reduce((c, wi) => c + (sd[a.id].has(weekDates[wi]) ? 1 : 0), 0);
           const bWEtotal2 = [4,5,6].reduce((c, wi) => c + (sd[b.id].has(weekDates[wi]) ? 1 : 0), 0);
@@ -1146,25 +1160,33 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
                             onDragOver={!isSaved && draft ? (ev) => { ev.preventDefault(); ev.dataTransfer.dropEffect = "move"; } : undefined}
                             onDrop={!isSaved && draft && dragSlot ? (ev) => {
                               ev.preventDefault();
-                              // Find the first shift for this employee on this day to swap with
-                              const targetShifts = (result.schedule[d] || []).filter(a => a.empId === emp.id);
-                              if (targetShifts.length === 0) { setDragSlot(null); return; }
-                              const target = targetShifts[0];
-                              if (dragSlot.date === d && dragSlot.type === target.type && dragSlot.order === target.order) { setDragSlot(null); return; }
                               const newSchedule = {};
                               Object.keys(draft.schedule).forEach(dd => { newSchedule[dd] = [...draft.schedule[dd]]; });
                               const fromIdx = newSchedule[dragSlot.date].findIndex(a => a.type === dragSlot.type && a.order === dragSlot.order);
-                              const toIdx = newSchedule[d].findIndex(a => a.type === target.type && a.order === target.order);
-                              if (fromIdx >= 0 && toIdx >= 0) {
-                                const fromSlot = newSchedule[dragSlot.date][fromIdx];
-                                const toSlot = newSchedule[d][toIdx];
-                                newSchedule[dragSlot.date][fromIdx] = { ...fromSlot, empId: toSlot.empId, empName: toSlot.empName, empRole: toSlot.empRole };
-                                newSchedule[d][toIdx] = { ...toSlot, empId: fromSlot.empId, empName: fromSlot.empName, empRole: fromSlot.empRole };
-                                const newSc = {}, newSh = {};
-                                employees.filter(e2 => e2.status === "active").forEach(e2 => { newSc[e2.id] = 0; newSh[e2.id] = 0; });
-                                Object.values(newSchedule).forEach(daySlots => { daySlots.forEach(slot => { if (slot.empId) { newSc[slot.empId] = (newSc[slot.empId] || 0) + 1; newSh[slot.empId] = (newSh[slot.empId] || 0) + slot.hours; } }); });
-                                setDraft({ ...draft, schedule: newSchedule, empShiftCount: newSc, empHours: newSh });
+                              if (fromIdx < 0) { setDragSlot(null); return; }
+                              const fromSlot = newSchedule[dragSlot.date][fromIdx];
+
+                              // Check if target employee has a shift on the same day we can swap with
+                              const targetShifts = (result.schedule[d] || []).filter(a => a.empId === emp.id);
+                              if (targetShifts.length > 0) {
+                                // Swap with the target's shift
+                                const target = targetShifts[0];
+                                if (dragSlot.date === d && dragSlot.type === target.type && dragSlot.order === target.order) { setDragSlot(null); return; }
+                                const toIdx = newSchedule[d].findIndex(a => a.type === target.type && a.order === target.order);
+                                if (toIdx >= 0) {
+                                  const toSlot = newSchedule[d][toIdx];
+                                  newSchedule[dragSlot.date][fromIdx] = { ...fromSlot, empId: toSlot.empId, empName: toSlot.empName, empRole: toSlot.empRole };
+                                  newSchedule[d][toIdx] = { ...toSlot, empId: fromSlot.empId, empName: fromSlot.empName, empRole: fromSlot.empRole };
+                                }
+                              } else {
+                                // Target employee has no shift this day — reassign the dragged shift to this employee
+                                newSchedule[dragSlot.date][fromIdx] = { ...fromSlot, empId: emp.id, empName: emp.name, empRole: emp.role };
                               }
+                              // Recalculate counts
+                              const newSc = {}, newSh = {};
+                              employees.filter(e2 => e2.status === "active").forEach(e2 => { newSc[e2.id] = 0; newSh[e2.id] = 0; });
+                              Object.values(newSchedule).forEach(daySlots => { daySlots.forEach(slot => { if (slot.empId) { newSc[slot.empId] = (newSc[slot.empId] || 0) + 1; newSh[slot.empId] = (newSh[slot.empId] || 0) + slot.hours; } }); });
+                              setDraft({ ...draft, schedule: newSchedule, empShiftCount: newSc, empHours: newSh });
                               setDragSlot(null);
                             } : undefined}
                             style={{ padding: "6px 4px", verticalAlign: "top", minHeight: 60, background: dragSlot ? "#FEFCE8" : undefined }}>
