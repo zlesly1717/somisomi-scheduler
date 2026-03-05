@@ -1285,9 +1285,9 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
                               {!isSaved && draft && (() => {
                                 const wmo = weeklyMaxOverrides[emp.id];
                                 const actualShifts = result.empShiftCount?.[emp.id] || 0;
-                                const curMax = (wmo && typeof wmo === "object") ? (wmo.max ?? emp.maxShifts) : emp.maxShifts;
+                                const targetMax = (wmo && typeof wmo === "object") ? (wmo.max ?? emp.maxShifts) : emp.maxShifts;
                                 const isModified = wmo !== undefined;
-                                const setMax = (val) => {
+                                const setTarget = (val) => {
                                   const v = Math.max(0, Math.min(7, val));
                                   setWeeklyMaxOverrides(prev => {
                                     const n = { ...prev };
@@ -1298,11 +1298,15 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
                                 };
                                 return (
                                   <div style={{ display: "flex", alignItems: "center", gap: 2, marginTop: 2 }}>
-                                    <button onClick={() => setMax(curMax - 1)} style={{ width: 16, height: 16, borderRadius: 3, border: "1px solid #D1D5DB", background: "#FEF2F2", color: "#DC2626", cursor: "pointer", fontSize: 10, fontWeight: 800, padding: 0, lineHeight: "14px" }}>{"\u2212"}</button>
-                                    <span style={{ fontSize: 10, fontWeight: 700, color: isModified ? "#F59E0B" : "#374151", minWidth: 14, textAlign: "center" }}>{actualShifts}</span>
-                                    <button onClick={() => setMax(curMax + 1)} style={{ width: 16, height: 16, borderRadius: 3, border: "1px solid #D1D5DB", background: "#F0FDF4", color: "#16A34A", cursor: "pointer", fontSize: 10, fontWeight: 800, padding: 0, lineHeight: "14px" }}>+</button>
-                                    <span style={{ fontSize: 8, color: isModified ? "#F59E0B" : "#9CA3AF" }}>{isModified ? "max " + curMax : "shifts"}</span>
-                                    {isModified && <button onClick={() => setWeeklyMaxOverrides(prev => { const n = { ...prev }; delete n[emp.id]; return n; })} style={{ fontSize: 8, color: "#9CA3AF", cursor: "pointer", background: "none", border: "none", padding: 0 }}>{"\u21ba"}</button>}
+                                    <button onClick={() => setTarget((isModified ? targetMax : actualShifts) - 1)} style={{ width: 16, height: 16, borderRadius: 3, border: "1px solid #D1D5DB", background: "#FEF2F2", color: "#DC2626", cursor: "pointer", fontSize: 10, fontWeight: 800, padding: 0, lineHeight: "14px" }}>{"\u2212"}</button>
+                                    <span style={{ fontSize: 10, fontWeight: 700, color: isModified ? (targetMax > actualShifts ? "#16A34A" : targetMax < actualShifts ? "#DC2626" : "#F59E0B") : "#374151", minWidth: 14, textAlign: "center" }}>{isModified ? targetMax : actualShifts}</span>
+                                    <button onClick={() => setTarget((isModified ? targetMax : actualShifts) + 1)} style={{ width: 16, height: 16, borderRadius: 3, border: "1px solid #D1D5DB", background: "#F0FDF4", color: "#16A34A", cursor: "pointer", fontSize: 10, fontWeight: 800, padding: 0, lineHeight: "14px" }}>+</button>
+                                    {isModified ? (
+                                      <span style={{ fontSize: 8, color: targetMax > actualShifts ? "#16A34A" : "#DC2626", fontWeight: 600 }}>{targetMax > actualShifts ? "\u2191" + (targetMax - actualShifts) : "\u2193" + (actualShifts - targetMax)} {"\u21ba"}</span>
+                                    ) : (
+                                      <span style={{ fontSize: 8, color: "#9CA3AF" }}>shifts</span>
+                                    )}
+                                    {isModified && <button onClick={() => setWeeklyMaxOverrides(prev => { const n = { ...prev }; delete n[emp.id]; return n; })} style={{ fontSize: 8, color: "#9CA3AF", cursor: "pointer", background: "none", border: "none", padding: "0 0 0 2px" }}>{"\u21ba"}</button>}
                                   </div>
                                 );
                               })()}
