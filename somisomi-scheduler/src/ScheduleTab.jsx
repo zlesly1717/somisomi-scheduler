@@ -169,10 +169,15 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       e._effMinShifts = e.minShifts;
       e._effMinHours = e.minHours || 0;
     }
-    // Apply weekly max shift overrides (e.g. -1 shift this week)
-    const maxAdj = weeklyMaxOverrides?.[e.id] || 0;
-    e._effMaxShifts = Math.max(0, e._effMaxShifts + maxAdj);
-    e._effMaxHours = Math.max(0, e.maxHours + (maxAdj * (e.maxHours / e._effMaxShifts || 0)));
+    // Apply weekly shift overrides (per-week min/max adjustments)
+    const wmo = weeklyMaxOverrides?.[e.id];
+    if (wmo) {
+      if (wmo.min !== undefined) { e._effMinShifts = wmo.min; e._effMinHours = Math.round((wmo.min / (e.minShifts || 1)) * (e.minHours || 0)); }
+      if (wmo.max !== undefined) { e._effMaxShifts = wmo.max; e._effMaxHours = Math.round((wmo.max / (e.maxShifts || 1)) * e.maxHours); }
+    } else {
+      e._effMaxShifts = e.maxShifts;
+      e._effMaxHours = e.maxHours;
+    }
   });
   const con = id => { const c = rules.constraints.find(x => x.id === id); return c ? c.enabled : true; };
   const T = rules.shiftTimes;
@@ -870,7 +875,7 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
   const [availOverrides, setAvailOverrides] = useState({}); // { "2026-03-19:sl-5": "all"|"morning"|"evening" }
   const [dragSlot, setDragSlot] = useState(null);
   const [overridePopup, setOverridePopup] = useState(null); // { date, empId, x, y }
-  const [weeklyMaxOverrides, setWeeklyMaxOverrides] = useState({}); // { "sl-3": -1 }
+  const [weeklyMaxOverrides, setWeeklyMaxOverrides] = useState({}); // { "sl-3": { min: 3, max: 3 } }
   const [step, setStep] = useState("timeoff");
   const [viewMode, setViewMode] = useState("shift");
   const [selected, setSelected] = useState(null);
@@ -1277,15 +1282,34 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
                             <div>
                               <div style={{ fontWeight: 700, fontSize: 12, color: below ? "#DC2626" : "#374151", lineHeight: 1.2 }}>{emp.name}</div>
                               <div style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 600 }}>{totalHrs.toFixed(2)} hrs</div>
-                              {!isSaved && draft && (
-                                <div style={{ display: "flex", alignItems: "center", gap: 3, marginTop: 2 }}>
-                                  <button onClick={() => setWeeklyMaxOverrides(prev => ({ ...prev, [emp.id]: (prev[emp.id] || 0) - 1 }))} style={{ width: 18, height: 18, borderRadius: 4, border: "1px solid #D1D5DB", background: "#FEF2F2", color: "#DC2626", cursor: "pointer", fontSize: 11, fontWeight: 800, padding: 0, lineHeight: "16px", fontFamily: "Inter,sans-serif" }}>{"\u2212"}</button>
-                                  <span style={{ fontSize: 9, color: weeklyMaxOverrides[emp.id] ? "#DC2626" : "#9CA3AF", fontWeight: 600, minWidth: 36, textAlign: "center" }}>
-                                    {weeklyMaxOverrides[emp.id] ? "Max " + Math.max(0, emp.maxShifts + (weeklyMaxOverrides[emp.id] || 0)) : emp.maxShifts + " max"}
-                                  </span>
-                                  <button onClick={() => setWeeklyMaxOverrides(prev => { const n = { ...prev }; n[emp.id] = (n[emp.id] || 0) + 1; if (n[emp.id] >= 0) delete n[emp.id]; return n; })} style={{ width: 18, height: 18, borderRadius: 4, border: "1px solid #D1D5DB", background: "#F0FDF4", color: "#16A34A", cursor: "pointer", fontSize: 11, fontWeight: 800, padding: 0, lineHeight: "16px", fontFamily: "Inter,sans-serif" }}>{"\u002B"}</button>
-                                </div>
-                              )}
+                              {!isSaved && draft && (() => {
+                                const wmo = weeklyMaxOverrides[emp.id];
+                                const curMin = wmo?.min ?? emp.minShifts;
+                                const curMax = wmo?.max ?? emp.maxShifts;
+                                const isModified = wmo !== undefined;
+                                const setWmo = (field, val) => setWeeklyMaxOverrides(prev => {
+                                  const n = { ...prev };
+                                  const cur = n[emp.id] || {};
+                                  cur[field] = val;
+                                  if (cur.min === emp.minShifts && cur.max === emp.maxShifts) delete n[emp.id];
+                                  else n[emp.id] = cur;
+                                  return n;
+                                });
+                                return (
+                                  <div style={{ display: "flex", alignItems: "center", gap: 2, marginTop: 2 }}>
+                                    <input type="number" min={0} max={curMax} value={curMin}
+                                      onChange={e => setWmo("min", Math.max(0, parseInt(e.target.value) || 0))}
+                                      style={{ width: 24, padding: "1px 2px", borderRadius: 3, border: isModified ? "1.5px solid #F59E0B" : "1px solid #D1D5DB", fontSize: 10, textAlign: "center", fontFamily: "Inter,sans-serif", background: isModified ? "#FFFBEB" : "#fff" }}
+                                    />
+                                    <span style={{ fontSize: 8, color: "#9CA3AF" }}>{"\u2013"}</span>
+                                    <input type="number" min={curMin} max={7} value={curMax}
+                                      onChange={e => setWmo("max", Math.max(0, parseInt(e.target.value) || 0))}
+                                      style={{ width: 24, padding: "1px 2px", borderRadius: 3, border: isModified ? "1.5px solid #F59E0B" : "1px solid #D1D5DB", fontSize: 10, textAlign: "center", fontFamily: "Inter,sans-serif", background: isModified ? "#FFFBEB" : "#fff" }}
+                                    />
+                                    {isModified && <button onClick={() => setWeeklyMaxOverrides(prev => { const n = { ...prev }; delete n[emp.id]; return n; })} style={{ fontSize: 8, color: "#9CA3AF", cursor: "pointer", background: "none", border: "none", padding: 0 }}>{"\u21ba"}</button>}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           </div>
                         </td>
