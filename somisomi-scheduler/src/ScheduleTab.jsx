@@ -170,17 +170,16 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       e._effMinHours = e.minHours || 0;
     }
     // Apply weekly shift overrides (per-week min/max adjustments)
+    // Always set defaults first
+    e._effMaxShifts = e.maxShifts;
+    e._effMaxHours = e.maxHours;
     const wmo = weeklyMaxOverrides?.[e.id];
-    if (wmo) {
-      if (wmo.min !== undefined) { e._effMinShifts = wmo.min; e._effMinHours = Math.round((wmo.min / (e.minShifts || 1)) * (e.minHours || 0)); }
-      if (wmo.max !== undefined) { e._effMaxShifts = wmo.max; e._effMaxHours = Math.round((wmo.max / (e.maxShifts || 1)) * e.maxHours); }
-    } else {
-      e._effMaxShifts = e.maxShifts;
-      e._effMaxHours = e.maxHours;
+    if (wmo && typeof wmo === "object") {
+      if (typeof wmo.min === "number") { e._effMinShifts = wmo.min; e._effMinHours = Math.round((wmo.min / (e.minShifts || 1)) * (e.minHours || 0)); }
+      if (typeof wmo.max === "number") { e._effMaxShifts = wmo.max; e._effMaxHours = Math.round((wmo.max / (e.maxShifts || 1)) * e.maxHours); }
     }
   });
   const con = id => { const c = rules.constraints.find(x => x.id === id); return c ? c.enabled : true; };
-  console.log("EFF CHECK:", active.slice(0,3).map(e => e.name + " max:" + e._effMaxShifts + " maxH:" + e._effMaxHours).join(", "));
   const T = rules.shiftTimes;
   const nightMap = {};
   const mcCount = {};
@@ -1285,28 +1284,23 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
                               <div style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 600 }}>{totalHrs.toFixed(2)} hrs</div>
                               {!isSaved && draft && (() => {
                                 const wmo = weeklyMaxOverrides[emp.id];
-                                const curMin = wmo?.min ?? emp.minShifts;
-                                const curMax = wmo?.max ?? emp.maxShifts;
+                                const curMax = (wmo && typeof wmo === "object") ? (wmo.max ?? emp.maxShifts) : emp.maxShifts;
                                 const isModified = wmo !== undefined;
-                                const setWmo = (field, val) => setWeeklyMaxOverrides(prev => {
-                                  const n = { ...prev };
-                                  const cur = n[emp.id] || {};
-                                  cur[field] = val;
-                                  if (cur.min === emp.minShifts && cur.max === emp.maxShifts) delete n[emp.id];
-                                  else n[emp.id] = cur;
-                                  return n;
-                                });
+                                const setMax = (val) => {
+                                  const v = Math.max(0, Math.min(7, val));
+                                  setWeeklyMaxOverrides(prev => {
+                                    const n = { ...prev };
+                                    if (v === emp.maxShifts) delete n[emp.id];
+                                    else n[emp.id] = { max: v };
+                                    return n;
+                                  });
+                                };
                                 return (
                                   <div style={{ display: "flex", alignItems: "center", gap: 2, marginTop: 2 }}>
-                                    <input type="number" min={0} max={curMax} value={curMin}
-                                      onChange={e => setWmo("min", Math.max(0, parseInt(e.target.value) || 0))}
-                                      style={{ width: 24, padding: "1px 2px", borderRadius: 3, border: isModified ? "1.5px solid #F59E0B" : "1px solid #D1D5DB", fontSize: 10, textAlign: "center", fontFamily: "Inter,sans-serif", background: isModified ? "#FFFBEB" : "#fff" }}
-                                    />
-                                    <span style={{ fontSize: 8, color: "#9CA3AF" }}>{"\u2013"}</span>
-                                    <input type="number" min={curMin} max={7} value={curMax}
-                                      onChange={e => setWmo("max", Math.max(0, parseInt(e.target.value) || 0))}
-                                      style={{ width: 24, padding: "1px 2px", borderRadius: 3, border: isModified ? "1.5px solid #F59E0B" : "1px solid #D1D5DB", fontSize: 10, textAlign: "center", fontFamily: "Inter,sans-serif", background: isModified ? "#FFFBEB" : "#fff" }}
-                                    />
+                                    <button onClick={() => setMax(curMax - 1)} style={{ width: 16, height: 16, borderRadius: 3, border: "1px solid #D1D5DB", background: "#FEF2F2", color: "#DC2626", cursor: "pointer", fontSize: 10, fontWeight: 800, padding: 0, lineHeight: "14px" }}>{"\u2212"}</button>
+                                    <span style={{ fontSize: 10, fontWeight: 700, color: isModified ? "#F59E0B" : "#9CA3AF", minWidth: 14, textAlign: "center" }}>{curMax}</span>
+                                    <button onClick={() => setMax(curMax + 1)} style={{ width: 16, height: 16, borderRadius: 3, border: "1px solid #D1D5DB", background: "#F0FDF4", color: "#16A34A", cursor: "pointer", fontSize: 10, fontWeight: 800, padding: 0, lineHeight: "14px" }}>+</button>
+                                    <span style={{ fontSize: 8, color: "#9CA3AF" }}>shifts</span>
                                     {isModified && <button onClick={() => setWeeklyMaxOverrides(prev => { const n = { ...prev }; delete n[emp.id]; return n; })} style={{ fontSize: 8, color: "#9CA3AF", cursor: "pointer", background: "none", border: "none", padding: 0 }}>{"\u21ba"}</button>}
                                   </div>
                                 );
