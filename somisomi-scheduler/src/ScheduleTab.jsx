@@ -191,6 +191,23 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     // Budget: how many shifts can we give them (availability capped at their max)
     e._budget = Math.min(availCount, e._effMaxShifts);
   });
+
+  // GRAE RULE: max 1 weekend shift, prefer to use her other shift on a weekday
+  // (unless weekday is unavailable, then allow 2 weekends)
+  const graeEmp = active.find(e => e.name === "Grae McKown");
+  if (graeEmp) {
+    graeEmp._maxWeekendShifts = 1; // soft cap — enforced during assignment
+  }
+
+  // ── STEP 1b: Compute target shifts for balancing ──────────────────
+  // After budgets are set, figure out the "target" shifts per person so the
+  // balance pass knows what "equal" looks like. Target = budget (what they can do).
+  // The balance pass will try to get everyone as close to their target as possible
+  // and prevent anyone from being more than 1 shift above the group average.
+  const computeGroupAvg = (group) => {
+    const budgets = group.map(e => e._budget);
+    return budgets.length > 0 ? budgets.reduce((a, b) => a + b, 0) / budgets.length : 0;
+  };
   const con = id => { const c = rules.constraints.find(x => x.id === id); return c ? c.enabled : true; };
   const T = rules.shiftTimes;
   const nightMap = {};   // dateStr -> Set of empIds who worked nights
@@ -382,6 +399,21 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (!weekendNightOK(emp, dateStr, slot.start)) return false;
       if (!consecOK(emp, dayIndex)) return false;
       if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
+      // GRAE RULE: max 1 weekend shift; use other shift on a weekday if possible
+      if (emp._maxWeekendShifts !== undefined) {
+        const isWeekendSlot = dow === 0 || dow === 6 || (dow === 5 && tm(slot.start) >= 1020);
+        if (isWeekendSlot) {
+          const weekendShiftsSoFar = [4,5,6].reduce((c, wi) => c + (sd[emp.id].has(weekDates[wi]) ? 1 : 0), 0);
+          if (weekendShiftsSoFar >= emp._maxWeekendShifts) {
+            // Already hit weekend cap — check if they have weekday availability left
+            const hasWeekdayAvail = [0,1,2,3].some(wi =>
+              !sd[emp.id].has(weekDates[wi]) &&
+              isAvail(emp, weekDates[wi], "18:00", "22:30", weeklyTimeOffs, availOverrides)
+            );
+            if (hasWeekdayAvail) return false; // block 2nd weekend, save for weekday
+          }
+        }
+      }
       return true;
     });
 
@@ -635,44 +667,85 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     });
   });
 
-  // ── STEP 6: Swap pass — give under-budgeted people shifts ─────────
-  // If someone still has budget remaining AND there are people over-assigned,
-  // try to swap a low-priority slot from an over-assigned person to the under-assigned one
-  const underBudget = active.filter(e => sc[e.id] < e._budget);
-  const swapPriorityOrder = [0, 1, 2, 3, 4, 5, 6]; // Mon-Sun
-  for (const emp of underBudget) {
-    for (const di of swapPriorityOrder) {
-      if (sc[emp.id] >= emp._budget || sc[emp.id] >= emp._effMaxShifts) break;
-      const dateStr = weekDates[di];
-      if (sd[emp.id].has(dateStr)) continue;
-      if (!friSatSunOK(emp, dateStr)) continue;
-      if (!traineeOK(emp, dateStr)) continue;
+  // ── STEP 6: Iterative balance pass ───────────────────────────────
+  // Repeatedly find the most over-assigned person and the most under-assigned
+  // person, and try to swap one of their slots. Keep going until nobody is
+  // more than 1 shift apart from the group average. This guarantees no one
+  // has 1 shift while someone else has 4 if the slots are swappable.
+  //
+  // Skip from balancing: Grae (special rules), trainees (trainee-specific slots)
+  const isBalanceExempt = (emp) => emp.name === "Grae McKown" || emp.role === "trainee";
 
-      // Find someone over-budget on this day whose slot emp could take
-      for (let si2 = 0; si2 < schedule[dateStr].length; si2++) {
-        const slot = schedule[dateStr][si2];
-        if (!slot.empId) continue;
-        if (slot.slOnly && emp.role !== "shift_lead") continue;
-        if (slot.isMC && emp.role === "trainee") continue;
-        if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) continue;
-        if (con("no_mc_twice") && slot.isMC && mcCount[emp.id] >= 1) continue;
-        if (!weekendNightOK(emp, dateStr, slot.start)) continue;
-        if (sh[emp.id] + slot.hours > emp._effMaxHours) continue;
+  let balanceChanged = true;
+  let balanceSafety = 30;
+  while (balanceChanged && balanceSafety-- > 0) {
+    balanceChanged = false;
 
-        const holder = active.find(e => e.id === slot.empId);
-        if (!holder) continue;
-        // Only steal from someone over their budget
-        if (sc[holder.id] <= holder._budget) continue;
+    // Find everyone's current shift count
+    const balancePool = active.filter(e => !isBalanceExempt(e));
+    if (balancePool.length < 2) break;
 
-        // Do the swap
-        sc[holder.id]--; sh[holder.id] -= slot.hours;
-        const holderOtherShifts = schedule[dateStr].filter((s, i) => i !== si2 && s.empId === holder.id);
-        if (holderOtherShifts.length === 0) sd[holder.id].delete(dateStr);
+    // Sort: most shifts first
+    balancePool.sort((a, b) => sc[b.id] - sc[a.id]);
+    const maxShifts = sc[balancePool[0].id];
+    const minShifts = sc[balancePool[balancePool.length - 1].id];
 
-        assign(dateStr, si2, emp, { ...slot, _isWE: slot._isWE, _isFri: slot._isFri });
-        break;
+    // If spread is <= 1, we're balanced
+    if (maxShifts - minShifts <= 1) break;
+
+    // Find the over-assigned and under-assigned people
+    const overPeople = balancePool.filter(e => sc[e.id] === maxShifts);
+    const underPeople = balancePool.filter(e => sc[e.id] === minShifts);
+
+    let swapped = false;
+    outer: for (const under of underPeople) {
+      for (const over of overPeople) {
+        if (under.id === over.id) continue;
+        // Try to find a slot that 'over' has that 'under' could take
+        for (const dateStr of weekDates) {
+          if (sd[under.id].has(dateStr)) continue; // under already works this day
+          if (!sd[over.id].has(dateStr)) continue;  // over doesn't work this day
+          if (!friSatSunOK(under, dateStr)) continue;
+          if (!traineeOK(under, dateStr)) continue;
+
+          for (let si = 0; si < schedule[dateStr].length; si++) {
+            const slot = schedule[dateStr][si];
+            if (slot.empId !== over.id) continue;
+            if (slot.slOnly && under.role !== "shift_lead") continue;
+            if (slot.isMC && under.role === "trainee") continue;
+            if (!isAvail(under, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) continue;
+            if (con("no_mc_twice") && slot.isMC && mcCount[under.id] >= 1) continue;
+            if (!weekendNightOK(under, dateStr, slot.start)) continue;
+            if (sh[under.id] + slot.hours > under._effMaxHours) continue;
+            // Don't violate Grae's weekend rule on the receiving end
+            if (under._maxWeekendShifts !== undefined) {
+              const dow3 = new Date(dateStr + "T12:00:00").getDay();
+              const isWknd = dow3 === 0 || dow3 === 6 || (dow3 === 5 && tm(slot.start) >= 1020);
+              if (isWknd) {
+                const wkndCount = [4,5,6].reduce((c, wi) => c + (sd[under.id].has(weekDates[wi]) ? 1 : 0), 0);
+                if (wkndCount >= under._maxWeekendShifts) continue;
+              }
+            }
+            // Don't take a slot from 'over' if it would orphan a required SL day
+            // (i.e. over is the only SL on that day and slot is evening_sl/day_lead)
+            if (over.role === "shift_lead" && (slot.type === "evening_sl" || slot.type === "day_lead")) continue;
+
+            // Do the swap
+            sc[over.id]--; sh[over.id] -= slot.hours;
+            const overOther = schedule[dateStr].filter((s, i) => i !== si && s.empId === over.id);
+            if (overOther.length === 0) sd[over.id].delete(dateStr);
+            // Remove old MC/night tracking for over
+            if (slot.isMC) mcCount[over.id] = Math.max(0, mcCount[over.id] - 1);
+
+            assign(dateStr, si, under, { ...slot, _isWE: slot._isWE, _isFri: slot._isFri });
+            swapped = true;
+            balanceChanged = true;
+            break outer;
+          }
+        }
       }
     }
+    if (!swapped) break; // no viable swaps found, stop
   }
 
   // ── STEP 7: Extra shifts — surface to manager ─────────────────────
