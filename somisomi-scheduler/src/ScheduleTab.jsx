@@ -1480,29 +1480,56 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
                   <span style={{ fontSize: 10, color: "#F59E0B", fontWeight: 600, padding: "4px 8px", background: "#FFFBEB", borderRadius: 6 }}>{"\u25b2\u25bc"} {Object.keys(weeklyMaxOverrides).length} shift adjustment{Object.keys(weeklyMaxOverrides).length > 1 ? "s" : ""}</span>
                 )}
               </div>
-              {/* Smart feedback: show why targets weren't met */}
-              {Object.keys(weeklyMaxOverrides).length > 0 && result && (() => {
+              {/* Smart feedback: balance check + target suggestions */}
+              {result && (() => {
                 const feedback = [];
+                const activeEmps = employees.filter(e => e.status === "active");
+                
+                // Check weekly target mismatches
                 Object.entries(weeklyMaxOverrides).forEach(([empId, wmo]) => {
                   if (!wmo || typeof wmo !== "object") return;
-                  const emp2 = employees.find(e => e.id === empId);
+                  const emp2 = activeEmps.find(e => e.id === empId);
                   if (!emp2) return;
                   const actual = result.empShiftCount?.[empId] || 0;
                   const target = wmo.max;
-                  if (typeof target === "number" && actual !== target) {
-                    if (actual < target) {
-                      feedback.push({ name: emp2.name, msg: "has " + actual + " shifts (target: " + target + ") \u2014 not enough available slots or blocked by constraints", type: "warn" });
-                    } else if (actual > target) {
-                      feedback.push({ name: emp2.name, msg: "has " + actual + " shifts (target: " + target + ") \u2014 needed for SL/MC coverage", type: "info" });
-                    }
+                  if (typeof target === "number" && actual < target) {
+                    // Find who could give up a shift
+                    const canReduce = activeEmps.filter(e => {
+                      if (e.id === empId) return false;
+                      const theirShifts = result.empShiftCount?.[e.id] || 0;
+                      return theirShifts > e.minShifts && theirShifts > 1 && e.maxShifts > 2;
+                    }).sort((a, b) => (result.empShiftCount?.[b.id] || 0) - (result.empShiftCount?.[a.id] || 0));
+                    const suggestion = canReduce.length > 0 ? " Try reducing " + canReduce.slice(0, 2).map(e => e.name + " (" + (result.empShiftCount?.[e.id] || 0) + " shifts)").join(" or ") : "";
+                    feedback.push({ msg: "\u26a0 " + emp2.name + " has " + actual + " shifts (target: " + target + ")." + suggestion, type: "warn" });
                   }
                 });
+
+                // Balance check: find imbalanced hours (skip time-off, high schoolers)
+                const regulars = activeEmps.filter(e => e.role === "regular" && e.maxShifts > 2);
+                const regHours = regulars.map(e => ({ name: e.name, id: e.id, hrs: result.empHours?.[e.id] || 0, shifts: result.empShiftCount?.[e.id] || 0, min: e.minShifts }));
+                const avgHrs = regHours.length > 0 ? regHours.reduce((s, e) => s + e.hrs, 0) / regHours.length : 0;
+                const highHrs = regHours.filter(e => e.hrs > avgHrs + 4 && e.shifts > e.min);
+                const lowHrs = regHours.filter(e => e.hrs < avgHrs - 4 && e.shifts < e.min + 1);
+                if (highHrs.length > 0 && lowHrs.length > 0) {
+                  feedback.push({ msg: "\ud83d\udca1 Hours imbalance: " + lowHrs.map(e => e.name + " (" + e.hrs.toFixed(0) + "h)").join(", ") + " could use more hours. Consider reducing " + highHrs.map(e => e.name + " (" + e.hrs.toFixed(0) + "h)").join(", "), type: "balance" });
+                }
+
+                // SL balance
+                const sls = activeEmps.filter(e => e.role === "shift_lead");
+                const slHours = sls.map(e => ({ name: e.name, hrs: result.empHours?.[e.id] || 0, shifts: result.empShiftCount?.[e.id] || 0 }));
+                const slAvg = slHours.length > 0 ? slHours.reduce((s, e) => s + e.hrs, 0) / slHours.length : 0;
+                const slHigh = slHours.filter(e => e.hrs > slAvg + 3);
+                const slLow = slHours.filter(e => e.hrs < slAvg - 3);
+                if (slHigh.length > 0 && slLow.length > 0) {
+                  feedback.push({ msg: "\ud83d\udca1 SL imbalance: " + slLow.map(e => e.name + " (" + e.hrs.toFixed(0) + "h)").join(", ") + " vs " + slHigh.map(e => e.name + " (" + e.hrs.toFixed(0) + "h)").join(", "), type: "balance" });
+                }
+
                 if (feedback.length === 0) return null;
                 return (
                   <div style={{ marginTop: 8 }}>
                     {feedback.map((f, i) => (
-                      <div key={i} style={{ fontSize: 11, padding: "4px 8px", marginBottom: 2, borderRadius: 4, background: f.type === "warn" ? "#FEF3C7" : "#EFF6FF", color: f.type === "warn" ? "#92400E" : "#1E40AF" }}>
-                        {f.type === "warn" ? "\u26a0" : "\u2139\ufe0f"} {f.name} {f.msg}
+                      <div key={i} style={{ fontSize: 11, padding: "6px 10px", marginBottom: 3, borderRadius: 6, background: f.type === "warn" ? "#FEF3C7" : f.type === "balance" ? "#F0F9FF" : "#EFF6FF", color: f.type === "warn" ? "#92400E" : "#1E40AF", lineHeight: 1.4 }}>
+                        {f.msg}
                       </div>
                     ))}
                   </div>
