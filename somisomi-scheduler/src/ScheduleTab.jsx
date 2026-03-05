@@ -491,7 +491,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       const aBh = sh[a.id] < a._effMinHours ? 1 : 0;
       const bBh = sh[b.id] < b._effMinHours ? 1 : 0;
       if (bBh !== aBh) return bBh - aBh;
-      return sc[a.id] - sc[b.id];
+      { const d = sc[a.id] - sc[b.id]; return d !== 0 ? d : Math.random() - 0.5; }
     });
 
     if (slot.isMC) console.log("ASSIGN:", slot.type, slot._dateStr, "day:" + new Date(slot._dateStr+"T12:00:00").getDay(), "cands:", cands.slice(0,5).map(e=>e.name+"(sc:"+sc[e.id]+")").join(","), "total:", cands.length);
@@ -643,7 +643,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (bBs !== aBs) return bBs - aBs;
         const aBh = sh[a.id] < a._effMinHours ? 1 : 0; const bBh = sh[b.id] < b._effMinHours ? 1 : 0;
         if (bBh !== aBh) return bBh - aBh;
-        return sc[a.id] - sc[b.id];
+        { const d = sc[a.id] - sc[b.id]; return d !== 0 ? d : Math.random() - 0.5; }
       });
       if (cands.length > 0) { const ch = cands[0]; schedule[dateStr][idx] = { ...slot, empId: ch.id, empName: ch.name, empRole: ch.role }; sc[ch.id]++; sh[ch.id] += slot.hours; sd[ch.id].add(dateStr); }
     });
@@ -765,7 +765,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       cands.sort((a, b) => {
         const aBh = sh[a.id] < (a.minHours || 0) ? 1 : 0; const bBh = sh[b.id] < (b.minHours || 0) ? 1 : 0;
         if (bBh !== aBh) return bBh - aBh;
-        return sc[a.id] - sc[b.id];
+        { const d = sc[a.id] - sc[b.id]; return d !== 0 ? d : Math.random() - 0.5; }
       });
       if (cands.length > 0) {
         const ch = cands[0];
