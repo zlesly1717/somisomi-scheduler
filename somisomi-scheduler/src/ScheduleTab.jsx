@@ -962,44 +962,13 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
     }
   };
   const handleReject = () => {
-    const hasOverrides = Object.keys(availOverrides).length > 0 || Object.keys(weeklyMaxOverrides).length > 0;
-    if (!prompt.trim() && !hasOverrides) return;
-    if (prompt.trim()) {
-      setNotes(prev => [...prev, prompt.trim()]);
-      // Try to parse the prompt for time-off instructions and add them
-      const parsed = parseTimeOffs(prompt, employees.filter(e => e.status === "active"), weekDates);
-      if (parsed.length > 0) {
-        setWeeklyTOs(prev => {
-          const combined = [...prev];
-          parsed.forEach(p => {
-            if (!combined.some(c => c.empId === p.empId && c.date === p.date && c.allDay === p.allDay)) {
-              combined.push(p);
-            }
-          });
-          return combined;
-        });
-      }
-      setPrompt("");
-      setTimeout(() => {
-        setGenerating(true); setStep("result");
-        const ds = dayStaffing || initDayStaffing(weekDates);
-        setTimeout(() => {
-          const currentTOs = [...(timeOffs || []), ...weeklyTOs, ...parsed];
-          const r = genSchedule(weekDates, employees, rules, schoolDates, currentTOs, ds, availOverrides, weeklyMaxOverrides);
-          setDraft(r); setGenerating(false);
-        }, 200);
-      }, 50);
-    } else {
-      // No text prompt but has overrides — just regenerate with current state
-      setNotes(prev => [...prev, "Regenerated with " + Object.keys(availOverrides).length + " availability override(s)"]);
-      setGenerating(true); setStep("result");
-      const ds = dayStaffing || initDayStaffing(weekDates);
-      setTimeout(() => {
-        const allTOs = [...(timeOffs || []), ...weeklyTOs];
-        const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs, ds, availOverrides, weeklyMaxOverrides);
-        setDraft(r); setGenerating(false);
-      }, 200);
-    }
+    setGenerating(true); setStep("result");
+    const ds = dayStaffing || initDayStaffing(weekDates);
+    setTimeout(() => {
+      const allTOs = [...(timeOffs || []), ...weeklyTOs];
+      const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs, ds, availOverrides, weeklyMaxOverrides);
+      setDraft(r); setGenerating(false);
+    }, 200);
   };
   const handleUnsave = () => { setSavedSchedules(prev => { const n = { ...prev }; delete n[weekKey]; return n; }); setStep("timeoff"); };
   const removeTo = (idx) => setWeeklyTOs(prev => prev.filter((_, i) => i !== idx));
@@ -1294,8 +1263,8 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
                                   const next = Math.max(0, Math.min(7, current + delta));
                                   setWeeklyMaxOverrides(prev => {
                                     const n = { ...prev };
-                                    if (next === actualShifts && next === emp.maxShifts) { delete n[emp.id]; }
-                                    else { n[emp.id] = { max: next }; }
+                                    if (next === actualShifts && !override) { delete n[emp.id]; }
+                                    else { n[emp.id] = { min: next, max: next }; }
                                     return n;
                                   });
                                 };
@@ -1465,33 +1434,49 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
           </div>
           )}
 
-          {/* Accept / Reject */}
+          {/* Action Bar */}
           {!isSaved && draft && (
-            <div style={{ background: "#fff", borderRadius: 12, padding: 18, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginBottom: 16, border: "2px solid #F59E0B" }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: "#4A3F2F", marginBottom: 4 }}>Does this schedule look good?</div>
-              <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 12 }}>Accept to save, or describe what needs to change and regenerate.</div>
-              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-                <button onClick={handleAccept} style={{ padding: "10px 28px", borderRadius: 8, border: "none", background: "#22C55E", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: font }}>{"\u2713"} Accept & Save</button>
-                <button onClick={() => { setDraft(null); setStep("timeoff"); setNotes([]); }} style={{ padding: "10px 20px", borderRadius: 8, border: "1px solid #D1D5DB", background: "#fff", color: "#6B7280", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: font }}>{"\u2715"} Start Over</button>
+            <div style={{ background: "#fff", borderRadius: 12, padding: "12px 18px", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginBottom: 16, border: "2px solid #F59E0B" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <button onClick={handleAccept} style={{ padding: "8px 24px", borderRadius: 8, border: "none", background: "#22C55E", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: font }}>{"\u2713"} Save</button>
+                <button onClick={handleReject} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: "#4A3F2F", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: font }}>{"\ud83d\udd04"} Regenerate</button>
+                <button onClick={() => { setDraft(null); setStep("timeoff"); setNotes([]); setWeeklyMaxOverrides({}); }} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #D1D5DB", background: "#fff", color: "#6B7280", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: font }}>{"\u2715"} Start Over</button>
+                <div style={{ flex: 1 }} />
+                {Object.keys(availOverrides).length > 0 && (
+                  <span style={{ fontSize: 10, color: "#16A34A", fontWeight: 600, padding: "4px 8px", background: "#F0FDF4", borderRadius: 6 }}>{"\u2713"} {Object.keys(availOverrides).length} override{Object.keys(availOverrides).length > 1 ? "s" : ""}</span>
+                )}
+                {Object.keys(weeklyMaxOverrides).length > 0 && (
+                  <span style={{ fontSize: 10, color: "#F59E0B", fontWeight: 600, padding: "4px 8px", background: "#FFFBEB", borderRadius: 6 }}>{"\u25b2\u25bc"} {Object.keys(weeklyMaxOverrides).length} shift adjustment{Object.keys(weeklyMaxOverrides).length > 1 ? "s" : ""}</span>
+                )}
               </div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginBottom: 6 }}>What needs to change?</div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <input value={prompt} onChange={e => setPrompt(e.target.value)} onKeyDown={e => { if (e.key === "Enter") handleReject(); }} placeholder="e.g. Kennedy off 19th-22nd all day, swap Gwen and Sam on Saturday..." style={{ ...si, flex: 1 }} />
-                <button onClick={handleReject} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: "#4A3F2F", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: font, whiteSpace: "nowrap" }}>{"\ud83d\udd04"} Regenerate</button>
-              </div>
-              {Object.keys(availOverrides).length > 0 && (
-                <div style={{ marginTop: 8, padding: "8px 12px", background: "#F0FDF4", borderRadius: 8, border: "1px solid #BBF7D0", display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 11, color: "#16A34A", fontWeight: 600 }}>{"\u2713"} {Object.keys(availOverrides).length} availability override{Object.keys(availOverrides).length > 1 ? "s" : ""} set</span>
-                  <span style={{ fontSize: 10, color: "#6B7280" }}>— click Regenerate to apply</span>
-                  <button onClick={() => setAvailOverrides({})} style={{ marginLeft: "auto", padding: "3px 8px", borderRadius: 6, border: "1px solid #D1D5DB", background: "#fff", color: "#9CA3AF", cursor: "pointer", fontSize: 10, fontWeight: 600, fontFamily: font }}>Clear all</button>
-                </div>
-              )}
-              {notes.length > 0 && (
-                <div style={{ marginTop: 8 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "#9CA3AF", marginBottom: 4 }}>CHANGE LOG:</div>
-                  {notes.map((n, i) => <div key={i} style={{ fontSize: 11, color: "#92400E", padding: "4px 8px", background: "#FEF3C7", borderRadius: 4, marginBottom: 2 }}>{"\ud83d\udcac"} {n}</div>)}
-                </div>
-              )}
+              {/* Smart feedback: show why targets weren't met */}
+              {Object.keys(weeklyMaxOverrides).length > 0 && result && (() => {
+                const feedback = [];
+                Object.entries(weeklyMaxOverrides).forEach(([empId, wmo]) => {
+                  if (!wmo || typeof wmo !== "object") return;
+                  const emp2 = employees.find(e => e.id === empId);
+                  if (!emp2) return;
+                  const actual = result.empShiftCount?.[empId] || 0;
+                  const target = wmo.max;
+                  if (typeof target === "number" && actual !== target) {
+                    if (actual < target) {
+                      feedback.push({ name: emp2.name, msg: "has " + actual + " shifts (target: " + target + ") \u2014 not enough available slots or blocked by constraints", type: "warn" });
+                    } else if (actual > target) {
+                      feedback.push({ name: emp2.name, msg: "has " + actual + " shifts (target: " + target + ") \u2014 needed for SL/MC coverage", type: "info" });
+                    }
+                  }
+                });
+                if (feedback.length === 0) return null;
+                return (
+                  <div style={{ marginTop: 8 }}>
+                    {feedback.map((f, i) => (
+                      <div key={i} style={{ fontSize: 11, padding: "4px 8px", marginBottom: 2, borderRadius: 4, background: f.type === "warn" ? "#FEF3C7" : "#EFF6FF", color: f.type === "warn" ? "#92400E" : "#1E40AF" }}>
+                        {f.type === "warn" ? "\u26a0" : "\u2139\ufe0f"} {f.name} {f.msg}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
