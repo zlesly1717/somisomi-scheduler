@@ -180,6 +180,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     }
   });
   const con = id => { const c = rules.constraints.find(x => x.id === id); return c ? c.enabled : true; };
+  console.log("EFF CHECK:", active.slice(0,3).map(e => e.name + " max:" + e._effMaxShifts + " maxH:" + e._effMaxHours).join(", "));
   const T = rules.shiftTimes;
   const nightMap = {};
   const mcCount = {};
