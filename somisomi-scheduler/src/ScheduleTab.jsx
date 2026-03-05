@@ -397,15 +397,17 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     if (slot.type === "evening" && !isWE && !isFri) {
       const dow2 = new Date(dateStr + "T12:00:00").getDay();
       if (dow2 <= 2) {
-        // Mon/Tue evening: boost trainees (they need these shifts for hours)
-        const traineeCands = cands.filter(e => e.role === "trainee" && sc[e.id] < e._effMinShifts);
-        if (traineeCands.length > 0) {
-          // Put trainees first but keep others as fallback
-          const others = cands.filter(e => e.role !== "trainee");
-          cands = [...traineeCands, ...others];
-        } else {
-          const regs = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee");
-          if (regs.length > 0) cands = regs;
+        // Mon/Tue evening: trainees CAN go here, but only if they haven't been reserved elsewhere
+        // Don't aggressively boost trainees to front — let shift count sorting handle it naturally
+        const regs = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee");
+        if (regs.length > 0) cands = regs;
+        else {
+          // No regulars available — trainees are OK here
+          const traineeCands = cands.filter(e => e.role === "trainee");
+          if (traineeCands.length > 0) {
+            const others = cands.filter(e => e.role !== "trainee");
+            cands = [...others, ...traineeCands]; // put trainees LAST, not first
+          }
         }
       } else {
         // Wed/Thu evening: prefer experienced workers, no SLs
@@ -510,6 +512,60 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 
   // ASSIGN PHASE 1: All SL-only + MC slots across ALL days first
   slMcSlots.forEach(assignSlot);
+
+  // ASSIGN PHASE 1.5: Constraint Propagation Pre-Pass
+  // Before greedy assignment, find any slot where only ONE employee can fill it.
+  // Lock those in first so that person isn't consumed by a lower-priority slot.
+  // Repeat until no more single-candidate slots exist (handles cascades).
+  {
+    const getCands = (slot) => {
+      const dateStr = slot._dateStr;
+      const dayIndex = slot._dayIndex;
+      const isWE = slot._isWE;
+      const isFri = slot._isFri;
+      return active.filter(emp => {
+        if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
+        if (!slCheck(slot, emp)) return false;
+        if (con("no_doubles") && sd[emp.id].has(dateStr)) return false;
+        if (sc[emp.id] >= emp._effMaxShifts) return false;
+        if (sh[emp.id] + slot.hours > emp._effMaxHours) return false;
+        if (slot.isMC && emp.role === "trainee") return false;
+        if (con("no_mc_twice") && slot.isMC && mcCount[emp.id] >= 1) return false;
+        if (con("no_trainees_weekday_day") && emp.role === "trainee" && !isWE && (slot.type === "day_lead" || slot.type === "day")) return false;
+        if (!traineeOK(emp, dateStr)) return false;
+        if (!friSatSunOK(emp, dateStr)) return false;
+        if (!weekendNightOK(emp, dateStr, slot.start)) return false;
+        if (!consecOK(emp, dayIndex)) return false;
+        if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
+        return true;
+      });
+    };
+    let changed = true;
+    let safetyLimit = 50;
+    while (changed && safetyLimit-- > 0) {
+      changed = false;
+      // Only check unassigned regular slots
+      for (const slot of regularSlots) {
+        if (slot._assigned) continue; // already locked in
+        const cands = getCands(slot);
+        if (cands.length === 1) {
+          const ch = cands[0];
+          const dateStr = slot._dateStr;
+          const isWE = slot._isWE;
+          const isFri = slot._isFri;
+          slot._assigned = true;
+          schedule[dateStr].push({ ...slot, empId: ch.id, empName: ch.name, empRole: ch.role });
+          sc[ch.id]++; sh[ch.id] += slot.hours; sd[ch.id].add(dateStr);
+          if (isWE) weCount[ch.id]++;
+          if (isFri && tm(slot.start) >= 1020) weCount[ch.id]++;
+          if (tm(slot.start) >= 1020 || slot.isMC) { if (!nightMap[dateStr]) nightMap[dateStr] = new Set(); nightMap[dateStr].add(ch.id); }
+          changed = true;
+        }
+      }
+    }
+    // Remove pre-assigned slots from the regularSlots list so they aren't double-assigned
+    regularSlots = regularSlots.filter(s => !s._assigned);
+  }
 
   // ASSIGN PHASE 2: Regular slots, following schedule order (busiest days first)
   // Sort regular slots: Sat first, then Fri, then Sun, then weekdays
