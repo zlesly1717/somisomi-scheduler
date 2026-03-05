@@ -129,64 +129,83 @@ function parseTimeOffs(text, employees, weekDates) {
 
 // === GENERATE ENGINE ===
 function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, dayStaffingOverrides, availOverrides, weeklyMaxOverrides) {
+  // ─────────────────────────────────────────────────────────────────
+  // NEW ENGINE: Balance-first, priority-driven assignment
+  //
+  // PHILOSOPHY:
+  //   Ignore min/max entirely during assignment. Instead:
+  //   1. Figure out how many shifts each person CAN work this week
+  //   2. Distribute those slots evenly (balance budget)
+  //   3. Assign slots in strict priority order, always picking the
+  //      person with the most remaining budget who fits the slot rules
+  //   4. After all slots assigned, surface "extra" shifts so manager
+  //      can decide who gets them
+  //
+  // SLOT PRIORITY ORDER (hardest/most constrained first):
+  //   P0: Thu MC night (Crystal+Zoe fixed)
+  //   P1: Sun MC night (2 SLs + 2 reg helpers)
+  //   P2: Fri evening SL + 2nd SL backup
+  //   P3: Sat evening SL + 2nd SL backup
+  //   P4: Sun evening SL (already covered by MC but for non-MC Sundays)
+  //   P5: All remaining Day Lead (SL) slots across the week
+  //   P6: Sat/Sun day slots
+  //   P7: Fri day slots
+  //   P8: Weekday day slots (Mon-Thu)
+  //   P9: Fri/Sat/Sun evening regular slots
+  //   P10: Wed/Thu evening regular slots
+  //   P11: Mon/Tue evening (trainee priority)
+  // ─────────────────────────────────────────────────────────────────
   const schedule = {};
-  // Helper: check if employee can fill an SL-only slot (with day_lead fallback)
-  const slCheck = (slot, emp, fallback = false) => {
-    if (!slot.slOnly) return true;
-    if (emp.role === "shift_lead") return true;
-    // For Day Lead: allow any non-trainee as fallback
-    if (slot.type === "day_lead" && emp.role !== "trainee" && fallback) return true;
-    return false;
-  };
-  const sc = {}, sh = {}, sd = {};
   const active = employees.filter(e => e.status === "active");
+  // sc=shift count, sh=hours, sd=days worked set
+  const sc = {}, sh = {}, sd = {};
   active.forEach(e => { sc[e.id] = 0; sh[e.id] = 0; sd[e.id] = new Set(); });
   weekDates.forEach(d => { schedule[d] = []; });
 
-  // Scale down minShifts/minHours for employees with time off
-  // If someone is off 4 of 7 days, they only have 3 available days — scale minimums proportionally
+  // ── STEP 1: Compute each employee's available shift budget for this week ──
+  // Count how many days each person is actually available (ignoring min/max entirely).
+  // Budget = number of days they CAN work, capped at their maxShifts.
+  // This is what we balance against, not arbitrary min/max numbers.
   active.forEach(e => {
-    let offDays = 0;
+    let availCount = 0;
     weekDates.forEach(d => {
       const overrideKey = d + ":" + e.id;
-      // If explicitly overridden to available all day, don't count as off
-      if (availOverrides && availOverrides[overrideKey] === "all") return;
-      // Partial overrides (morning/evening) still count as half-off — don't count as full off day
-      if (availOverrides && (availOverrides[overrideKey] === "morning" || availOverrides[overrideKey] === "evening")) return;
+      if (availOverrides?.[overrideKey] === "all") { availCount++; return; }
       const hasTO = weeklyTimeOffs.some(t => t.empId === e.id && t.date === d && t.allDay);
       const dow = new Date(d + "T12:00:00").getDay();
       const dayKeys = ["sun","mon","tue","wed","thu","fri","sat"];
       const unavail = e.unavailability?.[dayKeys[dow]];
-      const hasUnavail = unavail?.allDay;
-      if (hasTO || hasUnavail) offDays++;
+      if (!hasTO && !unavail?.allDay) availCount++;
     });
-    if (offDays > 0) {
-      const availDays = 7 - offDays;
-      const ratio = availDays / 7;
-      e._effMinShifts = Math.max(0, Math.round(e.minShifts * ratio));
-      e._effMinHours = Math.max(0, Math.round((e.minHours || 0) * ratio));
-    } else {
-      e._effMinShifts = e.minShifts;
-      e._effMinHours = e.minHours || 0;
-    }
-    // Apply weekly shift overrides (per-week min/max adjustments)
-    // Always set defaults first
-    e._effMaxShifts = e.maxShifts;
-    e._effMaxHours = e.maxHours;
+    // Apply weekly overrides if set (manager explicitly said "give X shifts this week")
     const wmo = weeklyMaxOverrides?.[e.id];
     if (wmo && typeof wmo === "object") {
-      if (typeof wmo.min === "number") { e._effMinShifts = wmo.min; e._effMinHours = Math.round((wmo.min / (e.minShifts || 1)) * (e.minHours || 0)); }
-      if (typeof wmo.max === "number") { e._effMaxShifts = wmo.max; e._effMaxHours = Math.round((wmo.max / (e.maxShifts || 1)) * e.maxHours); }
+      e._effMaxShifts = typeof wmo.max === "number" ? wmo.max : e.maxShifts;
+      e._effMinShifts = typeof wmo.min === "number" ? wmo.min : 0;
+    } else {
+      e._effMaxShifts = e.maxShifts;
+      e._effMinShifts = 0; // ignore minimums — balance decides
     }
+    e._effMaxHours = e.maxHours;
+    e._effMinHours = 0;
+    // Budget: how many shifts can we give them (availability capped at their max)
+    e._budget = Math.min(availCount, e._effMaxShifts);
   });
   const con = id => { const c = rules.constraints.find(x => x.id === id); return c ? c.enabled : true; };
   const T = rules.shiftTimes;
-  const nightMap = {};
-  const mcCount = {};
-  const weCount = {};
+  const nightMap = {};   // dateStr -> Set of empIds who worked nights
+  const mcCount = {};    // empId -> number of MC nights this week
+  const weCount = {};    // empId -> weekend night shift count
   active.forEach(e => { mcCount[e.id] = 0; weCount[e.id] = 0; });
 
-  // Helper: check if assigning emp to a night slot on dateStr would violate weekend night rules
+  // ── HELPERS ──────────────────────────────────────────────────────
+  const slCheck = (slot, emp, fallback = false) => {
+    if (!slot.slOnly) return true;
+    if (emp.role === "shift_lead") return true;
+    if (slot.type === "day_lead" && emp.role !== "trainee" && fallback) return true;
+    return false;
+  };
+
   const weekendNightOK = (emp, dateStr, slotStart) => {
     if (tm(slotStart) < 1020) return true;
     const dow2 = new Date(dateStr + "T12:00:00").getDay();
@@ -201,7 +220,6 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     return true;
   };
 
-  // Helper: check max consecutive days
   const consecOK = (emp, dayIndex2) => {
     if (!con("max_consecutive_3")) return true;
     let consec = 1;
@@ -210,10 +228,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     return consec <= 3;
   };
 
-  // Helper: check if assigning emp to dateStr would violate no_fri_sat_sun
   const friSatSunOK = (emp, dateStr) => {
     if (!con("no_fri_sat_sun")) return true;
-    // If this employee has an explicit availability override for this date, allow it
     const overrideKey = dateStr + ":" + emp.id;
     if (availOverrides && availOverrides[overrideKey]) return true;
     const d2 = new Date(dateStr + "T12:00:00").getDay();
@@ -224,39 +240,37 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     return wouldHave < 3;
   };
 
-  // Helper: block low-shift employees from 2nd weekend shift if they have weekday availability
-  const lowShiftWeekendOK = (emp, dateStr, slotStart) => {
-    if (emp._effMinShifts > 2) return true;
-    const d2 = new Date(dateStr + "T12:00:00").getDay();
-    const isWEslot = d2 === 0 || d2 === 6 || (d2 === 5 && tm(slotStart) >= 1020);
-    if (!isWEslot) return true;
-    const hasWeekendShift = [4,5,6].some(wi => sd[emp.id].has(weekDates[wi]));
-    if (!hasWeekendShift) return true;
-    // Check if they have any weekday availability remaining
-    const weekdayAvail = [0,1,2,3].some(wi => {
-      if (sd[emp.id].has(weekDates[wi])) return false;
-      return isAvail(emp, weekDates[wi], "18:00", "22:30", weeklyTimeOffs, availOverrides);
-    });
-    const friDayAvail = !sd[emp.id].has(weekDates[4]) && isAvail(emp, weekDates[4], "12:00", "18:00", weeklyTimeOffs, availOverrides);
-    return !(weekdayAvail || friDayAvail);
-  };
-  // Schedule hardest days first: Thu MC, Sun MC, Sat, Fri, then weekdays
-  // Helper: max 1 trainee per day
   const traineeOK = (emp, dateStr) => {
     if (emp.role !== "trainee") return true;
     if (!con("no_two_trainees")) return true;
     return !schedule[dateStr].some(a => a.empId && active.find(e => e.id === a.empId)?.role === "trainee");
   };
-  // Helper: check if employee can swirl
+
   const canSwirl = (emp) => {
     const swirlList = rules.swirl?.swirlers || [];
     if (swirlList.length > 0) return swirlList.includes(emp.name);
     return (emp.tags || []).includes("can_swirl");
   };
-  const schedOrder = [3, 6, 5, 4, 0, 1, 2];
-  const allSlots = []; // Collect all slots first, assign after
 
-  // SLOT GENERATION: create all slots for each day
+  // Register an assignment into the schedule
+  const assign = (dateStr, slotIndex, emp, slot) => {
+    const isWE = slot._isWE;
+    const isFri = slot._isFri;
+    schedule[dateStr][slotIndex] = { ...slot, empId: emp.id, empName: emp.name, empRole: emp.role };
+    sc[emp.id]++; sh[emp.id] += slot.hours; sd[emp.id].add(dateStr);
+    if (slot.isMC) mcCount[emp.id]++;
+    if (isWE) weCount[emp.id]++;
+    if (isFri && tm(slot.start) >= 1020) weCount[emp.id]++;
+    if (tm(slot.start) >= 1020 || slot.isMC) {
+      if (!nightMap[dateStr]) nightMap[dateStr] = new Set();
+      nightMap[dateStr].add(emp.id);
+    }
+  };
+
+  // ── STEP 2: Build all slots ───────────────────────────────────────
+  const schedOrder = [3, 6, 5, 4, 0, 1, 2]; // Thu, Sun, Sat, Fri, Mon, Tue, Wed
+  const allSlots = [];
+
   schedOrder.forEach(dayIndex => {
     const dateStr = weekDates[dayIndex];
     const dayType = getDayType(dateStr, schoolDates);
@@ -267,7 +281,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     const isWE = dow === 0 || dow === 6;
     const isFri = dow === 5; const isSat = dow === 6; const isSun = dow === 0; const isThu = dow === 4;
     const isMC = isThu || isSun;
-    const dayKey = DAYS[dow === 0 ? 6 : dow - 1]; // mon,tue,...,sun
+    const dayKey = DAYS[dow === 0 ? 6 : dow - 1];
     let dayS, dayE, eveS, eveE;
     if (isWE) { dayS = T.weekendDay.start; dayE = T.weekendDay.end; eveS = T.weekendEvening.start; eveE = T.weekendEvening.end; }
     else if (isFri) { dayS = T.fridayDay.start; dayE = T.fridayDay.end || T.weekdayDay.end; eveS = T.weekdayEvening.start; eveE = T.weekdayEvening.end; }
@@ -282,59 +296,77 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     }
     if (staffing.mid > 0) { for (let i = 0; i < staffing.mid; i++) { slots.push({ type: "mid", label: "Mid Shift", start: midS, end: midE, hours: hrs(midS, midE), slOnly: false, order: 10 + i }); } }
     if (isMC) {
+      // Thu MC: 1 SL leader + 1 SL helper + 1 reg helper (3 total)
+      // Sun MC: 1 SL leader + 1 SL helper + 2 reg helpers (4 total)
       slots.push({ type: "mc_leader", label: "MC Leader (Eve SL)", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: true, isMC: true, order: 20 });
       slots.push({ type: "mc_sl_helper", label: "MC Helper (SL)", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: true, isMC: true, order: 21 });
       const regHelpers = isSun ? 2 : 1;
       for (let i = 0; i < regHelpers; i++) { slots.push({ type: "mc_helper", label: "MC Helper", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: false, isMC: true, order: 22 + i }); }
     } else {
-      for (let i = 0; i < (staffing.evening || 3); i++) { slots.push({ type: i === 0 ? "evening_sl" : "evening", label: i === 0 ? "Evening SL" : "Evening", start: eveS, end: eveE, hours: hrs(eveS, eveE), slOnly: i === 0, order: 20 + i }); }
+      for (let i = 0; i < (staffing.evening || 3); i++) {
+        slots.push({ type: i === 0 ? "evening_sl" : "evening", label: i === 0 ? "Evening SL" : "Evening", start: eveS, end: eveE, hours: hrs(eveS, eveE), slOnly: i === 0, order: 20 + i });
+      }
     }
     slots.sort((a, b) => a.order - b.order);
-    slots.forEach(s => { s._dateStr = dateStr; s._dayIndex = dayIndex; s._isWE = isWE; s._isFri = isFri; s._isSat = isSat; s._isSun = isSun; s._isMC = isMC; s._dayKey = dayKey; });
+    slots.forEach(s => { s._dateStr = dateStr; s._dayIndex = dayIndex; s._isWE = isWE; s._isFri = isFri; s._isSat = isSat; s._isSun = isSun; s._isMC = isMC; s._dayKey = dayKey; s._dow = dow; });
+    schedule[dateStr] = slots.map(s => ({ ...s, empId: null, empName: "⚠ UNFILLED", empRole: null }));
     allSlots.push(...slots.map(s => ({ ...s })));
-    // Initialize schedule array for this day
-    schedule[dateStr] = [];
   });
 
-  // NOW assign in priority order: SL-only/MC across all days first, then regular
-  // This prevents SLs from being used up on regular slots before all SL-only slots are filled
-  const slMcSlots = allSlots.filter(s => s.slOnly || s.isMC);
-  let regularSlots = allSlots.filter(s => !s.slOnly && !s.isMC);
+  // ── STEP 3: Balance budget across all employees ───────────────────
+  // Count total slots needing to be filled, by type
+  // Each employee gets a "remaining budget" tracker — this is what drives pick order
+  // (person with most remaining budget = most underutilized = pick them first)
 
-  // Move 1 Fri evening slot and 1 Sat evening slot into Phase 1 as "SL backup" slots
-  // These get processed with SL-only slots so SLs are reserved for them
-  const friEveBackup = regularSlots.find(s => s.type === "evening" && s._isFri);
-  const satEveBackup = regularSlots.find(s => s.type === "evening" && s._isSat);
-  if (friEveBackup) {
-    regularSlots = regularSlots.filter(s => s !== friEveBackup);
-    slMcSlots.push({ ...friEveBackup, _slBackup: true });
-  }
-  if (satEveBackup) {
-    regularSlots = regularSlots.filter(s => s !== satEveBackup);
-    slMcSlots.push({ ...satEveBackup, _slBackup: true });
-  }
+  // ── STEP 4: Priority-ordered slot assignment ──────────────────────
+  // Slot priority groups — assigned in this order:
+  //   G0: Thu MC (fixed: Crystal leader + Zoe SL helper + 1 reg)
+  //   G1: Sun MC (2 SLs + 2 regs)
+  //   G2: Fri/Sat/Sun Evening SL slots (need 2 SLs each night)
+  //   G3: All other Day Lead (SL) slots Mon-Thu
+  //   G4: Sat/Sun day + mid
+  //   G5: Fri day
+  //   G6: Mon-Thu day (2nd day slots) — prefer regulars
+  //   G7: Fri/Sat/Sun evening regular slots — 2nd SL preferred, then regulars
+  //   G8: Wed/Thu evening regular slots — regulars only
+  //   G9: Mon/Tue evening — trainee priority, then regulars
 
-  // Sort SL-only slots: MC nights first (hardest), then weekend SL, then weekday SL
-  slMcSlots.sort((a, b) => {
-    // Priority: MC first, then weekend SL/backup, then weekday SL
-    const getPri = (s) => {
-      if (s.isMC) return 0;
-      if (s._slBackup) return 1; // Fri/Sat eve backup — after MC, before other SL
-      if (s._isWE || s._isFri) return 2; // Weekend SL-only
-      return 3; // Weekday SL-only
-    };
-    const aP = getPri(a), bP = getPri(b);
-    if (aP !== bP) return aP - bP;
+  const getSlotGroup = (slot) => {
+    const dow = slot._dow;
+    const isMC = slot.isMC;
+    const isEve = tm(slot.start) >= 1020;
+    const isWE = slot._isWE;
+    const isFri = slot._isFri;
+    const isSat = slot._isSat;
+    const isSun = slot._isSun;
+    const isThu = dow === 4;
+
+    if (isMC && isThu) return 0;   // Thu MC
+    if (isMC && isSun) return 1;   // Sun MC
+    if (slot.slOnly && isEve && (isFri || isSat || isSun)) return 2; // Fri/Sat/Sun evening SL
+    if (slot.slOnly) return 3;     // All other SL slots (day leads)
+    if ((isWE) && !isEve) return 4; // Sat/Sun day
+    if (isFri && !isEve) return 5;  // Fri day
+    if (!isWE && !isFri && !isEve) return 6; // Mon-Thu day
+    if ((isFri || isSat || isSun) && isEve) return 7; // Fri/Sat/Sun evening regular
+    if ((dow === 3 || dow === 4) && isEve) return 8;  // Wed/Thu evening
+    return 9; // Mon/Tue evening — trainee slots
+  };
+
+  // Sort all slots by group
+  allSlots.sort((a, b) => {
+    const ga = getSlotGroup(a), gb = getSlotGroup(b);
+    if (ga !== gb) return ga - gb;
     return a.order - b.order;
   });
 
-  const assignSlot = (slot) => {
+  // Core candidate filter — checks all hard constraints
+  const getCandidates = (slot, extraFilter) => {
     const dateStr = slot._dateStr;
     const dayIndex = slot._dayIndex;
     const isWE = slot._isWE;
     const isFri = slot._isFri;
-    const isSat = slot._isSat;
-    const dayKey = slot._dayKey;
+    const dow = slot._dow;
 
     let cands = active.filter(emp => {
       if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
@@ -344,435 +376,279 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (sh[emp.id] + slot.hours > emp._effMaxHours) return false;
       if (slot.isMC && emp.role === "trainee") return false;
       if (con("no_mc_twice") && slot.isMC && mcCount[emp.id] >= 1) return false;
-      if (con("no_trainees_weekday_day") && emp.role === "trainee" && !isWE && (slot.type === "day_lead" || slot.type === "day")) return false;
+      if (con("no_trainees_weekday_day") && emp.role === "trainee" && !isWE && !isFri && (slot.type === "day_lead" || slot.type === "day")) return false;
       if (!traineeOK(emp, dateStr)) return false;
       if (!friSatSunOK(emp, dateStr)) return false;
       if (!weekendNightOK(emp, dateStr, slot.start)) return false;
       if (!consecOK(emp, dayIndex)) return false;
-      if (!lowShiftWeekendOK(emp, dateStr, slot.start)) return false;
-      // No trainees on weekends (soft: only if others available, checked below)
-      // Check if already assigned today
       if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
       return true;
     });
 
-    // MC rotation pools
-    if (slot.type === "mc_leader") {
-      const pool = rules.mcRotation.shiftLeadPool || [];
-      const f = cands.filter(e => pool.includes(e.name));
-      if (f.length > 0) cands = f;
+    if (extraFilter) {
+      const filtered = extraFilter(cands);
+      if (filtered.length > 0) cands = filtered;
     }
-    if (slot.type === "mc_helper") {
-      const f = cands.filter(e => (rules.mcRotation.assistantPool || []).includes(e.name));
-      if (f.length > 0) cands = f;
-    }
-    if (slot.type === "day") {
-      const f = cands.filter(e => (rules.secondDayPriority || []).includes(e.name));
-      if (f.length > 0) cands = f;
-    }
+    return cands;
+  };
 
-    // Weekend: prefer good weekend people (but not low-shift ones on 2nd weekend)
-    if (isWE && !slot.isMC && !slot.slOnly) {
-      const goodWE = rules.goodWeekendPeople || [];
-      const f = cands.filter(e => goodWE.includes(e.name));
-      if (f.length > 0) {
-        const fNoLow = f.filter(e => !(e._effMinShifts <= 2 && [4,5,6].some(wi => sd[e.id].has(weekDates[wi]))));
-        cands = fNoLow.length > 0 ? fNoLow : f;
-      }
-    }
-
-    // No trainees on weekend evening/night shifts if others available (mid shifts OK)
-    if ((isWE || isFri) && slot.type !== "mid") {
-      const nonTrainees = cands.filter(e => e.role !== "trainee");
-      if (nonTrainees.length > 0) cands = nonTrainees;
-    }
-
-    const dow2 = new Date(dateStr + "T12:00:00").getDay();
-    // dow2: 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
-
-    // RULE: Mon-Fri day shifts — max 1 SL (already have the Day Lead SL, block more)
-    if (!isWE && (slot.type === "day" || slot.type === "mid")) {
-      const slAlreadyOnDay = schedule[dateStr].some(a => a.empId && active.find(e => e.id === a.empId)?.role === "shift_lead");
-      if (slAlreadyOnDay) {
-        // Already have an SL today — exclude SLs from this slot
-        const nonSL = cands.filter(e => e.role !== "shift_lead");
-        if (nonSL.length > 0) cands = nonSL;
-      } else {
-        // No SL yet — prefer regulars anyway, save SLs for weekend
-        const regs = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee");
-        if (regs.length > 0) cands = regs;
-      }
-    }
-
-    // RULE: Mon-Wed evening — max 1 SL, and reserve these shifts for trainees/regulars
-    if (slot.type === "evening" && !isWE && !isFri && dow2 >= 1 && dow2 <= 3) {
-      // Hard cap: block SLs entirely from Mon-Wed evening (save them for Fri-Sun)
-      const nonSL = cands.filter(e => e.role !== "shift_lead");
-      if (nonSL.length > 0) cands = nonSL;
-
-      if (dow2 <= 2) {
-        // Mon/Tue evening: these are TRAINEE slots — prefer trainees, then regulars
-        const trainees = cands.filter(e => e.role === "trainee");
-        const regs = cands.filter(e => e.role === "regular");
-        if (trainees.length > 0) cands = [...trainees, ...regs]; // trainees first
-        else if (regs.length > 0) cands = regs;
-      } else {
-        // Wed evening: regulars only (trainees not experienced enough for Wed/Thu crowd)
-        const regs = cands.filter(e => e.role === "regular");
-        if (regs.length > 0) cands = regs;
-      }
-    }
-
-    // RULE: Thu evening — regulars only, no SLs (Thu has MC night SLs already)
-    if (slot.type === "evening" && !isWE && !isFri && dow2 === 4) {
-      const nonSL = cands.filter(e => e.role !== "shift_lead");
-      if (nonSL.length > 0) cands = nonSL;
-    }
-
-    // RULE: Fri night - Sun — TARGET 2 SLs per shift period (1 is the evening_sl slot, want 1 more in evening)
-    // Fri/Sat evening SL backup slot: ONLY SLs
-    if (slot._slBackup) {
-      const slOnly = cands.filter(e => e.role === "shift_lead");
-      if (slOnly.length > 0) cands = slOnly;
-    }
-
-    // Fri/Sat/Sun evening regular slots: push for a 2nd SL if we don't have one yet
-    const isSun = dow2 === 0;
-    if (slot.type === "evening" && (isFri || isSat || isSun)) {
-      const slsOnEvening = schedule[dateStr].filter(a => a.empId && (a.type === "evening" || a.type === "evening_sl") && active.find(e => e.id === a.empId)?.role === "shift_lead").length;
-      if (slsOnEvening < 2) {
-        // Don't have 2 SLs yet — strongly prefer an SL for this slot
-        const slCands = cands.filter(e => e.role === "shift_lead");
-        if (slCands.length > 0) cands = slCands;
-      }
-    }
-
-    // Weekend balance: low-shift employees
-    const isWS = isWE || (isFri && tm(slot.start) >= 1020);
-    if (isWS && cands.length > 1 && !slot.slOnly && !slot.isMC) {
-      const lowWH = cands.filter(e => e._effMinShifts <= 2 && [4,5,6].some(wi => sd[e.id].has(weekDates[wi])));
-      const oth = cands.filter(e => !(e._effMinShifts <= 2 && [4,5,6].some(wi => sd[e.id].has(weekDates[wi]))));
-      if (lowWH.length > 0 && oth.length > 0) cands = oth;
-    }
-
-    // Swirl priority: on Fri night - Sun, prefer swirlers if we don't have enough yet
-    const isWeekendPeriod = isWE || (isFri && tm(slot.start) >= 1020);
-    if (isWeekendPeriod && con("min_swirlers_weekend")) {
-      const minSwirl = rules.swirl?.minPerShift || 2;
-      // Count swirlers already assigned to this shift period on this day
-      const swirlersOnShift = schedule[dateStr].filter(a => {
-        if (!a.empId) return false;
-        // Same time period: both evening/MC or both day
-        const sameEvePeriod = tm(a.start) >= 1020 && tm(slot.start) >= 1020;
-        const sameDayPeriod = tm(a.start) < 1020 && tm(slot.start) < 1020;
-        if (!sameEvePeriod && !sameDayPeriod) return false;
-        const emp2 = active.find(e => e.id === a.empId);
-        return emp2 && canSwirl(emp2);
-      }).length;
-      if (swirlersOnShift < minSwirl) {
-        // Need more swirlers — strongly prefer them
-        const swirlers = cands.filter(e => canSwirl(e));
-        if (swirlers.length > 0) cands = swirlers;
-      }
-    }
-
-    // Sort candidates
+  // Pick the best candidate from a list — balance-first:
+  // person with most remaining budget (budget - shifts assigned so far) goes first
+  // ties broken by: fewer weekend shifts (for weekend slots), then random
+  const pickBest = (cands, slot) => {
+    if (cands.length === 0) return null;
+    const isWS = slot._isWE || (slot._isFri && tm(slot.start) >= 1020);
     cands.sort((a, b) => {
-      // Priority -1: Employees with explicit availability override for this date
-      const aOv = availOverrides?.[dateStr + ":" + a.id] ? 1 : 0;
-      const bOv = availOverrides?.[dateStr + ":" + b.id] ? 1 : 0;
+      // Explicit override (manager said make them available)
+      const aOv = availOverrides?.[slot._dateStr + ":" + a.id] ? 1 : 0;
+      const bOv = availOverrides?.[slot._dateStr + ":" + b.id] ? 1 : 0;
       if (bOv !== aOv) return bOv - aOv;
-      // Priority -0.5: Employees with weekly shift target who are below it
-      const aWmo = weeklyMaxOverrides?.[a.id];
-      const bWmo = weeklyMaxOverrides?.[b.id];
-      const aTarget = (aWmo && typeof aWmo === "object" && typeof aWmo.max === "number") ? aWmo.max : null;
-      const bTarget = (bWmo && typeof bWmo === "object" && typeof bWmo.max === "number") ? bWmo.max : null;
-      const aBelowTarget = aTarget !== null && sc[a.id] < aTarget ? 1 : 0;
-      const bBelowTarget = bTarget !== null && sc[b.id] < bTarget ? 1 : 0;
-      if (bBelowTarget !== aBelowTarget) return bBelowTarget - aBelowTarget;
-      // Priority -0.4: Deprioritize employees ABOVE their weekly target (give fewer shifts)
-      const aAboveTarget = aTarget !== null && sc[a.id] >= aTarget ? 1 : 0;
-      const bAboveTarget = bTarget !== null && sc[b.id] >= bTarget ? 1 : 0;
-      if (aAboveTarget !== bAboveTarget) return aAboveTarget - bAboveTarget;
-      const aG = (a.guaranteedDays || []).includes(dayKey) ? 1 : 0;
-      const bG = (b.guaranteedDays || []).includes(dayKey) ? 1 : 0;
+      // Guaranteed days
+      const aG = (a.guaranteedDays || []).includes(slot._dayKey) ? 1 : 0;
+      const bG = (b.guaranteedDays || []).includes(slot._dayKey) ? 1 : 0;
       if (bG !== aG) return bG - aG;
+      // Balance: most remaining budget first (fewest shifts relative to their available days)
+      const aRemain = a._budget - sc[a.id];
+      const bRemain = b._budget - sc[b.id];
+      if (bRemain !== aRemain) return bRemain - aRemain;
+      // For weekend slots: prefer people with fewer weekend shifts already
       if (isWS) {
         const aWEc = [4,5,6].reduce((c, wi) => c + (sd[a.id].has(weekDates[wi]) ? 1 : 0), 0);
         const bWEc = [4,5,6].reduce((c, wi) => c + (sd[b.id].has(weekDates[wi]) ? 1 : 0), 0);
         if (aWEc !== bWEc) return aWEc - bWEc;
       }
-      const aBs = sc[a.id] < a._effMinShifts ? 1 : 0;
-      const bBs = sc[b.id] < b._effMinShifts ? 1 : 0;
-      if (bBs !== aBs) return bBs - aBs;
-      const aBh = sh[a.id] < a._effMinHours ? 1 : 0;
-      const bBh = sh[b.id] < b._effMinHours ? 1 : 0;
-      if (bBh !== aBh) return bBh - aBh;
-      { const d = sc[a.id] - sc[b.id]; return d !== 0 ? d : Math.random() - 0.5; }
+      return Math.random() - 0.5;
     });
-
-    if (slot.isMC) console.log("ASSIGN:", slot.type, slot._dateStr, "day:" + new Date(slot._dateStr+"T12:00:00").getDay(), "cands:", cands.slice(0,5).map(e=>e.name+"(sc:"+sc[e.id]+")").join(","), "total:", cands.length);
-    if (cands.length > 0) {
-      const ch = cands[0];
-      schedule[dateStr].push({ ...slot, empId: ch.id, empName: ch.name, empRole: ch.role });
-      sc[ch.id]++; sh[ch.id] += slot.hours; sd[ch.id].add(dateStr);
-      if (slot.isMC) mcCount[ch.id]++;
-      if (isWE) weCount[ch.id]++;
-      if (isFri && tm(slot.start) >= 1020) weCount[ch.id]++;
-      if (tm(slot.start) >= 1020 || slot.isMC) { if (!nightMap[dateStr]) nightMap[dateStr] = new Set(); nightMap[dateStr].add(ch.id); }
-    } else {
-      schedule[dateStr].push({ ...slot, empId: null, empName: "\u26a0 UNFILLED", empRole: null });
-    }
+    return cands[0];
   };
 
-  // ASSIGN PHASE 1: All SL-only + MC slots across ALL days first
-  slMcSlots.forEach(assignSlot);
+  // Assign a slot by finding its index in the schedule array and filling it
+  const assignSlotInSchedule = (slot, emp) => {
+    const dateStr = slot._dateStr;
+    const idx = schedule[dateStr].findIndex(s =>
+      s.type === slot.type && s.start === slot.start && s.end === slot.end && s.empId === null &&
+      s.order === slot.order
+    );
+    if (idx >= 0) assign(dateStr, idx, emp, slot);
+  };
 
-  // ASSIGN PHASE 1.5: Constraint Propagation Pre-Pass
-  // Before greedy assignment, find any slot where only ONE employee can fill it.
-  // Lock those in first so that person isn't consumed by a lower-priority slot.
-  // Repeat until no more single-candidate slots exist (handles cascades).
-  {
-    const getCands = (slot) => {
-      const dateStr = slot._dateStr;
-      const dayIndex = slot._dayIndex;
-      const isWE = slot._isWE;
-      const isFri = slot._isFri;
-      return active.filter(emp => {
-        if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
-        if (!slCheck(slot, emp)) return false;
-        if (con("no_doubles") && sd[emp.id].has(dateStr)) return false;
-        if (sc[emp.id] >= emp._effMaxShifts) return false;
-        if (sh[emp.id] + slot.hours > emp._effMaxHours) return false;
-        if (slot.isMC && emp.role === "trainee") return false;
-        if (con("no_mc_twice") && slot.isMC && mcCount[emp.id] >= 1) return false;
-        if (con("no_trainees_weekday_day") && emp.role === "trainee" && !isWE && (slot.type === "day_lead" || slot.type === "day")) return false;
-        if (!traineeOK(emp, dateStr)) return false;
-        if (!friSatSunOK(emp, dateStr)) return false;
-        if (!weekendNightOK(emp, dateStr, slot.start)) return false;
-        if (!consecOK(emp, dayIndex)) return false;
-        if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
-        return true;
-      });
-    };
-    let changed = true;
-    let safetyLimit = 50;
-    while (changed && safetyLimit-- > 0) {
-      changed = false;
-      // Only check unassigned regular slots
-      for (const slot of regularSlots) {
-        if (slot._assigned) continue; // already locked in
-        const cands = getCands(slot);
-        if (cands.length === 1) {
-          const ch = cands[0];
-          const dateStr = slot._dateStr;
-          const isWE = slot._isWE;
-          const isFri = slot._isFri;
-          slot._assigned = true;
-          schedule[dateStr].push({ ...slot, empId: ch.id, empName: ch.name, empRole: ch.role });
-          sc[ch.id]++; sh[ch.id] += slot.hours; sd[ch.id].add(dateStr);
-          if (isWE) weCount[ch.id]++;
-          if (isFri && tm(slot.start) >= 1020) weCount[ch.id]++;
-          if (tm(slot.start) >= 1020 || slot.isMC) { if (!nightMap[dateStr]) nightMap[dateStr] = new Set(); nightMap[dateStr].add(ch.id); }
-          changed = true;
+  // Swirl check helper
+  const needsSwirler = (slot) => {
+    if (!con("min_swirlers_weekend")) return false;
+    const isWeekendPeriod = slot._isWE || (slot._isFri && tm(slot.start) >= 1020);
+    if (!isWeekendPeriod) return false;
+    const minSwirl = rules.swirl?.minPerShift || 2;
+    const dateStr = slot._dateStr;
+    const isEve = tm(slot.start) >= 1020;
+    const swirlersNow = schedule[dateStr].filter(a => {
+      if (!a.empId) return false;
+      const sameEve = tm(a.start) >= 1020 && isEve;
+      const sameDay = tm(a.start) < 1020 && !isEve;
+      if (!sameEve && !sameDay) return false;
+      return canSwirl(active.find(e => e.id === a.empId));
+    }).length;
+    return swirlersNow < minSwirl;
+  };
+
+  // ── ASSIGN ALL SLOTS in priority order ───────────────────────────
+  for (const slot of allSlots) {
+    const dateStr = slot._dateStr;
+    const dow = slot._dow;
+    const group = getSlotGroup(slot);
+
+    // Check if this slot already got filled (shouldn't happen but safety check)
+    const slotInSched = schedule[dateStr].find(s =>
+      s.type === slot.type && s.start === slot.start && s.order === slot.order
+    );
+    if (slotInSched?.empId) continue;
+
+    let cands = [];
+
+    // ── GROUP 0: Thu MC ── Crystal always leads, Zoe always SL helper
+    if (group === 0) {
+      if (slot.type === "mc_leader") {
+        const crystal = active.find(e => e.name === "Crystal Guel");
+        if (crystal && getCandidates(slot).find(e => e.id === crystal.id)) {
+          assignSlotInSchedule(slot, crystal); continue;
         }
       }
-    }
-    // Remove pre-assigned slots from the regularSlots list so they aren't double-assigned
-    regularSlots = regularSlots.filter(s => !s._assigned);
-  }
-
-  // ASSIGN PHASE 2: Regular slots, following schedule order (busiest days first)
-  // Sort regular slots: Sat first, then Fri, then Sun, then weekdays
-  // Sort regular slots: Friday/Saturday evenings FIRST (hardest to fill, most important)
-  // Then Saturday/Sunday day slots, then remaining weekday slots
-  regularSlots.sort((a, b) => {
-    const aDow = new Date(a._dateStr + "T12:00:00").getDay();
-    const bDow = new Date(b._dateStr + "T12:00:00").getDay();
-    const aIsEvening = tm(a.start) >= 1020;
-    const bIsEvening = tm(b.start) >= 1020;
-    
-    // Priority tiers (user-defined):
-    // 0: Fri evening (busiest weekend night)
-    // 1: Sat day (weekend day coverage)
-    // 2: Sat evening (busy weekend night)
-    // 3: Sun day (weekend day coverage)
-    // 4: Sun evening (MC helpers)
-    // 5: Mon-Fri day shifts (2nd day, mid) — must be filled
-    // 6: Wed-Thu evening (closer to weekend, need experienced workers)
-    // 7: Mon-Tue evening (lowest — trainees fill these, OK to have gaps)
-    const getPriority = (dow, isEve, slot) => {
-      if (dow === 5 && isEve) return 0; // Fri evening
-      if (dow === 6 && !isEve) return 1; // Sat day
-      if (dow === 6 && isEve) return 2; // Sat evening
-      if (dow === 0 && !isEve) return 3; // Sun day
-      if (dow === 0 && isEve) return 4; // Sun evening
-      if (!isEve) return 5; // Mon-Fri day shifts
-      if ((dow === 3 || dow === 4) && isEve) return 6; // Wed-Thu evening
-      return 7; // Mon-Tue evening (trainee slots)
-    };
-    const aP = getPriority(aDow, aIsEvening, a);
-    const bP = getPriority(bDow, bIsEvening, b);
-    if (aP !== bP) return aP - bP;
-    return a.order - b.order;
-  });
-  regularSlots.forEach(assignSlot);
-
-  // PASS 1.5: Ensure shift leads hit their min shifts by filling regular slots
-  const slsBelowMin = active.filter(e => e.role === "shift_lead" && sc[e.id] < e._effMinShifts);
-  // Sort by who was short most recently (rotate the burden)
-  const shortHistory = rules.slShortWeekHistory || [];
-  slsBelowMin.sort((a, b) => {
-    const aLast = shortHistory.lastIndexOf(a.id);
-    const bLast = shortHistory.lastIndexOf(b.id);
-    return aLast - bLast; // person who was short longest ago gets priority
-  });
-  for (const sl of slsBelowMin) {
-    for (const dayIndex of schedOrder) {
-      if (sc[sl.id] >= sl._effMinShifts) break;
-      if (sc[sl.id] >= sl._effMaxShifts) break;
-      const dateStr = weekDates[dayIndex];
-      if (sd[sl.id].has(dateStr)) continue;
-      if (!isAvail(sl, dateStr, "12:00", "22:30", weeklyTimeOffs, availOverrides)) continue;
-      // Check fri-sat-sun constraint
-      if (con("no_fri_sat_sun")) {
-        const ddt = new Date(dateStr + "T12:00:00").getDay();
-        const hasFri = sd[sl.id].has(weekDates[4]);
-        const hasSat = sd[sl.id].has(weekDates[5]);
-        const hasSun = sd[sl.id].has(weekDates[6]);
-        const wouldHave = (ddt===5?1:(hasFri?1:0)) + (ddt===6?1:(hasSat?1:0)) + (ddt===0?1:(hasSun?1:0));
-        if (wouldHave >= 3) continue;
-      }
-      // Find an unfilled non-SL slot this day
-      const emptyIdx = schedule[dateStr].findIndex(slot => {
-        if (slot.empId !== null) return false;
-        if (!isAvail(sl, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
-        if (sh[sl.id] + slot.hours > sl._effMaxHours) return false;
-        if (!weekendNightOK(sl, dateStr, slot.start)) return false;
-        if (!consecOK(sl, dayIndex)) return false;
-        // Avoid 2 SLs on weekday day shifts
-        const ddt2 = new Date(dateStr + "T12:00:00").getDay();
-        const isWeekday = ddt2 >= 1 && ddt2 <= 5;
-        if (isWeekday && (slot.type === "day" || slot.type === "mid") && tm(slot.start) < 1020) {
-          const dayHasSL = schedule[dateStr].some(s => s.empId && s.type === "day_lead" && active.find(e => e.id === s.empId)?.role === "shift_lead");
-          if (dayHasSL) return false;
+      if (slot.type === "mc_sl_helper") {
+        const zoe = active.find(e => e.name === "Zoe Rains");
+        if (zoe && getCandidates(slot).find(e => e.id === zoe.id)) {
+          assignSlotInSchedule(slot, zoe); continue;
         }
-        return true;
-      });
-      if (emptyIdx >= 0) {
-        const slot = schedule[dateStr][emptyIdx];
-        schedule[dateStr][emptyIdx] = { ...slot, empId: sl.id, empName: sl.name, empRole: sl.role };
-        sc[sl.id]++; sh[sl.id] += slot.hours; sd[sl.id].add(dateStr);
-        if (tm(slot.start) >= 1020 || slot.isMC) { if (!nightMap[dateStr]) nightMap[dateStr] = new Set(); nightMap[dateStr].add(sl.id); }
+        // Fallback: any available SL
+        cands = getCandidates(slot, c => c.filter(e => e.role === "shift_lead"));
+        const pick = pickBest(cands, slot);
+        if (pick) assignSlotInSchedule(slot, pick);
         continue;
       }
-      // No empty slot — try to take a regular slot from someone above their min
-      for (let si2 = 0; si2 < schedule[dateStr].length; si2++) {
-        const slot = schedule[dateStr][si2];
-        if (!slot.empId || slot.slOnly) continue;
-        if (!isAvail(sl, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) continue;
-        if (!weekendNightOK(sl, dateStr, slot.start)) continue;
-        if (sh[sl.id] + slot.hours > sl._effMaxHours) continue;
-        // Avoid 2 SLs on weekday day shifts
-        const ddt3 = new Date(dateStr + "T12:00:00").getDay();
-        if (ddt3 >= 1 && ddt3 <= 5 && (slot.type === "day" || slot.type === "mid") && tm(slot.start) < 1020) {
-          const dayHasSL = schedule[dateStr].some(s => s.empId && s.type === "day_lead" && active.find(e => e.id === s.empId)?.role === "shift_lead");
-          if (dayHasSL) continue;
-        }
-        const holder = active.find(e => e.id === slot.empId);
-        if (!holder || sc[holder.id] <= holder._effMinShifts) continue;
-        // Swap SL in
-        sc[holder.id]--; sh[holder.id] -= slot.hours;
-        const holderOther = schedule[dateStr].filter((s, idx) => idx !== si2 && s.empId === holder.id);
-        if (holderOther.length === 0) sd[holder.id].delete(dateStr);
-        schedule[dateStr][si2] = { ...slot, empId: sl.id, empName: sl.name, empRole: sl.role };
-        sc[sl.id]++; sh[sl.id] += slot.hours; sd[sl.id].add(dateStr);
-        if (tm(slot.start) >= 1020 || slot.isMC) { if (!nightMap[dateStr]) nightMap[dateStr] = new Set(); nightMap[dateStr].add(sl.id); }
-        break;
+      if (slot.type === "mc_helper") {
+        // Thu MC reg helper — from assistant pool, no SLs
+        cands = getCandidates(slot, c => {
+          const pool = rules.mcRotation?.assistantPool || [];
+          const fromPool = c.filter(e => pool.includes(e.name) && e.role !== "shift_lead");
+          return fromPool.length > 0 ? fromPool : c.filter(e => e.role !== "shift_lead");
+        });
+        const pick = pickBest(cands, slot);
+        if (pick) assignSlotInSchedule(slot, pick);
+        continue;
       }
     }
+
+    // ── GROUP 1: Sun MC ── 2 SLs + 2 reg helpers
+    if (group === 1) {
+      if (slot.type === "mc_leader" || slot.type === "mc_sl_helper") {
+        cands = getCandidates(slot, c => {
+          const pool = rules.mcRotation?.shiftLeadPool || [];
+          const fromPool = c.filter(e => pool.includes(e.name) && e.role === "shift_lead");
+          return fromPool.length > 0 ? fromPool : c.filter(e => e.role === "shift_lead");
+        });
+        const pick = pickBest(cands, slot);
+        if (pick) assignSlotInSchedule(slot, pick);
+        continue;
+      }
+      if (slot.type === "mc_helper") {
+        cands = getCandidates(slot, c => {
+          const pool = rules.mcRotation?.assistantPool || [];
+          const fromPool = c.filter(e => pool.includes(e.name) && e.role !== "shift_lead");
+          return fromPool.length > 0 ? fromPool : c.filter(e => e.role !== "shift_lead");
+        });
+        const pick = pickBest(cands, slot);
+        if (pick) assignSlotInSchedule(slot, pick);
+        continue;
+      }
+    }
+
+    // ── GROUP 2: Fri/Sat/Sun Evening SL slot (evening_sl) ──
+    // Also: try to get a 2nd SL into a regular evening slot on these nights
+    if (group === 2) {
+      cands = getCandidates(slot, c => c.filter(e => e.role === "shift_lead"));
+      const pick = pickBest(cands, slot);
+      if (pick) assignSlotInSchedule(slot, pick);
+      continue;
+    }
+
+    // ── GROUP 3: All other Day Lead (SL) slots ──
+    if (group === 3) {
+      cands = getCandidates(slot, c => c.filter(e => e.role === "shift_lead"));
+      const pick = pickBest(cands, slot);
+      if (pick) assignSlotInSchedule(slot, pick);
+      continue;
+    }
+
+    // ── GROUPS 4-9: Regular (non-SL) slots ──
+    cands = getCandidates(slot);
+
+    // No trainees on weekend evening/night
+    if ((slot._isWE || slot._isFri) && slot.type !== "mid") {
+      const noTrainees = cands.filter(e => e.role !== "trainee");
+      if (noTrainees.length > 0) cands = noTrainees;
+    }
+
+    // GROUP 7: Fri/Sat/Sun evening regular — try to get a 2nd SL on these nights
+    if (group === 7) {
+      const slsOnEvening = schedule[dateStr].filter(a =>
+        a.empId && (a.type === "evening_sl" || a.type === "evening") &&
+        active.find(e => e.id === a.empId)?.role === "shift_lead"
+      ).length;
+      if (slsOnEvening < 2) {
+        // Push for 2nd SL on Fri/Sat/Sun evenings
+        const slCands = cands.filter(e => e.role === "shift_lead");
+        if (slCands.length > 0) cands = slCands;
+      } else {
+        // Already have 2 SLs — use regulars now, not more SLs
+        const nonSL = cands.filter(e => e.role !== "shift_lead");
+        if (nonSL.length > 0) cands = nonSL;
+      }
+    }
+
+    // GROUP 8: Wed/Thu evening — regulars only (no SLs, no trainees)
+    if (group === 8) {
+      const nonSL = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee");
+      if (nonSL.length > 0) cands = nonSL;
+    }
+
+    // GROUP 9: Mon/Tue evening — trainee priority, then regulars, NO SLs
+    if (group === 9) {
+      const nonSL = cands.filter(e => e.role !== "shift_lead");
+      if (nonSL.length > 0) cands = nonSL;
+      // Trainees first on Mon/Tue
+      if (dow <= 2) {
+        const trainees = cands.filter(e => e.role === "trainee");
+        const regs = cands.filter(e => e.role === "regular");
+        if (trainees.length > 0) cands = [...trainees, ...regs];
+      }
+    }
+
+    // GROUP 6: Weekday day (2nd day) — prefer 2nd day priority list, no SLs
+    if (group === 6 && slot.type === "day") {
+      const priority = rules.secondDayPriority || [];
+      const fromPriority = cands.filter(e => priority.includes(e.name));
+      if (fromPriority.length > 0) cands = fromPriority;
+      else {
+        const nonSL = cands.filter(e => e.role !== "shift_lead");
+        if (nonSL.length > 0) cands = nonSL;
+      }
+    }
+
+    // Swirl: if weekend and need more swirlers, prefer them
+    if (needsSwirler(slot)) {
+      const swirlers = cands.filter(e => canSwirl(e));
+      if (swirlers.length > 0) cands = swirlers;
+    }
+
+    // Good weekend people preference on weekends
+    if ((slot._isWE || slot._isFri) && !slot.slOnly && !slot.isMC) {
+      const goodWE = rules.goodWeekendPeople || [];
+      const good = cands.filter(e => goodWE.includes(e.name));
+      if (good.length > 0) cands = good;
+    }
+
+    const pick = pickBest(cands, slot);
+    if (pick) assignSlotInSchedule(slot, pick);
   }
 
-  // SECOND PASS
+  // ── STEP 5: Gap fill pass ─────────────────────────────────────────
+  // For any slot still unfilled, try again with relaxed constraints
   weekDates.forEach(dateStr => {
     schedule[dateStr].forEach((slot, idx) => {
       if (slot.empId !== null) return;
-      const cands = active.filter(emp => {
+      let cands = active.filter(emp => {
         if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
-        if (!slCheck(slot, emp)) return false;
+        if (!weekendNightOK(emp, dateStr, slot.start)) return false;
+        if (!friSatSunOK(emp, dateStr)) return false;
+        if (!slCheck(slot, emp, true)) return false; // true = fallback allowed
         if (sc[emp.id] >= emp._effMaxShifts || sh[emp.id] + slot.hours > emp._effMaxHours) return false;
         if (slot.isMC && emp.role === "trainee") return false;
+        if (!traineeOK(emp, dateStr)) return false;
         if (con("no_mc_twice") && slot.isMC && mcCount[emp.id] >= 1) return false;
         if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
-        if (!friSatSunOK(emp, dateStr)) return false;
-        if (!lowShiftWeekendOK(emp, dateStr, slot.start)) return false;
-        if (!traineeOK(emp, dateStr)) return false;
-        if (!weekendNightOK(emp, dateStr, slot.start)) return false;
-        if (con("no_trainees_weekday_day") && emp.role === "trainee" && !slot._isWE && (slot.type === "day_lead" || slot.type === "day")) return false;
         return true;
-      }).sort((a, b) => {
-        const aBs = sc[a.id] < a._effMinShifts ? 1 : 0; const bBs = sc[b.id] < b._effMinShifts ? 1 : 0;
-        if (bBs !== aBs) return bBs - aBs;
-        const aBh = sh[a.id] < a._effMinHours ? 1 : 0; const bBh = sh[b.id] < b._effMinHours ? 1 : 0;
-        if (bBh !== aBh) return bBh - aBh;
-        { const d = sc[a.id] - sc[b.id]; return d !== 0 ? d : Math.random() - 0.5; }
       });
-      if (cands.length > 0) { const ch = cands[0]; schedule[dateStr][idx] = { ...slot, empId: ch.id, empName: ch.name, empRole: ch.role }; sc[ch.id]++; sh[ch.id] += slot.hours; sd[ch.id].add(dateStr); }
+      // Sort by balance (most remaining budget first)
+      cands.sort((a, b) => {
+        const aR = a._budget - sc[a.id], bR = b._budget - sc[b.id];
+        return bR !== aR ? bR - aR : Math.random() - 0.5;
+      });
+      if (cands.length > 0) assign(dateStr, idx, cands[0], slot);
     });
   });
 
-  // THIRD PASS: Fill unfilled slots with below-minimum employees (shifts OR hours)
-  const belowMin = active.filter(e => sc[e.id] < e._effMinShifts || sh[e.id] < e._effMinHours);
-  for (const emp of belowMin) {
-    const tryOrder = [3, 6, 5, 4, 0, 1, 2];
-    for (const di of tryOrder) {
-      if ((sc[emp.id] >= emp._effMinShifts && sh[emp.id] >= emp._effMinHours) || sc[emp.id] >= emp._effMaxShifts) break;
+  // ── STEP 6: Swap pass — give under-budgeted people shifts ─────────
+  // If someone still has budget remaining AND there are people over-assigned,
+  // try to swap a low-priority slot from an over-assigned person to the under-assigned one
+  const underBudget = active.filter(e => sc[e.id] < e._budget);
+  const swapPriorityOrder = [0, 1, 2, 3, 4, 5, 6]; // Mon-Sun
+  for (const emp of underBudget) {
+    for (const di of swapPriorityOrder) {
+      if (sc[emp.id] >= emp._budget || sc[emp.id] >= emp._effMaxShifts) break;
       const dateStr = weekDates[di];
       if (sd[emp.id].has(dateStr)) continue;
       if (!friSatSunOK(emp, dateStr)) continue;
-      if (!lowShiftWeekendOK(emp, dateStr, "18:00")) continue;
       if (!traineeOK(emp, dateStr)) continue;
-      const unfilledIdx = schedule[dateStr].findIndex(slot => {
-        if (slot.empId !== null) return false;
-        if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
-        if (!weekendNightOK(emp, dateStr, slot.start)) return false;
-        if (!slCheck(slot, emp)) return false;
-        if (slot.isMC && emp.role === "trainee") return false;
-        if (con("no_mc_twice") && slot.isMC && mcCount[emp.id] >= 1) return false;
-        if (sh[emp.id] + slot.hours > emp._effMaxHours) return false;
-        { const d3 = new Date(dateStr+"T12:00:00").getDay(); if (con("no_trainees_weekday_day") && emp.role === "trainee" && d3 >= 1 && d3 <= 5 && (slot.type === "day_lead" || slot.type === "day")) return false; }
-        return true;
-      });
-      if (unfilledIdx >= 0) {
-        const slot = schedule[dateStr][unfilledIdx];
-        schedule[dateStr][unfilledIdx] = { ...slot, empId: emp.id, empName: emp.name, empRole: emp.role };
-        sc[emp.id]++; sh[emp.id] += slot.hours; sd[emp.id].add(dateStr);
-        if (tm(slot.start) >= 1020) { if (!nightMap[dateStr]) nightMap[dateStr] = new Set(); nightMap[dateStr].add(emp.id); }
-      }
-    }
-  }
 
-  // FOURTH PASS: Swap — if someone is below min shifts/hours, steal a slot from someone above their min
-  const stillBelow = active.filter(e => sc[e.id] < e._effMinShifts || sh[e.id] < e._effMinHours);
-  for (const emp of stillBelow) {
-    const tryOrder = [0, 1, 2, 3, 4, 5, 6];
-    for (const di of tryOrder) {
-      if ((sc[emp.id] >= emp._effMinShifts && sh[emp.id] >= emp._effMinHours) || sc[emp.id] >= emp._effMaxShifts) break;
-      const dateStr = weekDates[di];
-      if (sd[emp.id].has(dateStr)) continue;
-
-      // Check fri-sat-sun constraint
-      if (con("no_fri_sat_sun")) {
-        const hasFri = sd[emp.id].has(weekDates[4]);
-        const hasSat = sd[emp.id].has(weekDates[5]);
-        const hasSun = sd[emp.id].has(weekDates[6]);
-        const d2 = new Date(dateStr + "T12:00:00").getDay();
-        const isFri2 = d2 === 5, isSat2 = d2 === 6, isSun2 = d2 === 0;
-        const wouldHave = (isFri2 ? 1 : (hasFri ? 1 : 0)) + (isSat2 ? 1 : (hasSat ? 1 : 0)) + (isSun2 ? 1 : (hasSun ? 1 : 0));
-        if (wouldHave >= 3) continue;
-      }
-
-      // Find a filled slot where we could swap
+      // Find someone over-budget on this day whose slot emp could take
       for (let si2 = 0; si2 < schedule[dateStr].length; si2++) {
         const slot = schedule[dateStr][si2];
         if (!slot.empId) continue;
@@ -783,77 +659,36 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (!weekendNightOK(emp, dateStr, slot.start)) continue;
         if (sh[emp.id] + slot.hours > emp._effMaxHours) continue;
 
-        // Can we take this slot? Only if the current holder is ABOVE their minimums
-        const currentHolder = slot.empId;
-        const holderEmp = active.find(e => e.id === currentHolder);
-        if (!holderEmp) continue;
-        if (sc[currentHolder] <= holderEmp._effMinShifts && sh[currentHolder] <= holderEmp._effMinHours) continue;
-        // Don't steal if it would put them below their min shifts
-        if (sc[currentHolder] - 1 < holderEmp._effMinShifts && sc[currentHolder] <= holderEmp._effMinShifts) continue;
+        const holder = active.find(e => e.id === slot.empId);
+        if (!holder) continue;
+        // Only steal from someone over their budget
+        if (sc[holder.id] <= holder._budget) continue;
 
         // Do the swap
-        sc[currentHolder]--; sh[currentHolder] -= slot.hours;
-        // Remove date from currentHolder's day set if they have no other shifts that day
-        const holderOtherShifts = schedule[dateStr].filter((s, idx) => idx !== si2 && s.empId === currentHolder);
-        if (holderOtherShifts.length === 0) sd[currentHolder].delete(dateStr);
+        sc[holder.id]--; sh[holder.id] -= slot.hours;
+        const holderOtherShifts = schedule[dateStr].filter((s, i) => i !== si2 && s.empId === holder.id);
+        if (holderOtherShifts.length === 0) sd[holder.id].delete(dateStr);
 
-        schedule[dateStr][si2] = { ...slot, empId: emp.id, empName: emp.name, empRole: emp.role };
-        sc[emp.id]++; sh[emp.id] += slot.hours; sd[emp.id].add(dateStr);
-        if (tm(slot.start) >= 1020) { if (!nightMap[dateStr]) nightMap[dateStr] = new Set(); nightMap[dateStr].add(emp.id); }
+        assign(dateStr, si2, emp, { ...slot, _isWE: slot._isWE, _isFri: slot._isFri });
         break;
       }
     }
   }
 
-  // FIFTH PASS: Try again to fill any remaining unfilled slots (with Day Lead fallback)
+  // ── STEP 7: Extra shifts — surface to manager ─────────────────────
+  // After all required slots filled, count how many extra slots remain unfilled
+  // These represent "bonus" shifts. Return info so UI can prompt manager.
+  const extraUnfilled = [];
   weekDates.forEach(dateStr => {
-    schedule[dateStr].forEach((slot, idx) => {
-      if (slot.empId !== null) return;
-      let cands = active.filter(emp => {
-        if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
-        if (!weekendNightOK(emp, dateStr, slot.start)) return false;
-        if (!friSatSunOK(emp, dateStr)) return false;
-        if (!slCheck(slot, emp)) return false;
-        if (!lowShiftWeekendOK(emp, dateStr, slot.start)) return false;
-        if (sc[emp.id] >= emp._effMaxShifts || sh[emp.id] + slot.hours > emp._effMaxHours) return false;
-        if (slot.isMC && emp.role === "trainee") return false;
-        if (!traineeOK(emp, dateStr)) return false;
-        if (con("no_mc_twice") && slot.isMC && mcCount[emp.id] >= 1) return false;
-        if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
-        { const d5 = new Date(dateStr+"T12:00:00").getDay(); if (con("no_trainees_weekday_day") && emp.role === "trainee" && d5 >= 1 && d5 <= 5 && (slot.type === "day_lead" || slot.type === "day")) return false; }
-        return true;
-      });
-      // Day Lead fallback: if still empty, allow any non-trainee
-      if (cands.length === 0 && slot.type === "day_lead") {
-        cands = active.filter(emp => {
-          if (emp.role === "trainee") return false;
-          if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
-          if (sc[emp.id] >= emp._effMaxShifts || sh[emp.id] + slot.hours > emp._effMaxHours) return false;
-          if (!weekendNightOK(emp, dateStr, slot.start)) return false;
-          if (!friSatSunOK(emp, dateStr)) return false;
-          if (!lowShiftWeekendOK(emp, dateStr, slot.start)) return false;
-          if (!traineeOK(emp, dateStr)) return false;
-          if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
-          return true;
-        });
-      }
-      cands.sort((a, b) => {
-        const aBh = sh[a.id] < (a.minHours || 0) ? 1 : 0; const bBh = sh[b.id] < (b.minHours || 0) ? 1 : 0;
-        if (bBh !== aBh) return bBh - aBh;
-        { const d = sc[a.id] - sc[b.id]; return d !== 0 ? d : Math.random() - 0.5; }
-      });
-      if (cands.length > 0) {
-        const ch = cands[0];
-        schedule[dateStr][idx] = { ...slot, empId: ch.id, empName: ch.name, empRole: ch.role };
-        sc[ch.id]++; sh[ch.id] += slot.hours; sd[ch.id].add(dateStr);
-        if (tm(slot.start) >= 1020) { if (!nightMap[dateStr]) nightMap[dateStr] = new Set(); nightMap[dateStr].add(ch.id); }
-      }
+    schedule[dateStr].forEach(slot => {
+      if (!slot.empId) extraUnfilled.push({ date: dateStr, slot: slot.label });
     });
   });
 
+  // ── STEP 8: Warnings ──────────────────────────────────────────────
   const warnings2 = [];
 
-  // SWIRL CHECK: Verify minimum swirlers per weekend shift period
+  // Swirl check
   if (con("min_swirlers_weekend")) {
     const minSwirl = rules.swirl?.minPerShift || 2;
     weekDates.forEach(d => {
@@ -862,44 +697,44 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       const isWEday = dow === 0 || dow === 6;
       const isFriday = dow === 5;
       if (!isWEday && !isFriday) return;
-      
-      // Check evening/night period (6pm+)
       const eveningSlots = schedule[d].filter(s => s.empId && tm(s.start) >= 1020);
-      const eveningSwirlers = eveningSlots.filter(s => {
-        const emp = active.find(e => e.id === s.empId);
-        return emp && canSwirl(emp);
-      }).length;
-      if (isFriday && eveningSwirlers < minSwirl) {
-        warnings2.push({ date: d, msg: "\u26a0 Friday night has " + eveningSwirlers + " swirler(s) (minimum: " + minSwirl + ")" });
-      } else if (isWEday && eveningSwirlers < minSwirl) {
-        warnings2.push({ date: d, msg: "\u26a0 " + (dow === 6 ? "Saturday" : "Sunday") + " night has " + eveningSwirlers + " swirler(s) (minimum: " + minSwirl + ")" });
+      const eveningSwirlers = eveningSlots.filter(s => canSwirl(active.find(e => e.id === s.empId))).length;
+      if (eveningSwirlers < minSwirl) {
+        warnings2.push({ date: d, msg: `⚠ ${["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][dow]} night has ${eveningSwirlers} swirler(s) (min: ${minSwirl})` });
       }
-      
-      // Check day period for Sat/Sun (before 6pm)
       if (isWEday) {
-        const daySlots = schedule[d].filter(s => s.empId && tm(s.start) < 1020);
-        const daySwirlers = daySlots.filter(s => {
-          const emp = active.find(e => e.id === s.empId);
-          return emp && canSwirl(emp);
-        }).length;
+        const daySwirlers = schedule[d].filter(s => s.empId && tm(s.start) < 1020 && canSwirl(active.find(e => e.id === s.empId))).length;
         if (daySwirlers < minSwirl) {
-          warnings2.push({ date: d, msg: "\u26a0 " + (dow === 6 ? "Saturday" : "Sunday") + " day has " + daySwirlers + " swirler(s) (minimum: " + minSwirl + ")" });
+          warnings2.push({ date: d, msg: `⚠ ${dow === 6 ? "Sat" : "Sun"} day has ${daySwirlers} swirler(s) (min: ${minSwirl})` });
         }
       }
     });
   }
-  weekDates.forEach(d => { schedule[d].forEach(slot => { if (!slot.empId) warnings2.push({ date: d, msg: "No available employee for " + slot.label }); }); });
+
+  // Unfilled slots
+  weekDates.forEach(d => {
+    schedule[d].forEach(slot => {
+      if (!slot.empId) warnings2.push({ date: d, msg: `No available employee for ${slot.label}` });
+    });
+  });
+
+  // Under-budget warnings (not minimums — just showing who got fewer than their available days)
   active.forEach(e => {
-    if (sc[e.id] < e._effMinShifts) warnings2.push({ date: "", msg: e.name + " has " + sc[e.id] + " shifts (minimum: " + e._effMinShifts + ")" });
-    if (sh[e.id] < e._effMinHours) warnings2.push({ date: "", msg: e.name + " has " + sh[e.id].toFixed(1) + "h (minimum: " + e._effMinHours + "h)" });
-    if (e.role === "shift_lead" && weCount[e.id] < (rules.shiftLead?.minWeekendShifts || 2)) {
-      warnings2.push({ date: "", msg: e.name + " has " + weCount[e.id] + " weekend night shifts (minimum: " + (rules.shiftLead?.minWeekendShifts || 2) + ")" });
+    if (sc[e.id] < e._budget) {
+      warnings2.push({ date: "", msg: `${e.name} has ${sc[e.id]} shifts (could have taken ${e._budget})` });
     }
   });
-  // Track which SLs got a short week for rotation
+
+  // SL weekend check
+  active.filter(e => e.role === "shift_lead").forEach(e => {
+    if (weCount[e.id] < (rules.shiftLead?.minWeekendShifts || 2)) {
+      warnings2.push({ date: "", msg: `${e.name} has ${weCount[e.id]} weekend night shifts` });
+    }
+  });
+
   const shortSLs = active.filter(e => e.role === "shift_lead" && sc[e.id] < e.minShifts).map(e => e.id);
 
-  return { schedule, empShiftCount: sc, empHours: sh, warnings: warnings2, shortSLs };
+  return { schedule, empShiftCount: sc, empHours: sh, warnings: warnings2, shortSLs, extraUnfilled };
 }
 
 // === EDIT SHIFT MODAL ===
