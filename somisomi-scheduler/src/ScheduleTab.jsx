@@ -1311,7 +1311,17 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
                           const weekTO = weeklyTOs.filter(t => t.empId === emp.id && t.date === d);
                           const hasTO = weekTO.length > 0;
                           const hasUnavail = u.allDay || (u.start && u.end);
-                          const showUnavail = hasUnavail && shifts.length === 0;
+                          // Show unavail badge if: all day unavail with no shifts, OR partial unavail always (so you can see it alongside a shift)
+                          const showUnavail = u.allDay ? shifts.length === 0 : hasUnavail;
+                          // Helper: does a shift's time overlap with this employee's unavailability?
+                          const shiftOverlapsUnavail = (shiftStart, shiftEnd) => {
+                            if (!hasUnavail) return false;
+                            if (u.allDay) return true;
+                            const weekTO2 = weekTO.find(t => t.allDay || (t.start && t.end && tm(shiftStart) < tm(t.end) && tm(t.start) < tm(shiftEnd)));
+                            if (weekTO2) return true;
+                            if (u.start && u.end) return tm(shiftStart) < tm(u.end) && tm(u.start) < tm(shiftEnd);
+                            return false;
+                          };
                           return (<td key={d}
                             onDragOver={!isSaved && draft ? (ev) => { ev.preventDefault(); ev.dataTransfer.dropEffect = "move"; } : undefined}
                             onDrop={!isSaved && draft && dragSlot ? (ev) => {
@@ -1321,6 +1331,9 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
                               const fromIdx = newSchedule[dragSlot.date].findIndex(a => a.type === dragSlot.type && a.order === dragSlot.order);
                               if (fromIdx < 0) { setDragSlot(null); return; }
                               const fromSlot = newSchedule[dragSlot.date][fromIdx];
+
+                              // Block drop if shift time overlaps with employee's unavailability
+                              if (shiftOverlapsUnavail(fromSlot.start, fromSlot.end)) { setDragSlot(null); return; }
 
                               // Check if target employee has a shift on the same day we can swap with
                               const targetShifts = (result.schedule[d] || []).filter(a => a.empId === emp.id);
@@ -1403,6 +1416,23 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
                                     if (fromIdx >= 0 && toIdx >= 0) {
                                       const fromSlot = newSchedule[dragSlot.date][fromIdx];
                                       const toSlot = newSchedule[d][toIdx];
+                                      // Only swap if neither employee would land in their own unavailability
+                                      const fromEmp = employees.find(e2 => e2.status === "active" && e2.id === fromSlot.empId);
+                                      const toEmp = employees.find(e2 => e2.status === "active" && e2.id === toSlot.empId);
+                                      const checkOverlap = (emp2, dateStr2, start2, end2) => {
+                                        if (!emp2) return false;
+                                        const dow3 = new Date(dateStr2 + "T12:00:00").getDay();
+                                        const dk = DAYS[dow3 === 0 ? 6 : dow3 - 1];
+                                        const u2 = emp2.unavailability[dk];
+                                        if (u2?.allDay) return true;
+                                        if (u2?.start && u2?.end && tm(start2) < tm(u2.end) && tm(u2.start) < tm(end2)) return true;
+                                        return false;
+                                      };
+                                      // fromSlot's employee going to d (toSlot's day/time)
+                                      const fromWouldConflict = fromEmp && checkOverlap(fromEmp, d, toSlot.start, toSlot.end);
+                                      // toSlot's employee going to dragSlot.date (fromSlot's day/time)
+                                      const toWouldConflict = toEmp && checkOverlap(toEmp, dragSlot.date, fromSlot.start, fromSlot.end);
+                                      if (fromWouldConflict || toWouldConflict) { setDragSlot(null); return; }
                                       newSchedule[dragSlot.date][fromIdx] = { ...fromSlot, empId: toSlot.empId, empName: toSlot.empName, empRole: toSlot.empRole };
                                       newSchedule[d][toIdx] = { ...toSlot, empId: fromSlot.empId, empName: fromSlot.empName, empRole: fromSlot.empRole };
                                       const newSc = {}, newSh = {};
