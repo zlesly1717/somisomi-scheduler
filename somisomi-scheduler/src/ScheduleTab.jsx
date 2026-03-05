@@ -485,30 +485,28 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     const aIsEvening = tm(a.start) >= 1020;
     const bIsEvening = tm(b.start) >= 1020;
     
-    // Priority tiers:
-    // 0: Fri/Sat evening slots (most critical)
-    // 1: Sat/Sun day slots (weekend coverage)
-    // 2: Sun evening (MC helpers already in Phase 1)
-    // 3: Fri day slots
-    // 4: Thu slots
-    // 5: Mon-Wed evening
-    // 6: Mon-Wed day
+    // Priority tiers (user-defined):
+    // 0: Fri evening (busiest weekend night)
+    // 1: Sat day (weekend day coverage)
+    // 2: Sat evening (busy weekend night)
+    // 3: Sun day (weekend day coverage)
+    // 4: Sun evening (MC helpers - some already in Phase 1)
+    // 5: Mon-Fri day shifts (2nd day, mid) — must be filled
+    // 6: Thu evening
+    // 7: Mon-Wed evening (LOWEST — trainees can fill, OK to have gaps)
     const getPriority = (dow, isEve, slot) => {
-      if ((dow === 5 || dow === 6) && isEve) return 0; // Fri/Sat evening
-      if ((dow === 0 || dow === 6) && !isEve) return 1; // Sat/Sun day
-      if (dow === 0 && isEve) return 2; // Sun evening
-      if (dow === 5 && !isEve) return 3; // Fri day
-      if (dow === 4) return 4; // Thu
-      if (isEve) return 5; // Mon-Wed evening
-      return 6; // Mon-Wed day
+      if (dow === 5 && isEve) return 0; // Fri evening
+      if (dow === 6 && !isEve) return 1; // Sat day
+      if (dow === 6 && isEve) return 2; // Sat evening
+      if (dow === 0 && !isEve) return 3; // Sun day
+      if (dow === 0 && isEve) return 4; // Sun evening
+      if (!isEve) return 5; // Mon-Fri day shifts (2nd day, mid)
+      if (dow === 4 && isEve) return 6; // Thu evening
+      return 7; // Mon-Wed evening (lowest priority)
     };
     const aP = getPriority(aDow, aIsEvening, a);
     const bP = getPriority(bDow, bIsEvening, b);
     if (aP !== bP) return aP - bP;
-    // Within same priority, Fri before Sat for evenings (to fill Fri first)
-    if (aP === 0) {
-      if (aDow !== bDow) return aDow === 5 ? -1 : 1; // Fri evening before Sat evening
-    }
     return a.order - b.order;
   });
   regularSlots.forEach(assignSlot);
