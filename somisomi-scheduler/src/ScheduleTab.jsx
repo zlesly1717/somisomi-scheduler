@@ -381,8 +381,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       }
     }
 
-    // No trainees on weekends if others available
-    if (isWE || isFri) {
+    // No trainees on weekend evening/night shifts if others available (mid shifts OK)
+    if ((isWE || isFri) && slot.type !== "mid") {
       const nonTrainees = cands.filter(e => e.role !== "trainee");
       if (nonTrainees.length > 0) cands = nonTrainees;
     }
@@ -395,8 +395,23 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 
     // Weekday evening: prefer regulars over SLs (save SLs for weekend)
     if (slot.type === "evening" && !isWE && !isFri) {
-      const regs = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee");
-      if (regs.length > 0) cands = regs;
+      const dow2 = new Date(dateStr + "T12:00:00").getDay();
+      if (dow2 <= 2) {
+        // Mon/Tue evening: boost trainees (they need these shifts for hours)
+        const traineeCands = cands.filter(e => e.role === "trainee" && sc[e.id] < e._effMinShifts);
+        if (traineeCands.length > 0) {
+          // Put trainees first but keep others as fallback
+          const others = cands.filter(e => e.role !== "trainee");
+          cands = [...traineeCands, ...others];
+        } else {
+          const regs = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee");
+          if (regs.length > 0) cands = regs;
+        }
+      } else {
+        // Wed/Thu evening: prefer experienced workers, no SLs
+        const regs = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee");
+        if (regs.length > 0) cands = regs;
+      }
     }
 
     // Fri/Sat evening SL backup: ONLY SLs for these slots
@@ -499,19 +514,19 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     // 1: Sat day (weekend day coverage)
     // 2: Sat evening (busy weekend night)
     // 3: Sun day (weekend day coverage)
-    // 4: Sun evening (MC helpers - some already in Phase 1)
+    // 4: Sun evening (MC helpers)
     // 5: Mon-Fri day shifts (2nd day, mid) — must be filled
-    // 6: Thu evening
-    // 7: Mon-Wed evening (LOWEST — trainees can fill, OK to have gaps)
+    // 6: Wed-Thu evening (closer to weekend, need experienced workers)
+    // 7: Mon-Tue evening (lowest — trainees fill these, OK to have gaps)
     const getPriority = (dow, isEve, slot) => {
       if (dow === 5 && isEve) return 0; // Fri evening
       if (dow === 6 && !isEve) return 1; // Sat day
       if (dow === 6 && isEve) return 2; // Sat evening
       if (dow === 0 && !isEve) return 3; // Sun day
       if (dow === 0 && isEve) return 4; // Sun evening
-      if (!isEve) return 5; // Mon-Fri day shifts (2nd day, mid)
-      if (dow === 4 && isEve) return 6; // Thu evening
-      return 7; // Mon-Wed evening (lowest priority)
+      if (!isEve) return 5; // Mon-Fri day shifts
+      if ((dow === 3 || dow === 4) && isEve) return 6; // Wed-Thu evening
+      return 7; // Mon-Tue evening (trainee slots)
     };
     const aP = getPriority(aDow, aIsEvening, a);
     const bP = getPriority(bDow, bIsEvening, b);
