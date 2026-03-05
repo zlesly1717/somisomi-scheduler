@@ -387,46 +387,61 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (nonTrainees.length > 0) cands = nonTrainees;
     }
 
-    // Weekday day/mid: prefer regulars over SLs
-    if (!isWE && (slot.type === "day" || slot.type === "mid")) {
-      const regs = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee");
-      if (regs.length > 0) cands = regs;
-    }
+    const dow2 = new Date(dateStr + "T12:00:00").getDay();
+    // dow2: 0=Sun,1=Mon,2=Tue,3=Wed,4=Thu,5=Fri,6=Sat
 
-    // Weekday evening: prefer regulars over SLs (save SLs for weekend)
-    if (slot.type === "evening" && !isWE && !isFri) {
-      const dow2 = new Date(dateStr + "T12:00:00").getDay();
-      if (dow2 <= 2) {
-        // Mon/Tue evening: trainees CAN go here, but only if they haven't been reserved elsewhere
-        // Don't aggressively boost trainees to front — let shift count sorting handle it naturally
-        const regs = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee");
-        if (regs.length > 0) cands = regs;
-        else {
-          // No regulars available — trainees are OK here
-          const traineeCands = cands.filter(e => e.role === "trainee");
-          if (traineeCands.length > 0) {
-            const others = cands.filter(e => e.role !== "trainee");
-            cands = [...others, ...traineeCands]; // put trainees LAST, not first
-          }
-        }
+    // RULE: Mon-Fri day shifts — max 1 SL (already have the Day Lead SL, block more)
+    if (!isWE && (slot.type === "day" || slot.type === "mid")) {
+      const slAlreadyOnDay = schedule[dateStr].some(a => a.empId && active.find(e => e.id === a.empId)?.role === "shift_lead");
+      if (slAlreadyOnDay) {
+        // Already have an SL today — exclude SLs from this slot
+        const nonSL = cands.filter(e => e.role !== "shift_lead");
+        if (nonSL.length > 0) cands = nonSL;
       } else {
-        // Wed/Thu evening: prefer experienced workers, no SLs
+        // No SL yet — prefer regulars anyway, save SLs for weekend
         const regs = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee");
         if (regs.length > 0) cands = regs;
       }
     }
 
-    // Fri/Sat evening SL backup: ONLY SLs for these slots
+    // RULE: Mon-Wed evening — max 1 SL, and reserve these shifts for trainees/regulars
+    if (slot.type === "evening" && !isWE && !isFri && dow2 >= 1 && dow2 <= 3) {
+      // Hard cap: block SLs entirely from Mon-Wed evening (save them for Fri-Sun)
+      const nonSL = cands.filter(e => e.role !== "shift_lead");
+      if (nonSL.length > 0) cands = nonSL;
+
+      if (dow2 <= 2) {
+        // Mon/Tue evening: these are TRAINEE slots — prefer trainees, then regulars
+        const trainees = cands.filter(e => e.role === "trainee");
+        const regs = cands.filter(e => e.role === "regular");
+        if (trainees.length > 0) cands = [...trainees, ...regs]; // trainees first
+        else if (regs.length > 0) cands = regs;
+      } else {
+        // Wed evening: regulars only (trainees not experienced enough for Wed/Thu crowd)
+        const regs = cands.filter(e => e.role === "regular");
+        if (regs.length > 0) cands = regs;
+      }
+    }
+
+    // RULE: Thu evening — regulars only, no SLs (Thu has MC night SLs already)
+    if (slot.type === "evening" && !isWE && !isFri && dow2 === 4) {
+      const nonSL = cands.filter(e => e.role !== "shift_lead");
+      if (nonSL.length > 0) cands = nonSL;
+    }
+
+    // RULE: Fri night - Sun — TARGET 2 SLs per shift period (1 is the evening_sl slot, want 1 more in evening)
+    // Fri/Sat evening SL backup slot: ONLY SLs
     if (slot._slBackup) {
       const slOnly = cands.filter(e => e.role === "shift_lead");
       if (slOnly.length > 0) cands = slOnly;
     }
 
-    // Fri/Sat evening (regular slot): WANT an SL as backup — prefer SLs
-    if (slot.type === "evening" && (isFri || isSat)) {
-      // For the FIRST regular evening slot on Fri/Sat, prefer an SL as backup
-      const slAlreadyOnEvening = schedule[dateStr].some(a => a.type === "evening" && a.empId && active.find(e => e.id === a.empId)?.role === "shift_lead");
-      if (!slAlreadyOnEvening) {
+    // Fri/Sat/Sun evening regular slots: push for a 2nd SL if we don't have one yet
+    const isSun = dow2 === 0;
+    if (slot.type === "evening" && (isFri || isSat || isSun)) {
+      const slsOnEvening = schedule[dateStr].filter(a => a.empId && (a.type === "evening" || a.type === "evening_sl") && active.find(e => e.id === a.empId)?.role === "shift_lead").length;
+      if (slsOnEvening < 2) {
+        // Don't have 2 SLs yet — strongly prefer an SL for this slot
         const slCands = cands.filter(e => e.role === "shift_lead");
         if (slCands.length > 0) cands = slCands;
       }
