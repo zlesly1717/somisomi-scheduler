@@ -1283,30 +1283,39 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
                               <div style={{ fontWeight: 700, fontSize: 12, color: below ? "#DC2626" : "#374151", lineHeight: 1.2 }}>{emp.name}</div>
                               <div style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 600 }}>{totalHrs.toFixed(2)} hrs</div>
                               {!isSaved && draft && (() => {
-                                const wmo = weeklyMaxOverrides[emp.id];
                                 const actualShifts = result.empShiftCount?.[emp.id] || 0;
-                                const targetMax = (wmo && typeof wmo === "object") ? (wmo.max ?? emp.maxShifts) : emp.maxShifts;
-                                const isModified = wmo !== undefined;
-                                const setTarget = (val) => {
-                                  const v = Math.max(0, Math.min(7, val));
+                                const override = weeklyMaxOverrides[emp.id];
+                                const target = (override && typeof override === "object" && typeof override.max === "number") ? override.max : null;
+                                const displayNum = target !== null ? target : actualShifts;
+                                const hasChange = target !== null && target !== actualShifts;
+                                
+                                const adjust = (delta) => {
+                                  const current = target !== null ? target : actualShifts;
+                                  const next = Math.max(0, Math.min(7, current + delta));
                                   setWeeklyMaxOverrides(prev => {
                                     const n = { ...prev };
-                                    if (v === emp.maxShifts) delete n[emp.id];
-                                    else n[emp.id] = { max: v };
+                                    if (next === actualShifts && next === emp.maxShifts) { delete n[emp.id]; }
+                                    else { n[emp.id] = { max: next }; }
                                     return n;
                                   });
                                 };
+                                const reset = () => setWeeklyMaxOverrides(prev => { const n = { ...prev }; delete n[emp.id]; return n; });
+                                
                                 return (
-                                  <div style={{ display: "flex", alignItems: "center", gap: 2, marginTop: 2 }}>
-                                    <button onClick={() => setTarget((isModified ? targetMax : actualShifts) - 1)} style={{ width: 16, height: 16, borderRadius: 3, border: "1px solid #D1D5DB", background: "#FEF2F2", color: "#DC2626", cursor: "pointer", fontSize: 10, fontWeight: 800, padding: 0, lineHeight: "14px" }}>{"\u2212"}</button>
-                                    <span style={{ fontSize: 10, fontWeight: 700, color: isModified ? (targetMax > actualShifts ? "#16A34A" : targetMax < actualShifts ? "#DC2626" : "#F59E0B") : "#374151", minWidth: 14, textAlign: "center" }}>{isModified ? targetMax : actualShifts}</span>
-                                    <button onClick={() => setTarget((isModified ? targetMax : actualShifts) + 1)} style={{ width: 16, height: 16, borderRadius: 3, border: "1px solid #D1D5DB", background: "#F0FDF4", color: "#16A34A", cursor: "pointer", fontSize: 10, fontWeight: 800, padding: 0, lineHeight: "14px" }}>+</button>
-                                    {isModified ? (
-                                      <span style={{ fontSize: 8, color: targetMax > actualShifts ? "#16A34A" : "#DC2626", fontWeight: 600 }}>{targetMax > actualShifts ? "\u2191" + (targetMax - actualShifts) : "\u2193" + (actualShifts - targetMax)} {"\u21ba"}</span>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 3, marginTop: 2 }}>
+                                    <button onClick={() => adjust(-1)} style={{ width: 18, height: 18, borderRadius: 4, border: "1px solid #E5E7EB", background: "#FEF2F2", color: "#DC2626", cursor: "pointer", fontSize: 11, fontWeight: 800, padding: 0, lineHeight: "16px" }}>{"\u2212"}</button>
+                                    <span style={{ fontSize: 11, fontWeight: 800, minWidth: 16, textAlign: "center", color: hasChange ? (target > actualShifts ? "#16A34A" : "#DC2626") : "#374151" }}>{displayNum}</span>
+                                    <button onClick={() => adjust(1)} style={{ width: 18, height: 18, borderRadius: 4, border: "1px solid #E5E7EB", background: "#F0FDF4", color: "#16A34A", cursor: "pointer", fontSize: 11, fontWeight: 800, padding: 0, lineHeight: "16px" }}>+</button>
+                                    {hasChange ? (
+                                      <>
+                                        <span style={{ fontSize: 9, color: target > actualShifts ? "#16A34A" : "#DC2626", fontWeight: 700 }}>
+                                          {target > actualShifts ? "\u25b2" + (target - actualShifts) : "\u25bc" + (actualShifts - target)}
+                                        </span>
+                                        <button onClick={reset} style={{ fontSize: 9, color: "#9CA3AF", cursor: "pointer", background: "none", border: "none", padding: 0 }}>{"\u21ba"}</button>
+                                      </>
                                     ) : (
-                                      <span style={{ fontSize: 8, color: "#9CA3AF" }}>shifts</span>
+                                      <span style={{ fontSize: 9, color: "#9CA3AF" }}>shifts</span>
                                     )}
-                                    {isModified && <button onClick={() => setWeeklyMaxOverrides(prev => { const n = { ...prev }; delete n[emp.id]; return n; })} style={{ fontSize: 8, color: "#9CA3AF", cursor: "pointer", background: "none", border: "none", padding: "0 0 0 2px" }}>{"\u21ba"}</button>}
                                   </div>
                                 );
                               })()}
