@@ -631,6 +631,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (!slCheck(slot, emp)) return false;
         if (sc[emp.id] >= emp._effMaxShifts || sh[emp.id] + slot.hours > emp._effMaxHours) return false;
         if (slot.isMC && emp.role === "trainee") return false;
+        if (con("no_mc_twice") && slot.isMC && mcCount[emp.id] >= 1) return false;
         if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
         if (!friSatSunOK(emp, dateStr)) return false;
         if (!lowShiftWeekendOK(emp, dateStr, slot.start)) return false;
@@ -666,6 +667,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (!weekendNightOK(emp, dateStr, slot.start)) return false;
         if (!slCheck(slot, emp)) return false;
         if (slot.isMC && emp.role === "trainee") return false;
+        if (con("no_mc_twice") && slot.isMC && mcCount[emp.id] >= 1) return false;
         if (sh[emp.id] + slot.hours > emp._effMaxHours) return false;
         { const d3 = new Date(dateStr+"T12:00:00").getDay(); if (con("no_trainees_weekday_day") && emp.role === "trainee" && d3 >= 1 && d3 <= 5 && (slot.type === "day_lead" || slot.type === "day")) return false; }
         return true;
@@ -706,6 +708,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (slot.slOnly && emp.role !== "shift_lead") continue;
         if (slot.isMC && emp.role === "trainee") continue;
         if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) continue;
+        if (con("no_mc_twice") && slot.isMC && mcCount[emp.id] >= 1) continue;
         if (!weekendNightOK(emp, dateStr, slot.start)) continue;
         if (sh[emp.id] + slot.hours > emp._effMaxHours) continue;
 
@@ -744,6 +747,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (sc[emp.id] >= emp._effMaxShifts || sh[emp.id] + slot.hours > emp._effMaxHours) return false;
         if (slot.isMC && emp.role === "trainee") return false;
         if (!traineeOK(emp, dateStr)) return false;
+        if (con("no_mc_twice") && slot.isMC && mcCount[emp.id] >= 1) return false;
         if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
         { const d5 = new Date(dateStr+"T12:00:00").getDay(); if (con("no_trainees_weekday_day") && emp.role === "trainee" && d5 >= 1 && d5 <= 5 && (slot.type === "day_lead" || slot.type === "day")) return false; }
         return true;
