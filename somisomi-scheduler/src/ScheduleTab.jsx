@@ -461,10 +461,22 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 
     // Sort candidates
     cands.sort((a, b) => {
-      // Priority -1: Employees with explicit availability override for this date (they NEED this slot)
+      // Priority -1: Employees with explicit availability override for this date
       const aOv = availOverrides?.[dateStr + ":" + a.id] ? 1 : 0;
       const bOv = availOverrides?.[dateStr + ":" + b.id] ? 1 : 0;
       if (bOv !== aOv) return bOv - aOv;
+      // Priority -0.5: Employees with weekly shift target who are below it
+      const aWmo = weeklyMaxOverrides?.[a.id];
+      const bWmo = weeklyMaxOverrides?.[b.id];
+      const aTarget = (aWmo && typeof aWmo === "object" && typeof aWmo.max === "number") ? aWmo.max : null;
+      const bTarget = (bWmo && typeof bWmo === "object" && typeof bWmo.max === "number") ? bWmo.max : null;
+      const aBelowTarget = aTarget !== null && sc[a.id] < aTarget ? 1 : 0;
+      const bBelowTarget = bTarget !== null && sc[b.id] < bTarget ? 1 : 0;
+      if (bBelowTarget !== aBelowTarget) return bBelowTarget - aBelowTarget;
+      // Priority -0.4: Deprioritize employees ABOVE their weekly target (give fewer shifts)
+      const aAboveTarget = aTarget !== null && sc[a.id] >= aTarget ? 1 : 0;
+      const bAboveTarget = bTarget !== null && sc[b.id] >= bTarget ? 1 : 0;
+      if (aAboveTarget !== bAboveTarget) return aAboveTarget - bAboveTarget;
       const aG = (a.guaranteedDays || []).includes(dayKey) ? 1 : 0;
       const bG = (b.guaranteedDays || []).includes(dayKey) ? 1 : 0;
       if (bG !== aG) return bG - aG;
