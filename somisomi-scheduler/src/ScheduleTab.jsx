@@ -128,32 +128,39 @@ function parseTimeOffs(text, employees, weekDates) {
 }
 
 // === GENERATE ENGINE ===
-function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, dayStaffingOverrides, availOverrides, weeklyMaxOverrides) {
+function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, dayStaffingOverrides, availOverrides, weeklyMaxOverrides, approvedBreaks) {
   // ─────────────────────────────────────────────────────────────────
-  // NEW ENGINE: Balance-first, priority-driven assignment
+  // RULE CLASSIFICATION (final):
   //
-  // PHILOSOPHY:
-  //   Ignore min/max entirely during assignment. Instead:
-  //   1. Figure out how many shifts each person CAN work this week
-  //   2. Distribute those slots evenly (balance budget)
-  //   3. Assign slots in strict priority order, always picking the
-  //      person with the most remaining budget who fits the slot rules
-  //   4. After all slots assigned, surface "extra" shifts so manager
-  //      can decide who gets them
+  // CANNOT BREAK (never relaxed, slot stays empty before breaking):
+  //   - No doubles
+  //   - No trainees on MC nights
+  //   - Employee must be available for shift time
+  //   - No day shift after MC night
+  //   - No Fri+Sat+Sun all 3 days same person
+  //   - No MC more than once per week
+  //   - SL-only slots must have SL (Day Lead, Evening SL, MC slots)
+  //   - No two trainees on same day
+  //   - No trainees on weekday day shifts
+  //   - SLs blocked from Mon–Wed evenings
+  //   - Mon–Thu day shifts: only 1 SL (the Day Lead slot)
+  //   - Thu MC: Crystal leads, Zoe SL helper (fixed)
+  //   - Crystal off Sundays (unless availability override set)
+  //   - Distribute hours equally (balance pass always runs)
+  //   - Time off = less hours, redistribute to others
   //
-  // SLOT PRIORITY ORDER (hardest/most constrained first):
-  //   P0: Thu MC night (Crystal+Zoe fixed)
-  //   P1: Sun MC night (2 SLs + 2 reg helpers)
-  //   P2: Fri evening SL + 2nd SL backup
-  //   P3: Sat evening SL + 2nd SL backup
-  //   P4: Sun evening SL (already covered by MC but for non-MC Sundays)
-  //   P5: All remaining Day Lead (SL) slots across the week
-  //   P6: Sat/Sun day slots
-  //   P7: Fri day slots
-  //   P8: Weekday day slots (Mon-Thu)
-  //   P9: Fri/Sat/Sun evening regular slots
-  //   P10: Wed/Thu evening regular slots
-  //   P11: Mon/Tue evening (trainee priority)
+  // FLEXIBLE (asked before breaking, in this priority order):
+  //   F1: Good weekend people preferred on weekends
+  //   F2: Grae max 1 weekend shift
+  //   F3: 2nd day priority list (Lena, Abrar first)
+  //   F4: Trainees preferred on Mon/Tue evenings
+  //   F5: Regulars preferred over SLs on weekday 2nd day slots
+  //   F6: Max shifts cap per employee
+  //   F7: No Fri+Sat night same person
+  //   F8: No Sat+Sun night same person
+  //   F9: Max 3 consecutive days
+  //   F10: Min 2 swirlers per weekend shift
+  //   F11: Fri/Sat/Sun target 2 SLs per evening (extremely preferred, last resort)
   // ─────────────────────────────────────────────────────────────────
   const schedule = {};
   const active = employees.filter(e => e.status === "active");
@@ -200,44 +207,54 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   }
 
   // ── STEP 1b: Compute target shifts for balancing ──────────────────
-  // After budgets are set, figure out the "target" shifts per person so the
-  // balance pass knows what "equal" looks like. Target = budget (what they can do).
-  // The balance pass will try to get everyone as close to their target as possible
-  // and prevent anyone from being more than 1 shift above the group average.
   const computeGroupAvg = (group) => {
     const budgets = group.map(e => e._budget);
     return budgets.length > 0 ? budgets.reduce((a, b) => a + b, 0) / budgets.length : 0;
   };
   const con = id => { const c = rules.constraints.find(x => x.id === id); return c ? c.enabled : true; };
   const T = rules.shiftTimes;
-  const nightMap = {};   // dateStr -> Set of empIds who worked nights
-  const mcCount = {};    // empId -> number of MC nights this week
-  const weCount = {};    // empId -> weekend night shift count
+  const nightMap = {};
+  const mcCount = {};
+  const weCount = {};
   active.forEach(e => { mcCount[e.id] = 0; weCount[e.id] = 0; });
 
+  // approvedBreaks: Set of flexible rule IDs the manager has approved breaking
+  const approved = new Set(approvedBreaks || []);
+
   // ── HELPERS ──────────────────────────────────────────────────────
-  const slCheck = (slot, emp, fallback = false) => {
+  const slCheck = (slot, emp) => {
     if (!slot.slOnly) return true;
-    if (emp.role === "shift_lead") return true;
-    if (slot.type === "day_lead" && emp.role !== "trainee" && fallback) return true;
-    return false;
+    return emp.role === "shift_lead";
   };
 
+  // CANNOT BREAK: No day shift after MC night
+  const dayAfterMCOK = (emp, dateStr, slotStart) => {
+    if (tm(slotStart) >= 1020) return true; // evening slot, rule doesn't apply
+    const dayIndex = weekDates.indexOf(dateStr);
+    if (dayIndex <= 0) return true;
+    const prevDate = weekDates[dayIndex - 1];
+    return !nightMap[prevDate]?.has(emp.id);
+  };
+
+  // FLEXIBLE F7: No Fri+Sat night same person
+  // FLEXIBLE F8: No Sat+Sun night same person
   const weekendNightOK = (emp, dateStr, slotStart) => {
     if (tm(slotStart) < 1020) return true;
     const dow2 = new Date(dateStr + "T12:00:00").getDay();
-    if (con("no_fri_sat_night")) {
+    if (!approved.has("F7") && con("no_fri_sat_night")) {
       if (dow2 === 5 && nightMap[weekDates[5]]?.has(emp.id)) return false;
       if (dow2 === 6 && nightMap[weekDates[4]]?.has(emp.id)) return false;
     }
-    if (con("no_sat_sun_night")) {
+    if (!approved.has("F8") && con("no_sat_sun_night")) {
       if (dow2 === 6 && nightMap[weekDates[6]]?.has(emp.id)) return false;
       if (dow2 === 0 && nightMap[weekDates[5]]?.has(emp.id)) return false;
     }
     return true;
   };
 
+  // FLEXIBLE F9: Max 3 consecutive days
   const consecOK = (emp, dayIndex2) => {
+    if (approved.has("F9")) return true;
     if (!con("max_consecutive_3")) return true;
     let consec = 1;
     for (let c = 1; c <= 3; c++) { if (dayIndex2 + c > 6) break; if (sd[emp.id].has(weekDates[dayIndex2 + c])) consec++; else break; }
@@ -245,6 +262,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     return consec <= 3;
   };
 
+  // CANNOT BREAK: No Fri+Sat+Sun all 3 days
   const friSatSunOK = (emp, dateStr) => {
     if (!con("no_fri_sat_sun")) return true;
     const overrideKey = dateStr + ":" + emp.id;
@@ -257,6 +275,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     return wouldHave < 3;
   };
 
+  // CANNOT BREAK: No two trainees same day
   const traineeOK = (emp, dateStr) => {
     if (emp.role !== "trainee") return true;
     if (!con("no_two_trainees")) return true;
@@ -269,22 +288,137 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     return (emp.tags || []).includes("can_swirl");
   };
 
-  // Register an assignment into the schedule
+  // CANNOT BREAK: Crystal off Sundays (unless explicit availability override)
+  const crystalSundayOK = (emp, dateStr) => {
+    if (emp.name !== "Crystal Guel") return true;
+    const dow = new Date(dateStr + "T12:00:00").getDay();
+    if (dow !== 0) return true;
+    // Allow if manager set an explicit availability override
+    const overrideKey = dateStr + ":" + emp.id;
+    return !!(availOverrides && availOverrides[overrideKey]);
+  };
+
   const assign = (dateStr, slotIndex, emp, slot) => {
-    const isWE = slot._isWE;
-    const isFri = slot._isFri;
     schedule[dateStr][slotIndex] = { ...slot, empId: emp.id, empName: emp.name, empRole: emp.role };
     sc[emp.id]++; sh[emp.id] += slot.hours; sd[emp.id].add(dateStr);
     if (slot.isMC) mcCount[emp.id]++;
-    if (isWE) weCount[emp.id]++;
-    if (isFri && tm(slot.start) >= 1020) weCount[emp.id]++;
+    if (slot._isWE) weCount[emp.id]++;
+    if (slot._isFri && tm(slot.start) >= 1020) weCount[emp.id]++;
     if (tm(slot.start) >= 1020 || slot.isMC) {
       if (!nightMap[dateStr]) nightMap[dateStr] = new Set();
       nightMap[dateStr].add(emp.id);
     }
   };
 
-  // ── STEP 2: Build all slots ───────────────────────────────────────
+  // ── CORE CANDIDATE FILTER ────────────────────────────────────────
+  // Applies all CANNOT BREAK rules always.
+  // Applies FLEXIBLE rules only if NOT yet approved to break.
+  const getCandidates = (slot, extraFilter) => {
+    const dateStr = slot._dateStr;
+    const dayIndex = slot._dayIndex;
+    const isWE = slot._isWE;
+    const isFri = slot._isFri;
+    const dow = slot._dow;
+
+    let cands = active.filter(emp => {
+      // ── CANNOT BREAK rules ──
+      if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
+      if (sd[emp.id].has(dateStr)) return false; // no doubles
+      if (!slCheck(slot, emp)) return false; // SL-only slots need SL
+      if (slot.isMC && emp.role === "trainee") return false; // no trainees on MC
+      if (con("no_mc_twice") && slot.isMC && mcCount[emp.id] >= 1) return false; // no MC twice
+      if (emp.role === "trainee" && !isWE && !isFri && (slot.type === "day_lead" || slot.type === "day")) return false; // no trainees weekday day
+      if (!traineeOK(emp, dateStr)) return false; // no two trainees same day
+      if (!friSatSunOK(emp, dateStr)) return false; // no all 3 weekend days
+      if (!dayAfterMCOK(emp, dateStr, slot.start)) return false; // no day after MC night
+      if (!crystalSundayOK(emp, dateStr)) return false; // Crystal off Sundays
+      // CANNOT BREAK: SLs blocked from Mon–Wed evenings
+      if (emp.role === "shift_lead" && slot.type === "evening" && !isWE && !isFri && dow >= 1 && dow <= 3) return false;
+      // CANNOT BREAK: Mon–Thu day shifts only 1 SL (the Day Lead)
+      if (emp.role === "shift_lead" && slot.type === "day" && !isWE && !isFri) {
+        const slAlreadyOnDay = schedule[dateStr].some(a => a.empId && active.find(e => e.id === a.empId)?.role === "shift_lead");
+        if (slAlreadyOnDay) return false;
+      }
+      if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
+
+      // ── FLEXIBLE rules (blocked unless approved) ──
+      if (!approved.has("F6") && sc[emp.id] >= emp._effMaxShifts) return false;
+      if (sh[emp.id] + slot.hours > emp._effMaxHours * (approved.has("F6") ? 1.5 : 1)) return false;
+      if (!weekendNightOK(emp, dateStr, slot.start)) return false; // F7/F8
+      if (!consecOK(emp, dayIndex)) return false; // F9
+
+      // FLEXIBLE F2: Grae max 1 weekend shift
+      if (!approved.has("F2") && emp._maxWeekendShifts !== undefined) {
+        const isWeekendSlot = dow === 0 || dow === 6 || (dow === 5 && tm(slot.start) >= 1020);
+        if (isWeekendSlot) {
+          const wkndSoFar = [4,5,6].reduce((c, wi) => c + (sd[emp.id].has(weekDates[wi]) ? 1 : 0), 0);
+          if (wkndSoFar >= emp._maxWeekendShifts) {
+            const hasWeekdayAvail = [0,1,2,3].some(wi =>
+              !sd[emp.id].has(weekDates[wi]) &&
+              isAvail(emp, weekDates[wi], "18:00", "22:30", weeklyTimeOffs, availOverrides)
+            );
+            if (hasWeekdayAvail) return false;
+          }
+        }
+      }
+      return true;
+    });
+
+    if (extraFilter) {
+      const filtered = extraFilter(cands);
+      if (filtered.length > 0) cands = filtered;
+    }
+    return cands;
+  };
+
+  const pickBest = (cands, slot) => {
+    if (cands.length === 0) return null;
+    const isWS = slot._isWE || (slot._isFri && tm(slot.start) >= 1020);
+    cands.sort((a, b) => {
+      const aOv = availOverrides?.[slot._dateStr + ":" + a.id] ? 1 : 0;
+      const bOv = availOverrides?.[slot._dateStr + ":" + b.id] ? 1 : 0;
+      if (bOv !== aOv) return bOv - aOv;
+      const aG = (a.guaranteedDays || []).includes(slot._dayKey) ? 1 : 0;
+      const bG = (b.guaranteedDays || []).includes(slot._dayKey) ? 1 : 0;
+      if (bG !== aG) return bG - aG;
+      const aRemain = a._budget - sc[a.id];
+      const bRemain = b._budget - sc[b.id];
+      if (bRemain !== aRemain) return bRemain - aRemain;
+      if (isWS) {
+        const aWEc = [4,5,6].reduce((c, wi) => c + (sd[a.id].has(weekDates[wi]) ? 1 : 0), 0);
+        const bWEc = [4,5,6].reduce((c, wi) => c + (sd[b.id].has(weekDates[wi]) ? 1 : 0), 0);
+        if (aWEc !== bWEc) return aWEc - bWEc;
+      }
+      return Math.random() - 0.5;
+    });
+    return cands[0];
+  };
+
+  const assignSlotInSchedule = (slot, emp) => {
+    const dateStr = slot._dateStr;
+    const idx = schedule[dateStr].findIndex(s =>
+      s.type === slot.type && s.start === slot.start && s.end === slot.end && s.empId === null && s.order === slot.order
+    );
+    if (idx >= 0) assign(dateStr, idx, emp, slot);
+  };
+
+  const needsSwirler = (slot) => {
+    if (approved.has("F10")) return false; // swirl rule broken, don't force
+    if (!con("min_swirlers_weekend")) return false;
+    const isWeekendPeriod = slot._isWE || (slot._isFri && tm(slot.start) >= 1020);
+    if (!isWeekendPeriod) return false;
+    const minSwirl = rules.swirl?.minPerShift || 2;
+    const dateStr = slot._dateStr;
+    const isEve = tm(slot.start) >= 1020;
+    const swirlersNow = schedule[dateStr].filter(a => {
+      if (!a.empId) return false;
+      const sameEve = tm(a.start) >= 1020 && isEve;
+      const sameDay = tm(a.start) < 1020 && !isEve;
+      if (!sameEve && !sameDay) return false;
+      return canSwirl(active.find(e => e.id === a.empId));
+    }).length;
+    return swirlersNow < minSwirl;
+  };
   const schedOrder = [3, 6, 5, 4, 0, 1, 2]; // Thu, Sun, Sat, Fri, Mon, Tue, Wed
   const allSlots = [];
 
@@ -641,29 +775,69 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     if (pick) assignSlotInSchedule(slot, pick);
   }
 
-  // ── STEP 5: Gap fill pass ─────────────────────────────────────────
-  // For any slot still unfilled, try again with relaxed constraints
+  // ── STEP 5: Flexible rule gap-fill (approved breaks only) ────────
+  // At this point, approved = Set of flexible rule IDs the manager said OK to break.
+  // getCandidates() already respects approved breaks via the `approved` Set.
+  // So we just do one more pass — if approvedBreaks were passed in, those rules
+  // are already relaxed in getCandidates, so some previously-unfilled slots will
+  // now have candidates.
+
+  const FLEXIBLE_RULES = [
+    { id: "F1",  label: "Good weekend people preference (Kennedy, Gwen, Abrar, Grae)" },
+    { id: "F2",  label: "Grae's max 1 weekend shift" },
+    { id: "F3",  label: "2nd day priority list (Lena, Abrar first on weekday days)" },
+    { id: "F4",  label: "Trainees preferred on Mon/Tue evenings" },
+    { id: "F5",  label: "Regulars preferred over SLs on weekday 2nd day" },
+    { id: "F6",  label: "Max shifts cap per employee" },
+    { id: "F7",  label: "No Fri + Sat night — same person both nights" },
+    { id: "F8",  label: "No Sat + Sun night — same person both nights" },
+    { id: "F9",  label: "Max 3 consecutive days" },
+    { id: "F10", label: "Min 2 swirlers per weekend shift" },
+    { id: "F11", label: "Fri/Sat/Sun target 2 SLs per evening (extremely preferred)" },
+  ];
+
+  // Gap-fill pass using approved breaks
   weekDates.forEach(dateStr => {
     schedule[dateStr].forEach((slot, idx) => {
-      if (slot.empId !== null) return;
-      let cands = active.filter(emp => {
-        if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
-        if (!weekendNightOK(emp, dateStr, slot.start)) return false;
-        if (!friSatSunOK(emp, dateStr)) return false;
-        if (!slCheck(slot, emp, true)) return false; // true = fallback allowed
-        if (sc[emp.id] >= emp._effMaxShifts || sh[emp.id] + slot.hours > emp._effMaxHours) return false;
-        if (slot.isMC && emp.role === "trainee") return false;
-        if (!traineeOK(emp, dateStr)) return false;
-        if (con("no_mc_twice") && slot.isMC && mcCount[emp.id] >= 1) return false;
-        if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
-        return true;
-      });
-      // Sort by balance (most remaining budget first)
+      if (slot.empId) return;
+      const cands = getCandidates(slot);
       cands.sort((a, b) => {
         const aR = a._budget - sc[a.id], bR = b._budget - sc[b.id];
         return bR !== aR ? bR - aR : Math.random() - 0.5;
       });
       if (cands.length > 0) assign(dateStr, idx, cands[0], slot);
+    });
+  });
+
+  // ── STEP 5b: Detect which flexible rules WOULD need to be broken ──
+  // For each still-unfilled slot, simulate relaxing each rule one at a time
+  // and record which rule would unlock a candidate. Return these as
+  // `rulesNeeded` so the UI can ask the manager before regenerating.
+  const rulesNeeded = []; // [{ id, label, slots: [{date, slotLabel}] }]
+
+  const simulateRelax = (slot, ruleId) => {
+    const testApproved = new Set([...approved, ruleId]);
+    // Temporarily swap approved so getCandidates uses the test set
+    const origApproved = new Set(approved);
+    approved.clear(); testApproved.forEach(x => approved.add(x));
+    const cands = getCandidates(slot);
+    approved.clear(); origApproved.forEach(x => approved.add(x));
+    return cands.length > 0;
+  };
+
+  weekDates.forEach(dateStr => {
+    schedule[dateStr].forEach(slot => {
+      if (slot.empId) return;
+      for (const rule of FLEXIBLE_RULES) {
+        if (approved.has(rule.id)) continue; // already approved, not the blocker
+        if (simulateRelax(slot, rule.id)) {
+          const existing = rulesNeeded.find(r => r.id === rule.id);
+          const entry = { date: dateStr, slotLabel: slot.label };
+          if (existing) existing.slots.push(entry);
+          else rulesNeeded.push({ id: rule.id, label: rule.label, slots: [entry] });
+          break; // only report the first (least-impactful) rule that would fix this slot
+        }
+      }
     });
   });
 
@@ -806,8 +980,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   });
 
   const shortSLs = active.filter(e => e.role === "shift_lead" && sc[e.id] < e.minShifts).map(e => e.id);
+  const hasUnfilled = weekDates.some(d => schedule[d].some(s => !s.empId));
 
-  return { schedule, empShiftCount: sc, empHours: sh, warnings: warnings2, shortSLs, extraUnfilled };
+  return { schedule, empShiftCount: sc, empHours: sh, warnings: warnings2, shortSLs, extraUnfilled, rulesNeeded, hasUnfilled };
 }
 
 // === EDIT SHIFT MODAL ===
@@ -891,6 +1066,9 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
   const [selected, setSelected] = useState(null);
   const [editingShift, setEditingShift] = useState(null);
   const [dayStaffing, setDayStaffing] = useState(null);
+  const [approvedBreaks, setApprovedBreaks] = useState([]); // rule IDs manager approved breaking
+  const [pendingApprovals, setPendingApprovals] = useState(null); // rulesNeeded from last run, waiting for approval
+  const [ruleApprovalChecked, setRuleApprovalChecked] = useState([]); // checkboxes in approval modal
 
   const handleSaveShift = (updatedSlot) => {
     if (!draft || !editingShift) return;
@@ -952,14 +1130,27 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
     setStep("review");
   };
 
-  const handleGenerate = () => {
-    setGenerating(true); setStep("result");
+  const handleGenerate = (breaks) => {
+    const useBreaks = breaks || approvedBreaks;
+    setGenerating(true); setStep("result"); setPendingApprovals(null);
     const ds = dayStaffing || initDayStaffing(weekDates);
     setTimeout(() => {
       const allTOs = [...(timeOffs || []), ...weeklyTOs];
-      const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs, ds, availOverrides, weeklyMaxOverrides);
+      const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs, ds, availOverrides, weeklyMaxOverrides, useBreaks);
+      // If there are unfilled slots that need rule breaks, surface them for approval
+      if (r.rulesNeeded?.length > 0) {
+        setPendingApprovals(r.rulesNeeded);
+        setRuleApprovalChecked(r.rulesNeeded.map(x => x.id)); // pre-check all by default
+      }
       setDraft(r); setGenerating(false);
     }, 200);
+  };
+
+  const handleApproveBreaks = (approvedIds) => {
+    const newBreaks = [...new Set([...approvedBreaks, ...approvedIds])];
+    setApprovedBreaks(newBreaks);
+    setPendingApprovals(null);
+    handleGenerate(newBreaks);
   };
 
   const handleAccept = () => {
@@ -972,17 +1163,23 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
     }
   };
   const handleReject = () => {
+    setApprovedBreaks([]);
+    setPendingApprovals(null);
     setGenerating(true); setStep("result");
     const ds = dayStaffing || initDayStaffing(weekDates);
     setTimeout(() => {
       const allTOs = [...(timeOffs || []), ...weeklyTOs];
-      const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs, ds, availOverrides, weeklyMaxOverrides);
+      const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs, ds, availOverrides, weeklyMaxOverrides, []);
+      if (r.rulesNeeded?.length > 0) {
+        setPendingApprovals(r.rulesNeeded);
+        setRuleApprovalChecked(r.rulesNeeded.map(x => x.id));
+      }
       setDraft(r); setGenerating(false);
     }, 200);
   };
   const handleUnsave = () => { setSavedSchedules(prev => { const n = { ...prev }; delete n[weekKey]; return n; }); setStep("timeoff"); };
   const removeTo = (idx) => setWeeklyTOs(prev => prev.filter((_, i) => i !== idx));
-  const handleWeekChange = (val) => { setWeekStart(val); setDraft(null); setNotes([]); setWeeklyTOs([]); setToText(""); setStep("timeoff"); setDayStaffing(null); setAvailOverrides({}); setWeeklyMaxOverrides({}); };
+  const handleWeekChange = (val) => { setWeekStart(val); setDraft(null); setNotes([]); setWeeklyTOs([]); setToText(""); setStep("timeoff"); setDayStaffing(null); setAvailOverrides({}); setWeeklyMaxOverrides({}); setApprovedBreaks([]); setPendingApprovals(null); };
 
   const getRows = () => {
     if (!result) return [];
@@ -1143,6 +1340,56 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
       {/* RESULT */}
       {(result && (step === "result" || isSaved)) && (
         <>
+      {/* RULE BREAK APPROVAL MODAL */}
+          {pendingApprovals && pendingApprovals.length > 0 && (
+            <div style={{ background: "#FFF7ED", borderRadius: 12, padding: 18, marginBottom: 16, border: "2px solid #FB923C" }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: "#C2410C", marginBottom: 4 }}>⚠️ Schedule has unfilled slots</div>
+              <div style={{ fontSize: 12, color: "#9A3412", marginBottom: 14 }}>
+                The best possible schedule requires bending the rules below. Check the ones you approve, then click Regenerate.
+              </div>
+              {pendingApprovals.map(rule => (
+                <label key={rule.id} style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 12, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={ruleApprovalChecked.includes(rule.id)}
+                    onChange={e => setRuleApprovalChecked(prev => e.target.checked ? [...prev, rule.id] : prev.filter(x => x !== rule.id))}
+                    style={{ marginTop: 2, accentColor: "#C2410C", width: 16, height: 16, flexShrink: 0 }}
+                  />
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#9A3412" }}>{rule.label}</div>
+                    <div style={{ fontSize: 11, color: "#C2410C", marginTop: 2 }}>
+                      Affects: {rule.slots.map(s => {
+                        const dt = new Date(s.date + "T12:00:00");
+                        return dt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) + " — " + s.slotLabel;
+                      }).join(", ")}
+                    </div>
+                  </div>
+                </label>
+              ))}
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <button
+                  onClick={() => handleApproveBreaks(ruleApprovalChecked)}
+                  disabled={ruleApprovalChecked.length === 0}
+                  style={{ padding: "9px 20px", borderRadius: 8, border: "none", background: ruleApprovalChecked.length === 0 ? "#D1D5DB" : "#C2410C", color: "#fff", cursor: ruleApprovalChecked.length === 0 ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 700, fontFamily: font }}>
+                  ⚡ Approve & Regenerate
+                </button>
+                <button
+                  onClick={() => setPendingApprovals(null)}
+                  style={{ padding: "9px 16px", borderRadius: 8, border: "1px solid #D1D5DB", background: "#fff", color: "#6B7280", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: font }}>
+                  Keep as-is
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Approved breaks indicator */}
+          {approvedBreaks.length > 0 && !pendingApprovals && (
+            <div style={{ background: "#FFFBEB", borderRadius: 8, padding: "8px 12px", marginBottom: 12, border: "1px solid #FDE68A", display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 11, color: "#92400E" }}>⚠ {approvedBreaks.length} rule exception{approvedBreaks.length > 1 ? "s" : ""} approved this week</span>
+              <button onClick={() => { setApprovedBreaks([]); handleGenerate([]); }} style={{ fontSize: 10, color: "#B45309", background: "none", border: "1px solid #FCD34D", borderRadius: 4, padding: "2px 6px", cursor: "pointer", fontFamily: font }}>Reset rules</button>
+            </div>
+          )}
+
           {result.warnings.length > 0 && (
             <div style={{ background: "#FEF3C7", borderRadius: 12, padding: 14, marginBottom: 16, border: "1px solid #FDE68A" }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "#92400E", marginBottom: 6 }}>{"\u26a0"} Warnings ({result.warnings.length})</div>
