@@ -598,24 +598,6 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     if (idx >= 0) assign(dateStr, idx, emp, slot);
   };
 
-  // Swirl check helper
-  const needsSwirler = (slot) => {
-    if (!con("min_swirlers_weekend")) return false;
-    const isWeekendPeriod = slot._isWE || (slot._isFri && tm(slot.start) >= 1020);
-    if (!isWeekendPeriod) return false;
-    const minSwirl = rules.swirl?.minPerShift || 2;
-    const dateStr = slot._dateStr;
-    const isEve = tm(slot.start) >= 1020;
-    const swirlersNow = schedule[dateStr].filter(a => {
-      if (!a.empId) return false;
-      const sameEve = tm(a.start) >= 1020 && isEve;
-      const sameDay = tm(a.start) < 1020 && !isEve;
-      if (!sameEve && !sameDay) return false;
-      return canSwirl(active.find(e => e.id === a.empId));
-    }).length;
-    return swirlersNow < minSwirl;
-  };
-
   // ── ASSIGN ALL SLOTS in priority order ───────────────────────────
   for (const slot of allSlots) {
     const dateStr = slot._dateStr;
