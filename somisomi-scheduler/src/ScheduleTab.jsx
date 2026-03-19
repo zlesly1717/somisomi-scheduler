@@ -128,7 +128,7 @@ function parseTimeOffs(text, employees, weekDates) {
 }
 
 // === GENERATE ENGINE ===
-function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, dayStaffingOverrides, availOverrides, weeklyMaxOverrides, approvedBreaks) {
+function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, dayStaffingOverrides, availOverrides, weeklyMaxOverrides, approvedBreaks, savedSchedules) {
   // ─────────────────────────────────────────────────────────────────
   // ENGINE PHILOSOPHY (V4):
   // 1. SLs first — 1 per shift, 15-20h, rotate who gets fewer hours
@@ -224,6 +224,25 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 
   // approvedBreaks: Set of flexible rule IDs the manager has approved breaking
   const approved = new Set(Array.isArray(approvedBreaks) ? approvedBreaks : []);
+
+  // ── MC ROTATION HISTORY — build from saved schedules ──────────────
+  // Count how many times each person has done MC and when was their last
+  const mcHistoryCount = {}; // name → total MC count
+  const mcHistoryLast = {};  // name → last week key
+  active.forEach(e => { mcHistoryCount[e.name] = 0; mcHistoryLast[e.name] = null; });
+  if (savedSchedules) {
+    Object.entries(savedSchedules).sort((a, b) => a[0].localeCompare(b[0])).forEach(([key, data]) => {
+      const sched = data.schedule || data;
+      Object.values(sched).forEach(slots => {
+        if (!Array.isArray(slots)) return;
+        slots.forEach(slot => {
+          if (!slot.isMC || !slot.empId) return;
+          const name = slot.empName || "";
+          if (mcHistoryCount[name] !== undefined) { mcHistoryCount[name]++; mcHistoryLast[name] = key; }
+        });
+      });
+    });
+  }
 
   // ── HELPERS ──────────────────────────────────────────────────────
   const slCheck = (slot, emp) => {
@@ -567,14 +586,20 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       }
     }
 
-    // Sun MC SLs: from rotation pool, pick SL with fewest hours
+    // Sun MC SLs: pick SL who hasn't led MC longest (rotation fairness)
     if (slot.isMC && slot._dow === 0) {
-      const cands = getCandidates(slot, c => {
-        const pool = rules.mcRotation?.shiftLeadPool || [];
-        const fromPool = c.filter(e => pool.includes(e.name) && e.role === "shift_lead");
-        return fromPool.length > 0 ? fromPool : c.filter(e => e.role === "shift_lead");
+      const cands = getCandidates(slot, c => c.filter(e => e.role === "shift_lead"));
+      cands.sort((a, b) => {
+        const aCount = mcHistoryCount[a.name] || 0;
+        const bCount = mcHistoryCount[b.name] || 0;
+        if (aCount !== bCount) return aCount - bCount;
+        const aLast = mcHistoryLast[a.name] || "";
+        const bLast = mcHistoryLast[b.name] || "";
+        if (!aLast && bLast) return -1;
+        if (aLast && !bLast) return 1;
+        if (aLast !== bLast) return aLast.localeCompare(bLast);
+        return sh[a.id] - sh[b.id];
       });
-      cands.sort((a, b) => sh[a.id] - sh[b.id] || Math.random() - 0.5);
       if (cands[0]) { assignSlotInSchedule(slot, cands[0]); continue; }
     }
 
@@ -666,12 +691,21 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     let cands = getCandidates(slot);
     const isWeekendSlot = slot._isWE || (slot._isFri && tm(slot.start) >= 1020);
 
-    // MC helpers: from assistant pool, no SLs, no trainees
+    // MC helpers: ALL regulars rotate, prefer those who haven't cleaned recently
     if (slot.isMC) {
-      const pool = rules.mcRotation?.assistantPool || [];
-      const fromPool = cands.filter(e => pool.includes(e.name) && e.role !== "shift_lead" && e.role !== "trainee");
       const nonSLT = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee");
-      cands = fromPool.length > 0 ? fromPool : nonSLT.length > 0 ? nonSLT : cands;
+      if (nonSLT.length > 0) cands = nonSLT;
+      // Sort by MC rotation: fewest MC times first, then longest since last MC
+      cands.sort((a, b) => {
+        const aCount = mcHistoryCount[a.name] || 0;
+        const bCount = mcHistoryCount[b.name] || 0;
+        if (aCount !== bCount) return aCount - bCount;
+        const aLast = mcHistoryLast[a.name] || "";
+        const bLast = mcHistoryLast[b.name] || "";
+        if (!aLast && bLast) return -1;
+        if (aLast && !bLast) return 1;
+        return aLast.localeCompare(bLast); // earlier = longer ago = pick first
+      });
     }
     // Weekend/Fri evening: no trainees, prefer swirlers + good weekend people
     else if (isWeekendSlot && tm(slot.start) >= 1020) {
@@ -1132,7 +1166,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
     setTimeout(() => {
       try {
         const allTOs = [...(timeOffs || []), ...weeklyTOs];
-        const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs, ds, availOverrides, weeklyMaxOverrides, useBreaks);
+        const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs, ds, availOverrides, weeklyMaxOverrides, useBreaks, savedSchedules);
         // If there are unfilled slots that need rule breaks, surface them for approval
         if (r.rulesNeeded?.length > 0) {
           setPendingApprovals(r.rulesNeeded);
@@ -1213,7 +1247,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
     setTimeout(() => {
       const allTOs = [...(timeOffs || []), ...weeklyTOs];
       try {
-        const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs, ds, availOverrides, weeklyMaxOverrides, []);
+        const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs, ds, availOverrides, weeklyMaxOverrides, [], savedSchedules);
         if (r.rulesNeeded?.length > 0) {
           setPendingApprovals(r.rulesNeeded);
           setRuleApprovalChecked(r.rulesNeeded.map(x => x.id));
@@ -2130,6 +2164,80 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
               </tbody>
             </table>
           </div>
+
+          {/* Next Up for MC */}
+          {(() => {
+            // Build MC frequency from saved schedules
+            const regMCCount = {};
+            const slMCCount = {};
+            const regLastMC = {};
+            const slLastMC = {};
+            const activeRegs = employees.filter(e => e.status === "active" && (e.role === "regular" || e.role === "trainee")).map(e => e.name);
+            const activeSLs = employees.filter(e => e.status === "active" && e.role === "shift_lead").map(e => e.name);
+            activeRegs.forEach(n => { regMCCount[n] = 0; regLastMC[n] = null; });
+            activeSLs.forEach(n => { slMCCount[n] = 0; slLastMC[n] = null; });
+
+            Object.entries(savedSchedules).sort((a, b) => a[0].localeCompare(b[0])).forEach(([key, data]) => {
+              const schedule = data.schedule || data;
+              Object.entries(schedule).forEach(([dateStr, slots]) => {
+                if (!Array.isArray(slots)) return;
+                slots.forEach(slot => {
+                  if (!slot.isMC || !slot.empId) return;
+                  const name = slot.empName || "?";
+                  if (activeRegs.includes(name)) { regMCCount[name]++; regLastMC[name] = key; }
+                  if (activeSLs.includes(name)) { slMCCount[name]++; slLastMC[name] = key; }
+                });
+              });
+            });
+
+            // Sort: fewest MC times first, then longest since last MC
+            const regSorted = activeRegs.sort((a, b) => {
+              if (regMCCount[a] !== regMCCount[b]) return regMCCount[a] - regMCCount[b];
+              if (!regLastMC[a] && regLastMC[b]) return -1;
+              if (regLastMC[a] && !regLastMC[b]) return 1;
+              if (regLastMC[a] && regLastMC[b]) return regLastMC[a].localeCompare(regLastMC[b]);
+              return 0;
+            });
+            const slSorted = activeSLs.sort((a, b) => {
+              if (slMCCount[a] !== slMCCount[b]) return slMCCount[a] - slMCCount[b];
+              if (!slLastMC[a] && slLastMC[b]) return -1;
+              if (slLastMC[a] && !slLastMC[b]) return 1;
+              if (slLastMC[a] && slLastMC[b]) return slLastMC[a].localeCompare(slLastMC[b]);
+              return 0;
+            });
+
+            const fmtLast = (key) => {
+              if (!key) return "Never";
+              try { const d = new Date(key + "T12:00:00"); return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); } catch { return key; }
+            };
+
+            return (
+              <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div style={{ padding: 14, background: "#FFF7ED", borderRadius: 10, border: "1px solid #FED7AA" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#C2410C", marginBottom: 8 }}>Next Up — Regular MC Helpers</div>
+                  <div style={{ fontSize: 10, color: "#9CA3AF", marginBottom: 8 }}>Sorted by who's overdue. Top = should clean next.</div>
+                  {regSorted.map((name, i) => (
+                    <div key={name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: i < regSorted.length - 1 ? "1px solid #FDE68A" : "none" }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: i < 4 ? "#16A34A" : "#9CA3AF", width: 18 }}>#{i + 1}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "#374151", flex: 1 }}>{name}</span>
+                      <span style={{ fontSize: 10, color: "#9CA3AF" }}>{regMCCount[name]}× · last: {fmtLast(regLastMC[name])}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ padding: 14, background: "#FEF3C7", borderRadius: 10, border: "1px solid #FDE68A" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#92400E", marginBottom: 8 }}>Next Up — SL MC Leaders</div>
+                  <div style={{ fontSize: 10, color: "#9CA3AF", marginBottom: 8 }}>Sorted by who's overdue. Top = should lead next.</div>
+                  {slSorted.map((name, i) => (
+                    <div key={name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: i < slSorted.length - 1 ? "1px solid #FDE68A" : "none" }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: i < 2 ? "#16A34A" : "#9CA3AF", width: 18 }}>#{i + 1}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "#374151", flex: 1 }}>{name}</span>
+                      <span style={{ fontSize: 10, color: "#9CA3AF" }}>{slMCCount[name]}× · last: {fmtLast(slLastMC[name])}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>
