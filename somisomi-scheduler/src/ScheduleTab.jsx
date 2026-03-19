@@ -691,9 +691,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     let cands = getCandidates(slot);
     const isWeekendSlot = slot._isWE || (slot._isFri && tm(slot.start) >= 1020);
 
-    // MC helpers: ALL regulars rotate, prefer those who haven't cleaned recently
+    // MC helpers: ALL regulars rotate (except mc_exempt like Grae), prefer those who haven't cleaned recently
     if (slot.isMC) {
-      const nonSLT = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee");
+      const nonSLT = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee" && !(e.tags || []).includes("mc_exempt"));
       if (nonSLT.length > 0) cands = nonSLT;
       // Sort by MC rotation: fewest MC times first, then longest since last MC
       cands.sort((a, b) => {
@@ -2094,7 +2094,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                 </tr>
               </thead>
               <tbody>
-                {Object.entries(savedSchedules).sort((a, b) => b[0].localeCompare(a[0])).map(([key, data]) => {
+                {Object.entries(savedSchedules).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 8).map(([key, data]) => {
                   const schedule = data.schedule || data;
                   const dates = [];
                   try {
@@ -2172,7 +2172,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
             const slMCCount = {};
             const regLastMC = {};
             const slLastMC = {};
-            const activeRegs = employees.filter(e => e.status === "active" && (e.role === "regular" || e.role === "trainee")).map(e => e.name);
+            const activeRegs = employees.filter(e => e.status === "active" && (e.role === "regular" || e.role === "trainee") && !(e.tags || []).includes("mc_exempt")).map(e => e.name);
             const activeSLs = employees.filter(e => e.status === "active" && e.role === "shift_lead").map(e => e.name);
             activeRegs.forEach(n => { regMCCount[n] = 0; regLastMC[n] = null; });
             activeSLs.forEach(n => { slMCCount[n] = 0; slLastMC[n] = null; });

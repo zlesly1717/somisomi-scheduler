@@ -73,6 +73,13 @@ function buildMCHistorySeed() {
       sun: { leader: "Chan In", slHelper: null, helpers: ["Gwen Ursua"] },
       breakSL: "Kaitlyn Trevino", savedAt: "2026-03-15T20:00:00Z",
     },
+    { key: "2026-03-16", // Mar 16-22 (current week)
+      // Thu Mar 19: Spencer(lead) + Yise + Zoe (3 = Lesly helped)
+      // Sun Mar 22: Crystal(lead) + Kaitlyn + Abrar + Sam (4 = full crew)
+      thu: { leader: "Spencer Losch", helpers: ["Yise Moya", "Zoe Rains"] },
+      sun: { leader: "Crystal Guel", slHelper: "Kaitlyn Trevino", helpers: ["Abrar Uddin", "Sam Castillo"] },
+      breakSL: "Chan In", savedAt: "2026-03-22T20:00:00Z",
+    },
   ];
 
   const result = {};
@@ -153,6 +160,9 @@ export default function App() {
         }
         if ((e.name === "Grae McKown" || e.id === "reg-7") && !(e.tags || []).includes("can_swirl")) {
           e.tags = [...(e.tags || []), "can_swirl"];
+        }
+        if ((e.name === "Grae McKown" || e.id === "reg-7") && !(e.tags || []).includes("mc_exempt")) {
+          e.tags = [...(e.tags || []), "mc_exempt"];
         }
         return e;
       });
