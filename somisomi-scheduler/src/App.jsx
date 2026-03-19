@@ -69,6 +69,13 @@ export default function App() {
           else e.minHours = 0;
         }
         if (!e.guaranteedDays) e.guaranteedDays = [];
+        // Auto-migrate: set specific employees inactive/promoted
+        if (e.name === "Christina Mullins" && e.status === "active") e.status = "off";
+        if (e.name === "Tiernan Hollister" && e.status === "active") e.status = "off";
+        if (e.name === "Yise Moya" && e.role === "trainee") {
+          e.role = "regular"; e.maxShifts = 4; e.minShifts = 3; e.maxHours = 20; e.minHours = 12;
+          if (!(e.tags || []).includes("can_swirl")) e.tags = [...(e.tags || []), "can_swirl", "can_mc"];
+        }
         return e;
       });
       const r = data.rules || SEED_RULES;

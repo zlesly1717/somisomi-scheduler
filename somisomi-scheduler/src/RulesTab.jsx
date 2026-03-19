@@ -1,17 +1,16 @@
 import { useState } from "react";
-import { fmtTime, ROLE_CONFIG } from "./constants";
+import { ROLE_CONFIG } from "./constants";
 
 const font = "'DM Sans',sans-serif";
-const si = { padding: "8px 12px", border: "1px solid #D1D5DB", borderRadius: 8, fontSize: 13, outline: "none", fontFamily: font, boxSizing: "border-box", width: "100%" };
 
 function DraggableList({ items, onReorder, renderItem }) {
   const [dragIdx, setDragIdx] = useState(null);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
       {items.map((item, i) => (
-        <div key={item.id || item} draggable
+        <div key={item.id || i} draggable
           onDragStart={() => setDragIdx(i)} onDragOver={e => e.preventDefault()}
-          onDrop={() => { if (dragIdx !== null && dragIdx !== i) { const arr = [...items]; const [m] = arr.splice(dragIdx, 1); arr.splice(i, 0, m); onReorder(arr); } setDragIdx(null); }}
+          onDrop={() => { if (dragIdx !== null && dragIdx !== i) { const a = [...items]; const [m] = a.splice(dragIdx, 1); a.splice(i, 0, m); onReorder(a); } setDragIdx(null); }}
           onDragEnd={() => setDragIdx(null)}
           style={{ background: dragIdx === i ? "#DBEAFE" : "#fff", borderRadius: 8, cursor: "grab", border: "1px solid #E5E7EB", userSelect: "none" }}>
           {renderItem(item, i)}
@@ -21,66 +20,14 @@ function DraggableList({ items, onReorder, renderItem }) {
   );
 }
 
-function PriorityList({ title, desc, items, onReorder, onAdd, onRemove, allNames }) {
-  const [adding, setAdding] = useState(false);
-  const available = allNames.filter(n => !items.includes(n));
-  return (
-    <div style={{ marginBottom: 16, padding: 14, background: "#F9FAFB", borderRadius: 10, border: "1px solid #E5E7EB" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#374151" }}>{title}</div>
-        {onAdd && available.length > 0 && (
-          <button onClick={() => setAdding(!adding)} style={{ fontSize: 11, fontWeight: 600, color: "#2563EB", background: "none", border: "none", cursor: "pointer" }}>
-            {adding ? "Cancel" : "+ Add"}
-          </button>
-        )}
-      </div>
-      {desc && <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 8 }}>{desc}</div>}
-      {adding && (
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 4, marginBottom: 8 }}>
-          {available.map(name => (
-            <button key={name} onClick={() => { onAdd(name); setAdding(false); }} style={{
-              padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer",
-              border: "1px solid #D1D5DB", background: "#fff", color: "#374151", fontFamily: font,
-            }}>{name}</button>
-          ))}
-        </div>
-      )}
-      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-        {items.map((item, i) => (
-          <div key={item} draggable
-            onDragStart={e => e.dataTransfer.setData("idx", i)}
-            onDragOver={e => e.preventDefault()}
-            onDrop={e => {
-              const from = parseInt(e.dataTransfer.getData("idx"));
-              if (!isNaN(from) && from !== i) { const arr = [...items]; const [m] = arr.splice(from, 1); arr.splice(i, 0, m); onReorder(arr); }
-            }}
-            style={{
-              display: "flex", alignItems: "center", gap: 6, padding: "6px 10px",
-              background: "#fff", borderRadius: 6, cursor: "grab",
-              border: "1px solid #E5E7EB", fontSize: 12, userSelect: "none",
-            }}>
-            <span style={{ color: "#D1D5DB", fontSize: 12 }}>{"\u2807"}</span>
-            <span style={{ color: "#F59E0B", fontWeight: 800, fontSize: 10, width: 18 }}>#{i + 1}</span>
-            <span style={{ color: "#374151", fontWeight: 600, flex: 1 }}>{item}</span>
-            {onRemove && <button onClick={() => onRemove(item)} style={{ background: "none", border: "none", cursor: "pointer", color: "#DC2626", fontSize: 10, fontWeight: 600 }}>{"\u2715"}</button>}
-          </div>
-        ))}
-        {items.length === 0 && <div style={{ fontSize: 11, color: "#9CA3AF", padding: 4 }}>Empty. Click "+ Add" to add names.</div>}
-      </div>
-    </div>
-  );
-}
-
 const tabs = [
   { id: "constraints", label: "Constraints", icon: "\ud83d\udeab" },
   { id: "categories", label: "Employee Groups", icon: "\ud83d\udc65" },
-  { id: "priorities", label: "Priority Lists", icon: "\ud83d\udccb" },
 ];
 
 export function RulesTab({ rules, setRules, employees }) {
   const [activeTab, setActiveTab] = useState("constraints");
   const activeEmps = employees.filter(e => e.status === "active").sort((a, b) => a.name.localeCompare(b.name));
-  const allNames = activeEmps.map(e => e.name);
   const update = fn => setRules(prev => { const next = JSON.parse(JSON.stringify(prev)); fn(next); return next; });
 
   const hardRuleIds = ["no_doubles", "no_day_after_mc", "overlap_blocks", "only_sl_lead", "no_trainees_mc", "no_mc_twice", "mc_evening_sl_leads"];
@@ -97,9 +44,8 @@ export function RulesTab({ rules, setRules, employees }) {
     <div style={{ padding: "18px 28px" }}>
       <div style={{ marginBottom: 16 }}>
         <h2 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 800, color: "#4A3F2F" }}>Scheduling Rules</h2>
-        <p style={{ margin: 0, fontSize: 12, color: "#9CA3AF" }}>Configure rules and priorities. Drag to reorder. Changes save automatically.</p>
+        <p style={{ margin: 0, fontSize: 12, color: "#9CA3AF" }}>Configure rules. Drag to reorder flexible constraints. Changes save automatically.</p>
       </div>
-
       <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
         <div style={{ width: 180, flexShrink: 0 }}>
           <div style={{ background: "#fff", borderRadius: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", overflow: "hidden" }}>
@@ -115,7 +61,6 @@ export function RulesTab({ rules, setRules, employees }) {
             ))}
           </div>
         </div>
-
         <div style={{ flex: 1, background: "#fff", borderRadius: 12, padding: 22, boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
 
           {activeTab === "constraints" && (
@@ -140,15 +85,13 @@ export function RulesTab({ rules, setRules, employees }) {
                   ))}
                 </div>
               </div>
-
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                   <span style={{ fontSize: 16 }}>{"\u2696\ufe0f"}</span>
                   <div style={{ fontSize: 15, fontWeight: 700, color: "#4A3F2F" }}>Flexible Rules (by priority)</div>
                 </div>
                 <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 12 }}>Drag to set priority. Toggle on/off. System may break lower rules to fill slots.</div>
-                <DraggableList
-                  items={softRules}
+                <DraggableList items={softRules}
                   onReorder={arr => update(r => { r.constraints = [...hardRules, ...arr]; })}
                   renderItem={(c, i) => (
                     <div style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 14px" }}>
@@ -190,10 +133,10 @@ export function RulesTab({ rules, setRules, employees }) {
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {shiftLeads.map(e => (
                     <div key={e.id} style={{ padding: "6px 12px", borderRadius: 8, background: "#fff", border: "1px solid #FDE68A", fontSize: 12, fontWeight: 600, color: "#92400E", display: "flex", alignItems: "center", gap: 6 }}>
-                      <span>{e.name}</span>
-                      {(e.tags || []).includes("can_swirl") && <span style={{ fontSize: 10 }}>{"\ud83c\udf66"}</span>}
-                      {(e.tags || []).includes("mc_rotation_thu") && <span style={{ fontSize: 9, background: "#7C3AED", color: "#fff", padding: "1px 4px", borderRadius: 4 }}>Thu</span>}
-                      {(e.tags || []).includes("mc_rotation_sun") && <span style={{ fontSize: 9, background: "#2563EB", color: "#fff", padding: "1px 4px", borderRadius: 4 }}>Sun</span>}
+                      {e.name}
+                      {(e.tags||[]).includes("can_swirl") && <span style={{ fontSize: 10 }}>{"\ud83c\udf66"}</span>}
+                      {(e.tags||[]).includes("mc_rotation_thu") && <span style={{ fontSize: 9, background: "#7C3AED", color: "#fff", padding: "1px 4px", borderRadius: 4 }}>Thu</span>}
+                      {(e.tags||[]).includes("mc_rotation_sun") && <span style={{ fontSize: 9, background: "#2563EB", color: "#fff", padding: "1px 4px", borderRadius: 4 }}>Sun</span>}
                     </div>
                   ))}
                 </div>
@@ -210,13 +153,18 @@ export function RulesTab({ rules, setRules, employees }) {
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {swirlers.map(e => (
                     <div key={e.id} style={{ padding: "6px 12px", borderRadius: 8, background: "#fff", border: "1px solid #FED7AA", fontSize: 12, fontWeight: 600, color: "#C2410C", display: "flex", alignItems: "center", gap: 6 }}>
-                      <span>{e.name}</span>
-                      {(e.tags || []).includes("good_weekend") && <span style={{ fontSize: 9, background: "#16A34A", color: "#fff", padding: "1px 4px", borderRadius: 4 }}>Wknd</span>}
-                      {(e.tags || []).includes("fourth_shift_priority") && <span style={{ fontSize: 9, background: "#2563EB", color: "#fff", padding: "1px 4px", borderRadius: 4 }}>4th</span>}
+                      {e.name}
+                      {(e.tags||[]).includes("good_weekend") && <span style={{ fontSize: 9, background: "#16A34A", color: "#fff", padding: "1px 4px", borderRadius: 4 }}>Wknd</span>}
                     </div>
                   ))}
                 </div>
                 {swirlers.length === 0 && <div style={{ fontSize: 11, color: "#9CA3AF" }}>No swirlers. Add "Can Swirl" tag on Employees tab.</div>}
+                <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#C2410C" }}>Min per weekend shift:</span>
+                  <input type="number" min={1} max={5} value={rules.swirl?.minPerShift || 2}
+                    onChange={e => update(r => { if (!r.swirl) r.swirl = {}; r.swirl.minPerShift = parseInt(e.target.value) || 2; })}
+                    style={{ width: 50, padding: "4px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 12, fontFamily: font }} />
+                </div>
               </div>
 
               <div style={{ marginBottom: 20, padding: 16, background: "#F9FAFB", borderRadius: 10, border: "1px solid #E5E7EB" }}>
@@ -240,7 +188,7 @@ export function RulesTab({ rules, setRules, employees }) {
                   <span style={{ fontSize: 16 }}>{"\ud83c\udf93"}</span>
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: "#6D28D9" }}>Trainees ({traineeList.length})</div>
-                    <div style={{ fontSize: 10, color: "#7C3AED" }}>{rules.trainee?.graduationHours || 30}h to graduate · Fill gaps only</div>
+                    <div style={{ fontSize: 10, color: "#7C3AED" }}>{rules.trainee?.graduationHours || 30}h to graduate · Mon-Thu evenings only</div>
                   </div>
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -261,40 +209,6 @@ export function RulesTab({ rules, setRules, employees }) {
                 </div>
                 {traineeList.length === 0 && <div style={{ fontSize: 11, color: "#9CA3AF" }}>No active trainees.</div>}
               </div>
-
-              <div style={{ marginTop: 20, padding: 14, background: "#F9FAFB", borderRadius: 10, border: "1px solid #E5E7EB" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#374151" }}>Min swirlers per weekend shift:</span>
-                  <input type="number" min={1} max={5} value={rules.swirl?.minPerShift || 2}
-                    onChange={e => update(r => { if (!r.swirl) r.swirl = {}; r.swirl.minPerShift = parseInt(e.target.value) || 2; })}
-                    style={{ width: 50, padding: "4px 8px", borderRadius: 6, border: "1px solid #D1D5DB", fontSize: 12, fontFamily: font }} />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === "priorities" && (
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: "#4A3F2F", marginBottom: 4 }}>Priority Lists</div>
-              <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 16 }}>Drag to reorder. Higher = gets picked first.</div>
-
-              <PriorityList title="4th Shift Priority" desc="Who gets a 4th shift first when extra coverage is needed."
-                items={rules.fourthShiftPriority || []} allNames={[...allNames, "Trainees"]}
-                onReorder={arr => update(r => { r.fourthShiftPriority = arr; })}
-                onAdd={name => update(r => { r.fourthShiftPriority = [...(r.fourthShiftPriority || []), name]; })}
-                onRemove={name => update(r => { r.fourthShiftPriority = r.fourthShiftPriority.filter(n => n !== name); })} />
-
-              <PriorityList title="2nd Day Priority" desc="Who gets the weekday 12pm day shift. Learning priority."
-                items={rules.secondDayPriority || []} allNames={allNames}
-                onReorder={arr => update(r => { r.secondDayPriority = arr; })}
-                onAdd={name => update(r => { r.secondDayPriority = [...(r.secondDayPriority || []), name]; })}
-                onRemove={name => update(r => { r.secondDayPriority = r.secondDayPriority.filter(n => n !== name); })} />
-
-              <PriorityList title="Good Weekend People" desc="Preferred for Fri night through Sun shifts."
-                items={rules.goodWeekendPeople || []} allNames={allNames}
-                onReorder={arr => update(r => { r.goodWeekendPeople = arr; })}
-                onAdd={name => update(r => { r.goodWeekendPeople = [...(r.goodWeekendPeople || []), name]; })}
-                onRemove={name => update(r => { r.goodWeekendPeople = r.goodWeekendPeople.filter(n => n !== name); })} />
             </div>
           )}
         </div>
