@@ -42,6 +42,75 @@ const SEED_SCHOOL_CALENDAR = [
 
 const font = "'DM Sans',sans-serif";
 
+// Pre-seeded MC history from Homebase screenshots (4 weeks prior to app adoption)
+function buildMCHistorySeed() {
+  const mcWeeks = [
+    { key: "2026-02-16", // Feb 16-22
+      thu: { leader: "Kaitlyn Trevino", helpers: ["Crystal Guel", "Kennedy Bean"] },
+      sun: { leader: "Spencer Losch", slHelper: "Zoe Rains", helpers: ["Kennedy Bean", "Susan Thai"] },
+      breakSL: "Chan In", savedAt: "2026-02-22T20:00:00Z",
+    },
+    { key: "2026-02-23", // Feb 23-Mar 1
+      thu: { leader: "Crystal Guel", helpers: ["Zoe Rains", "Sam Castillo"] },
+      sun: { leader: "Kaitlyn Trevino", slHelper: "Spencer Losch", helpers: ["Lena Maslak", "Sam Castillo"] },
+      breakSL: "Chan In", savedAt: "2026-03-01T20:00:00Z",
+    },
+    { key: "2026-03-02", // Mar 2-8
+      thu: { leader: "Zoe Rains", helpers: ["Crystal Guel", "Susan Thai"] },
+      sun: { leader: "Chan In", slHelper: "Spencer Losch", helpers: ["Gwen Ursua", "Abrar Uddin"] },
+      breakSL: "Kaitlyn Trevino", savedAt: "2026-03-08T20:00:00Z",
+    },
+    { key: "2026-03-09", // Mar 9-15 (Spring Break)
+      thu: { leader: "Crystal Guel", helpers: ["Sam Castillo", "Yise Moya"] },
+      sun: { leader: "Zoe Rains", slHelper: "Spencer Losch", helpers: ["Lena Maslak", "Kennedy Bean"] },
+      breakSL: "Kaitlyn Trevino", savedAt: "2026-03-15T20:00:00Z",
+    },
+  ];
+
+  const result = {};
+  mcWeeks.forEach(w => {
+    // Build minimal schedule structure with just MC slots so History tab can read them
+    const dates = [];
+    const d = new Date(w.key + "T12:00:00");
+    for (let i = 0; i < 7; i++) {
+      const dd = new Date(d); dd.setDate(d.getDate() + i);
+      dates.push(dd.toISOString().split("T")[0]);
+    }
+    const thuDate = dates[3]; // Thursday
+    const sunDate = dates[6]; // Sunday
+
+    const schedule = {};
+    dates.forEach(dt => { schedule[dt] = []; });
+
+    // Thu MC slots
+    schedule[thuDate] = [
+      { type: "mc_leader", label: "MC Leader", start: "18:00", end: "23:45", hours: 5.75, isMC: true, empId: "seed", empName: w.thu.leader, empRole: "shift_lead" },
+      ...w.thu.helpers.map((h, i) => ({ type: "mc_helper", label: "MC Helper", start: "18:00", end: "23:45", hours: 5.75, isMC: true, empId: "seed-h" + i, empName: h, empRole: "regular" })),
+    ];
+
+    // Sun MC slots
+    const sunSlots = [
+      { type: "mc_leader", label: "MC Leader", start: "18:00", end: "23:45", hours: 5.75, isMC: true, empId: "seed-sl", empName: w.sun.leader, empRole: "shift_lead" },
+    ];
+    if (w.sun.slHelper) {
+      sunSlots.push({ type: "mc_sl_helper", label: "MC Helper (SL)", start: "18:00", end: "23:45", hours: 5.75, isMC: true, empId: "seed-sl2", empName: w.sun.slHelper, empRole: "shift_lead" });
+    }
+    w.sun.helpers.forEach((h, i) => {
+      sunSlots.push({ type: "mc_helper", label: "MC Helper", start: "18:00", end: "23:45", hours: 5.75, isMC: true, empId: "seed-sh" + i, empName: h, empRole: "regular" });
+    });
+    schedule[sunDate] = sunSlots;
+
+    result[w.key] = {
+      schedule,
+      savedAt: w.savedAt,
+      notes: [],
+      weeklyTOs: [],
+      _source: "homebase-import",
+    };
+  });
+  return result;
+}
+
 const tabs = [
   { id: "schedule", label: "Schedule", icon: "\ud83d\udcc5" },
   { id: "employees", label: "Employees", icon: "\ud83d\udc65" },
@@ -102,11 +171,18 @@ export default function App() {
       setRules(r);
       setSchoolDates(data.schoolDates || SEED_SCHOOL_CALENDAR);
       setTimeOffs(data.timeOffs || []);
-      setSavedSchedules(data.savedSchedules || {});
+      // Migrate: pre-seed MC rotation history from past 4 weeks if not already saved
+      const existing = data.savedSchedules || {};
+      if (!existing["2026-02-16"]) {
+        const mcHistory = buildMCHistorySeed();
+        Object.entries(mcHistory).forEach(([k, v]) => { if (!existing[k]) existing[k] = v; });
+      }
+      setSavedSchedules(existing);
     } else {
       setEmployees(SEED_EMPLOYEES);
       setRules(SEED_RULES);
       setSchoolDates(SEED_SCHOOL_CALENDAR);
+      setSavedSchedules(buildMCHistorySeed());
     }
     setLoaded(true);
   }, []);
