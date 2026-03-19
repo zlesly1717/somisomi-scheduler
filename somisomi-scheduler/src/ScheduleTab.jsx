@@ -691,7 +691,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     let cands = getCandidates(slot);
     const isWeekendSlot = slot._isWE || (slot._isFri && tm(slot.start) >= 1020);
 
-    // MC helpers: ALL regulars rotate (except mc_exempt like Grae), prefer those who haven't cleaned recently
+    // MC helpers: ALL regulars rotate (except mc_exempt and trainees), prefer those who haven't cleaned recently
     if (slot.isMC) {
       const nonSLT = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee" && !(e.tags || []).includes("mc_exempt"));
       if (nonSLT.length > 0) cands = nonSLT;
@@ -2172,7 +2172,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
             const slMCCount = {};
             const regLastMC = {};
             const slLastMC = {};
-            const activeRegs = employees.filter(e => e.status === "active" && (e.role === "regular" || e.role === "trainee") && !(e.tags || []).includes("mc_exempt")).map(e => e.name);
+            const activeRegs = employees.filter(e => e.status === "active" && e.role === "regular" && !(e.tags || []).includes("mc_exempt")).map(e => e.name);
             const activeSLs = employees.filter(e => e.status === "active" && e.role === "shift_lead").map(e => e.name);
             activeRegs.forEach(n => { regMCCount[n] = 0; regLastMC[n] = null; });
             activeSLs.forEach(n => { slMCCount[n] = 0; slLastMC[n] = null; });
