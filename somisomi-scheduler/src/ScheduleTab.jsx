@@ -144,7 +144,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   //   - No trainees on weekday day shifts
   //   - SLs blocked from Mon–Wed evenings
   //   - Mon–Thu day shifts: only 1 SL (the Day Lead slot)
-  //   - Thu MC: Crystal leads, Zoe SL helper (fixed)
+  //   - Thu MC: Crystal leads + 2 regular helpers
   //   - Crystal off Sundays (unless availability override set)
   //   - Distribute hours equally (balance pass always runs)
   //   - Time off = less hours, redistribute to others
@@ -447,11 +447,13 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     }
     if (staffing.mid > 0) { for (let i = 0; i < staffing.mid; i++) { slots.push({ type: "mid", label: "Mid Shift", start: midS, end: midE, hours: hrs(midS, midE), slOnly: false, order: 10 + i }); } }
     if (isMC) {
-      // Thu MC: 1 SL leader + 1 SL helper + 1 reg helper (3 total)
+      // Thu MC: 1 SL leader + 2 reg helpers (3 total)
       // Sun MC: 1 SL leader + 1 SL helper + 2 reg helpers (4 total)
       slots.push({ type: "mc_leader", label: "MC Leader (Eve SL)", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: true, isMC: true, order: 20 });
-      slots.push({ type: "mc_sl_helper", label: "MC Helper (SL)", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: true, isMC: true, order: 21 });
-      const regHelpers = isSun ? 2 : 1;
+      if (isSun) {
+        slots.push({ type: "mc_sl_helper", label: "MC Helper (SL)", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: true, isMC: true, order: 21 });
+      }
+      const regHelpers = isSun ? 2 : 2; // Thu: 2 reg helpers, Sun: 2 reg helpers
       for (let i = 0; i < regHelpers; i++) { slots.push({ type: "mc_helper", label: "MC Helper", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: false, isMC: true, order: 22 + i }); }
     } else {
       for (let i = 0; i < (staffing.evening || 3); i++) {
@@ -471,7 +473,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 
   // ── STEP 4: Priority-ordered slot assignment ──────────────────────
   // Slot priority groups — assigned in this order:
-  //   G0: Thu MC (fixed: Crystal leader + Zoe SL helper + 1 reg)
+  //   G0: Thu MC (fixed: Crystal leader + 2 reg helpers)
   //   G1: Sun MC (2 SLs + 2 regs)
   //   G2: Fri/Sat/Sun Evening SL slots (need 2 SLs each night)
   //   G3: All other Day Lead (SL) slots Mon-Thu
@@ -525,7 +527,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 
     let cands = [];
 
-    // ── GROUP 0: Thu MC ── Crystal always leads, Zoe always SL helper
+    // ── GROUP 0: Thu MC ── Crystal always leads + 2 regular helpers
     if (group === 0) {
       if (slot.type === "mc_leader") {
         const crystal = active.find(e => e.name === "Crystal Guel");
@@ -533,19 +535,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
           assignSlotInSchedule(slot, crystal); continue;
         }
       }
-      if (slot.type === "mc_sl_helper") {
-        const zoe = active.find(e => e.name === "Zoe Rains");
-        if (zoe && getCandidates(slot).find(e => e.id === zoe.id)) {
-          assignSlotInSchedule(slot, zoe); continue;
-        }
-        // Fallback: any available SL
-        cands = getCandidates(slot, c => c.filter(e => e.role === "shift_lead"));
-        const pick = pickBest(cands, slot);
-        if (pick) assignSlotInSchedule(slot, pick);
-        continue;
-      }
       if (slot.type === "mc_helper") {
-        // Thu MC reg helper — from assistant pool, no SLs
+        // Thu MC helpers — from assistant pool, prefer non-SLs but allow SLs as fallback
         cands = getCandidates(slot, c => {
           const pool = rules.mcRotation?.assistantPool || [];
           const fromPool = c.filter(e => pool.includes(e.name) && e.role !== "shift_lead");
@@ -940,7 +931,7 @@ function EditShiftModal({ slot, date, employees, onSave, onClose }) {
 }
 
 // === MAIN COMPONENT ===
-export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSchedules, setSavedSchedules }) {
+export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeOffs, savedSchedules, setSavedSchedules }) {
   const [weekStart, setWeekStart] = useState(() => {
     const now = new Date(); const day = now.getDay();
     const mon = new Date(now); mon.setDate(now.getDate() - (day === 0 ? 6 : day - 1) + 7);
@@ -1050,9 +1041,51 @@ export function ScheduleTab({ employees, rules, schoolDates, timeOffs, savedSche
 
   const handleAccept = () => {
     if (draft) {
+      // Auto-track trainee hours: calculate hours for each trainee this week
+      const traineeHours = {};
+      const schedData = draft.schedule || draft;
+      Object.values(schedData).forEach(daySlots => {
+        if (!Array.isArray(daySlots)) return;
+        daySlots.forEach(slot => {
+          if (slot.empId) {
+            const emp = employees.find(e => e.id === slot.empId);
+            if (emp && emp.role === "trainee") {
+              traineeHours[emp.id] = (traineeHours[emp.id] || 0) + (slot.hours || 0);
+            }
+          }
+        });
+      });
+
+      // Update trainee cumulative hours on employee records
+      if (Object.keys(traineeHours).length > 0 && setEmployees) {
+        setEmployees(prev => prev.map(emp => {
+          if (traineeHours[emp.id]) {
+            const newCumulative = (emp.traineeCumulative || 0) + traineeHours[emp.id];
+            const graduated = newCumulative >= (rules.trainee?.graduationHours || 30);
+            return {
+              ...emp,
+              traineeCumulative: Math.round(newCumulative * 100) / 100,
+              // Auto-graduate: promote to regular when they hit 30h
+              ...(graduated && emp.role === "trainee" ? {
+                role: "regular",
+                maxShifts: 4, minShifts: 3, maxHours: 20, minHours: 12,
+                tags: [...(emp.tags || []), "can_swirl", "can_mc"],
+                notes: (emp.notes || "") + ` Graduated from trainee at ${newCumulative.toFixed(1)}h.`,
+              } : {}),
+            };
+          }
+          return emp;
+        }));
+      }
+
+      // Save the schedule with trainee hour snapshot
       setSavedSchedules(prev => ({
         ...prev,
-        [weekKey]: { ...draft, notes, weeklyTOs, savedAt: new Date().toISOString() }
+        [weekKey]: {
+          ...draft, notes, weeklyTOs,
+          savedAt: new Date().toISOString(),
+          traineeHoursThisWeek: traineeHours,
+        }
       }));
       setDraft(null); setNotes([]);
     }

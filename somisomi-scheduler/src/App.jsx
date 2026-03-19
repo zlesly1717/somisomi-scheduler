@@ -6,6 +6,8 @@ import { SchoolCalendarTab } from "./SchoolCalendarTab";
 import { SEED_EMPLOYEES, SEED_RULES } from "./seedData";
 import { loadData, saveData } from "./storage";
 
+import { HistoryTab } from "./HistoryTab";
+
 const SEED_SCHOOL_CALENDAR = [
   {date:"2025-09-01",label:"Labor Day",type:"holiday"},
   {date:"2025-10-13",label:"Columbus Day",type:"holiday"},
@@ -45,6 +47,7 @@ const tabs = [
   { id: "employees", label: "Employees", icon: "\ud83d\udc65" },
   { id: "rules", label: "Rules", icon: "\u2699\ufe0f" },
   { id: "calendar", label: "School Calendar", icon: "\ud83c\udfeb" },
+  { id: "history", label: "History", icon: "\ud83d\udcca" },
 ];
 
 export default function App() {
@@ -135,10 +138,11 @@ export default function App() {
         </div>
       </div>
 
-      {activeTab === "schedule" && <ScheduleTab employees={employees} rules={rules} schoolDates={schoolDates} timeOffs={timeOffs} savedSchedules={savedSchedules} setSavedSchedules={setSavedSchedules} />}
+      {activeTab === "schedule" && <ScheduleTab employees={employees} setEmployees={setEmployees} rules={rules} schoolDates={schoolDates} timeOffs={timeOffs} savedSchedules={savedSchedules} setSavedSchedules={setSavedSchedules} />}
       {activeTab === "employees" && <EmployeesTab employees={employees} setEmployees={setEmployees} />}
       {activeTab === "rules" && <RulesTab rules={rules} setRules={setRules} employees={employees} />}
       {activeTab === "calendar" && <SchoolCalendarTab schoolDates={schoolDates} setSchoolDates={setSchoolDates} />}
+      {activeTab === "history" && <HistoryTab employees={employees} savedSchedules={savedSchedules} rules={rules} />}
     </div>
   );
 }

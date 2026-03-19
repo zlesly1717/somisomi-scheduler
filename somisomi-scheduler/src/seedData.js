@@ -156,7 +156,7 @@ export const SEED_EMPLOYEES = [
     notes:"2 shifts max. Mon off. Tue-Fri evenings only. Sat/Sun available.",traineeCumulative:0,guaranteedDays:[],
   },
   {
-    id:"reg-8",name:"Christina Mullins",role:"regular",status:"active",
+    id:"reg-8",name:"Christina Mullins",role:"regular",status:"off",
     maxShifts:4,minShifts:3,maxHours:20,minHours:12,
     tags:["can_mc"],
     unavailability:{
@@ -171,16 +171,34 @@ export const SEED_EMPLOYEES = [
     notes:"Mon-Thu unavailable 9am-3pm. Gets 4th shift after Sam/Lena/Susan/Abrar.",traineeCumulative:0,guaranteedDays:[],
   },
   {
-    id:"tr-1",name:"Yise Moya",role:"trainee",status:"active",
-    maxShifts:3,minShifts:1,maxHours:15,minHours:0,
-    tags:[],unavailability:newUnavail(),
-    notes:"Fully available.",traineeCumulative:8.0,guaranteedDays:[],
+    id:"tr-1",name:"Yise Moya",role:"regular",status:"active",
+    maxShifts:4,minShifts:3,maxHours:20,minHours:12,
+    tags:["can_swirl","can_mc"],unavailability:newUnavail(),
+    notes:"Graduated from trainee. Fully available.",traineeCumulative:55.25,guaranteedDays:[],
   },
   {
-    id:"tr-2",name:"Tiernan Hollister",role:"trainee",status:"active",
+    id:"tr-2",name:"Tiernan Hollister",role:"trainee",status:"off",
     maxShifts:3,minShifts:1,maxHours:15,minHours:0,
     tags:[],unavailability:newUnavail(),
-    notes:"Fully available.",traineeCumulative:10.0,guaranteedDays:[],
+    notes:"Inactive.",traineeCumulative:10.0,guaranteedDays:[],
+  },
+  {
+    id:"tr-3",name:"Marissa Shelton",role:"trainee",status:"active",
+    maxShifts:3,minShifts:1,maxHours:15,minHours:0,
+    tags:[],unavailability:newUnavail(),
+    notes:"Trainee. 20h completed.",traineeCumulative:20.0,guaranteedDays:[],
+  },
+  {
+    id:"tr-4",name:"Nani Hoomes",role:"trainee",status:"active",
+    maxShifts:3,minShifts:1,maxHours:15,minHours:0,
+    tags:[],unavailability:newUnavail(),
+    notes:"Trainee. 16h completed.",traineeCumulative:16.0,guaranteedDays:[],
+  },
+  {
+    id:"tr-5",name:"Alli Campos",role:"trainee",status:"active",
+    maxShifts:3,minShifts:1,maxHours:15,minHours:0,
+    tags:[],unavailability:newUnavail(),
+    notes:"Trainee. 4h completed.",traineeCumulative:4.0,guaranteedDays:[],
   },
 ];
 
@@ -229,22 +247,21 @@ export const SEED_RULES = {
     mcHolidayStagedArrivals:["18:00","18:00","18:15","18:30"],
     weekdayClose:"22:30",weekendClose:"23:30",mcClose:"23:45",
   },
-  fourthShiftPriority:["Sam Castillo","Lena Maslak","Susan Thai","Abrar Uddin","Christina Mullins","Trainees"],
+  fourthShiftPriority:["Sam Castillo","Lena Maslak","Susan Thai","Abrar Uddin","Yise Moya","Trainees"],
   secondDayPriority:["Lena Maslak","Abrar Uddin"],
   goodWeekendPeople:["Kennedy Bean","Gwen Ursua","Abrar Uddin","Grae McKown"],
   swirl:{
     minPerShift: 2,
     weekendOnly: true,
-    swirlers: ["Chan In","Zoe Rains","Kaitlyn Trevino","Spencer Losch","Crystal Guel","Kennedy Bean","Sam Castillo","Lena Maslak","Gwen Ursua","Susan Thai","Abrar Uddin"],
+    swirlers: ["Chan In","Zoe Rains","Kaitlyn Trevino","Spencer Losch","Crystal Guel","Kennedy Bean","Sam Castillo","Lena Maslak","Gwen Ursua","Susan Thai","Abrar Uddin","Yise Moya"],
   },
   fixedRules: [
-    {id:"fr-1",empName:"Crystal Guel",rule:"Always MCs Thursday",desc:"Crystal is off Sundays, so she must MC on Thursday every week"},
-    {id:"fr-2",empName:"Zoe Rains",rule:"Always MCs Thursday",desc:"Zoe is paired with Crystal for Thursday MC"},
+    {id:"fr-1",empName:"Crystal Guel",rule:"Always leads Thursday MC",desc:"Crystal is off Sundays, so she must lead MC on Thursday every week. Crew = Crystal + 2 regular helpers."},
     {id:"fr-3",empName:"Grae McKown",rule:"Max 2 shifts per week",desc:"Grae limited to 2 shifts maximum"},
   ],
   mcRotation: {
     shiftLeadPool:["Chan In","Zoe Rains","Kaitlyn Trevino","Spencer Losch","Crystal Guel"],
-    assistantPool:["Sam Castillo","Lena Maslak","Gwen Ursua","Susan Thai","Abrar Uddin","Kennedy Bean","Christina Mullins"],
+    assistantPool:["Sam Castillo","Lena Maslak","Gwen Ursua","Susan Thai","Abrar Uddin","Kennedy Bean","Yise Moya"],
     noBackToBackHelpers:true,
   },
   weekendSLRotation: {
