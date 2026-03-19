@@ -219,7 +219,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   active.forEach(e => { mcCount[e.id] = 0; weCount[e.id] = 0; });
 
   // approvedBreaks: Set of flexible rule IDs the manager has approved breaking
-  const approved = new Set(approvedBreaks || []);
+  const approved = new Set(Array.isArray(approvedBreaks) ? approvedBreaks : []);
 
   // ── HELPERS ──────────────────────────────────────────────────────
   const slCheck = (slot, emp) => {
@@ -702,9 +702,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   const rulesNeeded = []; // [{ id, label, slots: [{date, slotLabel}] }]
 
   const simulateRelax = (slot, ruleId) => {
-    const testApproved = new Set([...approved, ruleId]);
+    const testApproved = new Set([...(Array.from(approved || [])), ruleId]);
     // Temporarily swap approved so getCandidates uses the test set
-    const origApproved = new Set(approved);
+    const origApproved = new Set(approved || []);
     approved.clear(); testApproved.forEach(x => approved.add(x));
     const cands = getCandidates(slot);
     approved.clear(); origApproved.forEach(x => approved.add(x));
@@ -1021,19 +1021,25 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
     setGenerating(true); setStep("result"); setPendingApprovals(null);
     const ds = dayStaffing || initDayStaffing(weekDates);
     setTimeout(() => {
-      const allTOs = [...(timeOffs || []), ...weeklyTOs];
-      const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs, ds, availOverrides, weeklyMaxOverrides, useBreaks);
-      // If there are unfilled slots that need rule breaks, surface them for approval
-      if (r.rulesNeeded?.length > 0) {
-        setPendingApprovals(r.rulesNeeded);
-        setRuleApprovalChecked(r.rulesNeeded.map(x => x.id)); // pre-check all by default
+      try {
+        const allTOs = [...(timeOffs || []), ...weeklyTOs];
+        const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs, ds, availOverrides, weeklyMaxOverrides, useBreaks);
+        // If there are unfilled slots that need rule breaks, surface them for approval
+        if (r.rulesNeeded?.length > 0) {
+          setPendingApprovals(r.rulesNeeded);
+          setRuleApprovalChecked(r.rulesNeeded.map(x => x.id)); // pre-check all by default
+        }
+        setDraft(r); setGenerating(false);
+      } catch (err) {
+        console.error("Schedule generation error:", err);
+        setGenerating(false);
+        alert("Error generating schedule: " + err.message);
       }
-      setDraft(r); setGenerating(false);
     }, 200);
   };
 
   const handleApproveBreaks = (approvedIds) => {
-    const newBreaks = [...new Set([...approvedBreaks, ...approvedIds])];
+    const newBreaks = [...new Set([...(Array.isArray(approvedBreaks) ? approvedBreaks : []), ...(Array.isArray(approvedIds) ? approvedIds : [])])];
     setApprovedBreaks(newBreaks);
     setPendingApprovals(null);
     handleGenerate(newBreaks);
@@ -1097,12 +1103,18 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
     const ds = dayStaffing || initDayStaffing(weekDates);
     setTimeout(() => {
       const allTOs = [...(timeOffs || []), ...weeklyTOs];
-      const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs, ds, availOverrides, weeklyMaxOverrides, []);
-      if (r.rulesNeeded?.length > 0) {
-        setPendingApprovals(r.rulesNeeded);
-        setRuleApprovalChecked(r.rulesNeeded.map(x => x.id));
+      try {
+        const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs, ds, availOverrides, weeklyMaxOverrides, []);
+        if (r.rulesNeeded?.length > 0) {
+          setPendingApprovals(r.rulesNeeded);
+          setRuleApprovalChecked(r.rulesNeeded.map(x => x.id));
+        }
+        setDraft(r); setGenerating(false);
+      } catch (err) {
+        console.error("Schedule generation error:", err);
+        setGenerating(false);
+        alert("Error generating schedule: " + err.message);
       }
-      setDraft(r); setGenerating(false);
     }, 200);
   };
   const handleUnsave = () => { setSavedSchedules(prev => { const n = { ...prev }; delete n[weekKey]; return n; }); setStep("timeoff"); };

@@ -34,7 +34,7 @@ export function HistoryTab({ employees, savedSchedules, rules }) {
   };
 
   // Get all trainees (current + graduated)
-  const trainees = employees.filter(e =>
+  const trainees = employees.filter(e => e.status === "active" &&
     e.role === "trainee" || (e.traineeCumulative && e.traineeCumulative > 0)
   );
 

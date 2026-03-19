@@ -143,7 +143,7 @@ export const SEED_EMPLOYEES = [
   {
     id:"reg-7",name:"Grae McKown",role:"regular",status:"active",
     maxShifts:2,minShifts:2,maxHours:12,minHours:8,
-    tags:["good_weekend"],
+    tags:["can_swirl","good_weekend"],
     unavailability:{
       mon:{allDay:true,start:"",end:""},
       tue:{allDay:false,start:"06:00",end:"15:00"},
@@ -197,8 +197,16 @@ export const SEED_EMPLOYEES = [
   {
     id:"tr-5",name:"Alli Campos",role:"trainee",status:"active",
     maxShifts:3,minShifts:1,maxHours:15,minHours:0,
-    tags:[],unavailability:newUnavail(),
-    notes:"Trainee. 4h completed.",traineeCumulative:4.0,guaranteedDays:[],
+    tags:[],unavailability:{
+      mon:{allDay:false,start:"",end:""},
+      tue:{allDay:false,start:"06:00",end:"16:30"},
+      wed:{allDay:false,start:"06:00",end:"13:30"},
+      thu:{allDay:false,start:"06:00",end:"16:30"},
+      fri:{allDay:false,start:"",end:""},
+      sat:{allDay:false,start:"",end:""},
+      sun:{allDay:false,start:"",end:""},
+    },
+    notes:"Trainee. 4h completed. Tue/Thu 6am-4:30pm, Wed 6am-1:30pm unavail.",traineeCumulative:4.0,guaranteedDays:[],
   },
 ];
 
@@ -253,7 +261,7 @@ export const SEED_RULES = {
   swirl:{
     minPerShift: 2,
     weekendOnly: true,
-    swirlers: ["Chan In","Zoe Rains","Kaitlyn Trevino","Spencer Losch","Crystal Guel","Kennedy Bean","Sam Castillo","Lena Maslak","Gwen Ursua","Susan Thai","Abrar Uddin","Yise Moya"],
+    swirlers: ["Chan In","Zoe Rains","Kaitlyn Trevino","Spencer Losch","Crystal Guel","Kennedy Bean","Sam Castillo","Lena Maslak","Gwen Ursua","Susan Thai","Abrar Uddin","Yise Moya","Grae McKown"],
   },
   fixedRules: [
     {id:"fr-1",empName:"Crystal Guel",rule:"Always leads Thursday MC",desc:"Crystal is off Sundays, so she must lead MC on Thursday every week. Crew = Crystal + 2 regular helpers."},
