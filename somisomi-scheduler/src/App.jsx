@@ -46,23 +46,31 @@ const font = "'DM Sans',sans-serif";
 function buildMCHistorySeed() {
   const mcWeeks = [
     { key: "2026-02-16", // Feb 16-22
-      thu: { leader: "Kaitlyn Trevino", helpers: ["Crystal Guel", "Kennedy Bean"] },
-      sun: { leader: "Spencer Losch", slHelper: "Zoe Rains", helpers: ["Kennedy Bean", "Susan Thai"] },
-      breakSL: "Chan In", savedAt: "2026-02-22T20:00:00Z",
+      // Thu Feb 19: Spencer(lead) + Crystal + Chan (3 = Lesly helped)
+      // Sun Feb 22: Kaitlyn(lead) + Zoe + Susan + Abrar (4 = full crew)
+      thu: { leader: "Spencer Losch", helpers: ["Crystal Guel", "Chan In"] },
+      sun: { leader: "Kaitlyn Trevino", slHelper: null, helpers: ["Zoe Rains", "Susan Thai", "Abrar Uddin"] },
+      breakSL: null, savedAt: "2026-02-22T20:00:00Z",
     },
     { key: "2026-02-23", // Feb 23-Mar 1
-      thu: { leader: "Crystal Guel", helpers: ["Zoe Rains", "Sam Castillo"] },
-      sun: { leader: "Kaitlyn Trevino", slHelper: "Spencer Losch", helpers: ["Lena Maslak", "Sam Castillo"] },
-      breakSL: "Chan In", savedAt: "2026-03-01T20:00:00Z",
+      // Thu Feb 26: Crystal(lead) + Kaitlyn + Kennedy (3 = Lesly helped)
+      // Sun Mar 1: Spencer(lead) + Chan + Zoe + Kennedy (4 = full crew)
+      thu: { leader: "Crystal Guel", helpers: ["Kaitlyn Trevino", "Kennedy Bean"] },
+      sun: { leader: "Spencer Losch", slHelper: null, helpers: ["Chan In", "Zoe Rains", "Kennedy Bean"] },
+      breakSL: null, savedAt: "2026-03-01T20:00:00Z",
     },
     { key: "2026-03-02", // Mar 2-8
-      thu: { leader: "Zoe Rains", helpers: ["Crystal Guel", "Susan Thai"] },
-      sun: { leader: "Chan In", slHelper: "Spencer Losch", helpers: ["Gwen Ursua", "Abrar Uddin"] },
-      breakSL: "Kaitlyn Trevino", savedAt: "2026-03-08T20:00:00Z",
+      // Thu Mar 5: Crystal(lead) + Zoe + Sam (3 = Lesly helped)
+      // Sun Mar 8: Kaitlyn(lead) + Spencer + Chan + Lena (4 = full crew)
+      thu: { leader: "Crystal Guel", helpers: ["Zoe Rains", "Sam Castillo"] },
+      sun: { leader: "Kaitlyn Trevino", slHelper: null, helpers: ["Spencer Losch", "Chan In", "Lena Maslak"] },
+      breakSL: null, savedAt: "2026-03-08T20:00:00Z",
     },
-    { key: "2026-03-09", // Mar 9-15 (Spring Break)
-      thu: { leader: "Crystal Guel", helpers: ["Sam Castillo", "Yise Moya"] },
-      sun: { leader: "Zoe Rains", slHelper: "Spencer Losch", helpers: ["Lena Maslak", "Kennedy Bean"] },
+    { key: "2026-03-09", // Mar 9-15
+      // Thu Mar 12: Crystal(lead) + Spencer + Susan + Zoe (4 = full crew)
+      // Sun Mar 15: Chan(lead) + Gwen (2 only — Lesly + David helped)
+      thu: { leader: "Crystal Guel", helpers: ["Spencer Losch", "Susan Thai", "Zoe Rains"] },
+      sun: { leader: "Chan In", slHelper: null, helpers: ["Gwen Ursua"] },
       breakSL: "Kaitlyn Trevino", savedAt: "2026-03-15T20:00:00Z",
     },
   ];
@@ -114,9 +122,7 @@ function buildMCHistorySeed() {
 const tabs = [
   { id: "schedule", label: "Schedule", icon: "\ud83d\udcc5" },
   { id: "employees", label: "Employees", icon: "\ud83d\udc65" },
-  { id: "rules", label: "Rules", icon: "\u2699\ufe0f" },
-  { id: "calendar", label: "School Calendar", icon: "\ud83c\udfeb" },
-  { id: "history", label: "History", icon: "\ud83d\udcca" },
+  { id: "settings", label: "Settings", icon: "\u2699\ufe0f" },
 ];
 
 export default function App() {
@@ -223,9 +229,7 @@ export default function App() {
 
       {activeTab === "schedule" && <ScheduleTab employees={employees} setEmployees={setEmployees} rules={rules} schoolDates={schoolDates} timeOffs={timeOffs} savedSchedules={savedSchedules} setSavedSchedules={setSavedSchedules} />}
       {activeTab === "employees" && <EmployeesTab employees={employees} setEmployees={setEmployees} />}
-      {activeTab === "rules" && <RulesTab rules={rules} setRules={setRules} employees={employees} />}
-      {activeTab === "calendar" && <SchoolCalendarTab schoolDates={schoolDates} setSchoolDates={setSchoolDates} />}
-      {activeTab === "history" && <HistoryTab employees={employees} savedSchedules={savedSchedules} rules={rules} />}
+      {activeTab === "settings" && <RulesTab rules={rules} setRules={setRules} employees={employees} schoolDates={schoolDates} setSchoolDates={setSchoolDates} />}
     </div>
   );
 }

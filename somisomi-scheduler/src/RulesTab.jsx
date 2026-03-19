@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ROLE_CONFIG } from "./constants";
+import { SchoolCalendarTab } from "./SchoolCalendarTab";
 
 const font = "'DM Sans',sans-serif";
 
@@ -23,9 +24,10 @@ function DraggableList({ items, onReorder, renderItem }) {
 const tabs = [
   { id: "constraints", label: "Constraints", icon: "\ud83d\udeab" },
   { id: "categories", label: "Employee Groups", icon: "\ud83d\udc65" },
+  { id: "calendar", label: "School Calendar", icon: "\ud83c\udfeb" },
 ];
 
-export function RulesTab({ rules, setRules, employees }) {
+export function RulesTab({ rules, setRules, employees, schoolDates, setSchoolDates }) {
   const [activeTab, setActiveTab] = useState("constraints");
   const activeEmps = employees.filter(e => e.status === "active").sort((a, b) => a.name.localeCompare(b.name));
   const update = fn => setRules(prev => { const next = JSON.parse(JSON.stringify(prev)); fn(next); return next; });
@@ -43,8 +45,8 @@ export function RulesTab({ rules, setRules, employees }) {
   return (
     <div style={{ padding: "18px 28px" }}>
       <div style={{ marginBottom: 16 }}>
-        <h2 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 800, color: "#4A3F2F" }}>Scheduling Rules</h2>
-        <p style={{ margin: 0, fontSize: 12, color: "#9CA3AF" }}>Configure rules. Drag to reorder flexible constraints. Changes save automatically.</p>
+        <h2 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 800, color: "#4A3F2F" }}>Settings</h2>
+        <p style={{ margin: 0, fontSize: 12, color: "#9CA3AF" }}>Constraints, employee groups, and school calendar. Changes save automatically.</p>
       </div>
       <div style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
         <div style={{ width: 180, flexShrink: 0 }}>
@@ -61,7 +63,7 @@ export function RulesTab({ rules, setRules, employees }) {
             ))}
           </div>
         </div>
-        <div style={{ flex: 1, background: "#fff", borderRadius: 12, padding: 22, boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
+        <div style={{ flex: 1, background: activeTab === "calendar" ? "transparent" : "#fff", borderRadius: 12, padding: activeTab === "calendar" ? 0 : 22, boxShadow: activeTab === "calendar" ? "none" : "0 1px 3px rgba(0,0,0,0.06)" }}>
 
           {activeTab === "constraints" && (
             <div>
@@ -90,7 +92,7 @@ export function RulesTab({ rules, setRules, employees }) {
                   <span style={{ fontSize: 16 }}>{"\u2696\ufe0f"}</span>
                   <div style={{ fontSize: 15, fontWeight: 700, color: "#4A3F2F" }}>Flexible Rules (by priority)</div>
                 </div>
-                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 12 }}>Drag to set priority. Toggle on/off. System may break lower rules to fill slots.</div>
+                <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 12 }}>Drag to set priority. Toggle on/off.</div>
                 <DraggableList items={softRules}
                   onReorder={arr => update(r => { r.constraints = [...hardRules, ...arr]; })}
                   renderItem={(c, i) => (
@@ -120,7 +122,7 @@ export function RulesTab({ rules, setRules, employees }) {
           {activeTab === "categories" && (
             <div>
               <div style={{ fontSize: 15, fontWeight: 700, color: "#4A3F2F", marginBottom: 4 }}>Employee Groups</div>
-              <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 16 }}>Auto-categorized from employee tags. Edit tags on the Employees tab.</div>
+              <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 16 }}>Auto-categorized from employee tags.</div>
 
               <div style={{ marginBottom: 20, padding: 16, background: "#FEF3C7", borderRadius: 10, border: "1px solid #FDE68A" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
@@ -135,8 +137,6 @@ export function RulesTab({ rules, setRules, employees }) {
                     <div key={e.id} style={{ padding: "6px 12px", borderRadius: 8, background: "#fff", border: "1px solid #FDE68A", fontSize: 12, fontWeight: 600, color: "#92400E", display: "flex", alignItems: "center", gap: 6 }}>
                       {e.name}
                       {(e.tags||[]).includes("can_swirl") && <span style={{ fontSize: 10 }}>{"\ud83c\udf66"}</span>}
-                      {(e.tags||[]).includes("mc_rotation_thu") && <span style={{ fontSize: 9, background: "#7C3AED", color: "#fff", padding: "1px 4px", borderRadius: 4 }}>Thu</span>}
-                      {(e.tags||[]).includes("mc_rotation_sun") && <span style={{ fontSize: 9, background: "#2563EB", color: "#fff", padding: "1px 4px", borderRadius: 4 }}>Sun</span>}
                     </div>
                   ))}
                 </div>
@@ -152,13 +152,10 @@ export function RulesTab({ rules, setRules, employees }) {
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {swirlers.map(e => (
-                    <div key={e.id} style={{ padding: "6px 12px", borderRadius: 8, background: "#fff", border: "1px solid #FED7AA", fontSize: 12, fontWeight: 600, color: "#C2410C", display: "flex", alignItems: "center", gap: 6 }}>
-                      {e.name}
-                      {(e.tags||[]).includes("good_weekend") && <span style={{ fontSize: 9, background: "#16A34A", color: "#fff", padding: "1px 4px", borderRadius: 4 }}>Wknd</span>}
-                    </div>
+                    <div key={e.id} style={{ padding: "6px 12px", borderRadius: 8, background: "#fff", border: "1px solid #FED7AA", fontSize: 12, fontWeight: 600, color: "#C2410C" }}>{e.name}</div>
                   ))}
                 </div>
-                {swirlers.length === 0 && <div style={{ fontSize: 11, color: "#9CA3AF" }}>No swirlers. Add "Can Swirl" tag on Employees tab.</div>}
+                {swirlers.length === 0 && <div style={{ fontSize: 11, color: "#9CA3AF" }}>No swirlers yet.</div>}
                 <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 11, fontWeight: 700, color: "#C2410C" }}>Min per weekend shift:</span>
                   <input type="number" min={1} max={5} value={rules.swirl?.minPerShift || 2}
@@ -172,7 +169,7 @@ export function RulesTab({ rules, setRules, employees }) {
                   <span style={{ fontSize: 16 }}>{"\ud83d\udc64"}</span>
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: "#374151" }}>Non-Swirlers ({nonSwirlers.length})</div>
-                    <div style={{ fontSize: 10, color: "#6B7280" }}>Cannot swirl yet · Need swirler coverage on weekends</div>
+                    <div style={{ fontSize: 10, color: "#6B7280" }}>Cannot swirl yet</div>
                   </div>
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -188,7 +185,7 @@ export function RulesTab({ rules, setRules, employees }) {
                   <span style={{ fontSize: 16 }}>{"\ud83c\udf93"}</span>
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: "#6D28D9" }}>Trainees ({traineeList.length})</div>
-                    <div style={{ fontSize: 10, color: "#7C3AED" }}>{rules.trainee?.graduationHours || 30}h to graduate · Mon-Thu evenings only</div>
+                    <div style={{ fontSize: 10, color: "#7C3AED" }}>{rules.trainee?.graduationHours || 30}h to graduate · Mon-Thu evenings</div>
                   </div>
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -210,6 +207,10 @@ export function RulesTab({ rules, setRules, employees }) {
                 {traineeList.length === 0 && <div style={{ fontSize: 11, color: "#9CA3AF" }}>No active trainees.</div>}
               </div>
             </div>
+          )}
+
+          {activeTab === "calendar" && (
+            <SchoolCalendarTab schoolDates={schoolDates} setSchoolDates={setSchoolDates} />
           )}
         </div>
       </div>

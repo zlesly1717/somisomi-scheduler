@@ -1904,6 +1904,82 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
           </div>
         </>
       )}
+
+      {/* MC ROTATION TRACKER */}
+      {Object.keys(savedSchedules || {}).length > 0 && (
+        <div style={{ background: "#fff", borderRadius: 12, padding: 22, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginTop: 16 }}>
+          <h3 style={{ margin: "0 0 12px", fontSize: 15, fontWeight: 800, color: "#4A3F2F", display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 18 }}>{"\ud83e\uddf9"}</span> MC Rotation Tracker
+          </h3>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr style={{ background: "#F9FAFB", borderBottom: "2px solid #E5E7EB" }}>
+                  <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 700, color: "#6B7280", fontSize: 10, textTransform: "uppercase" }}>Week</th>
+                  <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 700, color: "#7C3AED", fontSize: 10, textTransform: "uppercase" }}>Thu MC</th>
+                  <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 700, color: "#2563EB", fontSize: 10, textTransform: "uppercase" }}>Sun MC</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(savedSchedules).sort((a, b) => b[0].localeCompare(a[0])).map(([key, data]) => {
+                  const schedule = data.schedule || data;
+                  const dates = [];
+                  try {
+                    const d = new Date(key + "T12:00:00");
+                    for (let i = 0; i < 7; i++) { const dd = new Date(d); dd.setDate(d.getDate() + i); dates.push(dd.toISOString().split("T")[0]); }
+                  } catch { return null; }
+                  const thuDate = dates[3], sunDate = dates[6];
+                  const thuMC = { leader: null, helpers: [] };
+                  const sunMC = { leader: null, helpers: [] };
+                  
+                  [thuDate, sunDate].forEach(dt => {
+                    if (!schedule[dt] || !Array.isArray(schedule[dt])) return;
+                    const isThu = dt === thuDate;
+                    schedule[dt].forEach(slot => {
+                      if (!slot.isMC || !slot.empId) return;
+                      const name = slot.empName || "?";
+                      const mc = isThu ? thuMC : sunMC;
+                      if (slot.type === "mc_leader") mc.leader = name;
+                      else mc.helpers.push(name);
+                    });
+                  });
+
+                  const fmtWeek = (() => {
+                    try {
+                      const d = new Date(key + "T12:00:00");
+                      const end = new Date(d); end.setDate(d.getDate() + 6);
+                      const f = dt => dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                      return `${f(d)} – ${f(end)}`;
+                    } catch { return key; }
+                  })();
+
+                  return (
+                    <tr key={key} style={{ borderBottom: "1px solid #F3F4F6" }}>
+                      <td style={{ padding: "8px 12px", fontWeight: 600, color: "#374151", whiteSpace: "nowrap" }}>{fmtWeek}</td>
+                      <td style={{ padding: "8px 12px" }}>
+                        {thuMC.leader ? (
+                          <>
+                            <span style={{ fontWeight: 700, color: "#7C3AED" }}>{thuMC.leader}</span>
+                            {thuMC.helpers.length > 0 && <span style={{ color: "#9CA3AF" }}> + {thuMC.helpers.join(", ")}</span>}
+                          </>
+                        ) : <span style={{ color: "#D1D5DB" }}>—</span>}
+                      </td>
+                      <td style={{ padding: "8px 12px" }}>
+                        {sunMC.leader ? (
+                          <>
+                            <span style={{ fontWeight: 700, color: "#2563EB" }}>{sunMC.leader}</span>
+                            {sunMC.helpers.length > 0 && <span style={{ color: "#9CA3AF" }}> + {sunMC.helpers.join(", ")}</span>}
+                          </>
+                        ) : <span style={{ color: "#D1D5DB" }}>—</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
