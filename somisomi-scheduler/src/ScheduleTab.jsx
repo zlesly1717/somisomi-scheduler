@@ -698,10 +698,11 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       const fromPri = cands.filter(e => pri.includes(e.name));
       if (fromPri.length > 0) cands = fromPri;
     }
-    // Weekday evening (remaining slots after trainees placed): regulars only, NO SLs
+    // Weekday evening (remaining slots after trainees placed): prefer regulars, allow trainee as fallback
     else if (tm(slot.start) >= 1020) {
       const regsOnly = cands.filter(e => e.role === "regular");
       if (regsOnly.length > 0) cands = regsOnly;
+      // If no regulars available, allow trainees (better than unfilled)
     }
 
     // PICK: fewest hours first
@@ -760,6 +761,46 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       assign(dateStr, idx, sl, slot);
       filled++;
     }
+  }
+
+  // ── STEP 5b: 5th person on a shift can be a trainee ────────────────
+  // If a shift already has 4+ assigned people, a trainee can be the 5th.
+  // This lets trainees work Fri/Sat/Sun as extra help without replacing regulars.
+  // Also catches any unfilled weekday evening slots trainees can fill.
+  const traineesStillAvail = traineeEmps.filter(e => sc[e.id] < e._effMaxShifts && e._budget > sc[e.id]);
+  if (traineesStillAvail.length > 0) {
+    weekDates.forEach(dateStr => {
+      schedule[dateStr].forEach((slot, idx) => {
+        if (slot.empId) return; // already filled
+        // Count how many people are already assigned this day on evening/same period
+        const isEve = tm(slot.start) >= 1020;
+        const samePeriod = schedule[dateStr].filter(s => {
+          if (!s.empId) return false;
+          const sIsEve = tm(s.start) >= 1020;
+          return isEve ? sIsEve : !sIsEve;
+        });
+
+        // Allow trainee as 5th+ person (4+ already assigned to this period)
+        // OR any unfilled weekday evening slot
+        const dow = new Date(dateStr + "T12:00:00").getDay();
+        const isWeekday = dow >= 1 && dow <= 4;
+        const canTraineeFill = samePeriod.length >= 4 || (isWeekday && isEve);
+
+        if (!canTraineeFill) return;
+        if (slot.slOnly || slot.isMC) return;
+
+        // Find a trainee
+        for (const trainee of traineesStillAvail.sort((a, b) => sh[a.id] - sh[b.id])) {
+          if (sd[trainee.id].has(dateStr)) continue;
+          if (!traineeOK(trainee, dateStr)) continue;
+          if (!isAvail(trainee, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) continue;
+          if (!consecOK(trainee, weekDates.indexOf(dateStr))) continue;
+          if (sc[trainee.id] >= trainee._effMaxShifts) continue;
+          assign(dateStr, idx, trainee, slot);
+          break;
+        }
+      });
+    });
   }
 
   // ── STEP 6: Balance pass ──────────────────────────────────────────
