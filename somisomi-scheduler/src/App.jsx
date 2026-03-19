@@ -145,8 +145,8 @@ export default function App() {
         }
         if (!e.guaranteedDays) e.guaranteedDays = [];
         // Auto-migrate: force specific employees inactive/promoted
-        if ((e.name === "Christina Mullins" || e.id === "reg-8") && e.status !== "off") e.status = "off";
-        if ((e.name === "Tiernan Hollister" || e.id === "tr-2") && e.status !== "off") e.status = "off";
+        if ((e.name === "Christina Mullins" || e.id === "reg-8") && e.status !== "inactive") e.status = "inactive";
+        if ((e.name === "Tiernan Hollister" || e.id === "tr-2") && e.status !== "inactive") e.status = "inactive";
         if ((e.name === "Yise Moya" || e.id === "tr-1") && e.role === "trainee") {
           e.role = "regular"; e.maxShifts = 4; e.minShifts = 3; e.maxHours = 20; e.minHours = 12;
           if (!(e.tags || []).includes("can_swirl")) e.tags = [...(e.tags || []), "can_swirl", "can_mc"];

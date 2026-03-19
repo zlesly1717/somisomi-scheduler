@@ -497,7 +497,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       for (let i = 0; i < regHelpers; i++) { slots.push({ type: "mc_helper", label: "MC Helper", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: false, isMC: true, order: 22 + i }); }
       // Thu: add trainee evening slot (6pm-10:30pm, leaves before MC cleaning starts)
       if (isThu) {
-        slots.push({ type: "evening", label: "Evening (Trainee)", start: eveS, end: eveE, hours: hrs(eveS, eveE), slOnly: false, isMC: false, isTraineeSlot: true, order: 25 });
+        slots.push({ type: "evening", label: "Evening", start: eveS, end: eveE, hours: hrs(eveS, eveE), slOnly: false, isMC: false, isTraineeSlot: true, order: 25 });
       }
     } else {
       for (let i = 0; i < (staffing.evening || 3); i++) {
@@ -1058,6 +1058,9 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
   const [editingShift, setEditingShift] = useState(null);
   const [dayStaffing, setDayStaffing] = useState(null);
   const [warningsOpen, setWarningsOpen] = useState(false);
+  const [empOrder, setEmpOrder] = useState(null); // custom employee display order
+  const [dragEmpId, setDragEmpId] = useState(null); // for employee row reordering
+  const [addShiftPopup, setAddShiftPopup] = useState(null); // { empId, date }
   const [approvedBreaks, setApprovedBreaks] = useState([]); // rule IDs manager approved breaking
   const [pendingApprovals, setPendingApprovals] = useState(null); // rulesNeeded from last run, waiting for approval
   const [ruleApprovalChecked, setRuleApprovalChecked] = useState([]); // checkboxes in approval modal
@@ -1579,10 +1582,13 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
               </tr></thead>
               <tbody>
                 {(() => {
-                  const sortedEmps = employees.filter(e => e.status === "active").sort((a, b) => {
+                  const defaultSort = employees.filter(e => e.status === "active").sort((a, b) => {
                     const o = { shift_lead: 0, regular: 1, trainee: 2 };
                     return (o[a.role] || 3) - (o[b.role] || 3) || a.name.localeCompare(b.name);
                   });
+                  const sortedEmps = empOrder ? empOrder.map(id => defaultSort.find(e => e.id === id)).filter(Boolean) : defaultSort;
+                  // Add any new employees not in custom order
+                  if (empOrder) { defaultSort.forEach(e => { if (!sortedEmps.find(s => s.id === e.id)) sortedEmps.push(e); }); }
                   const shiftColors = {
                     day_lead: { bg: "#22C55E", text: "#fff", label: "Day Shift Lead" },
                     day: { bg: "#4ADE80", text: "#fff", label: "Weekday Day" },
@@ -1601,9 +1607,27 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                       const totalHrs = result.empHours[emp.id] || 0;
                       const initials = emp.name.split(" ").map(w => w[0]).join("").toUpperCase();
                       const below = (result.empShiftCount[emp.id] || 0) < emp.minShifts;
-                      return (<tr key={emp.id} style={{ borderBottom: "1px solid #F3F4F6" }}>
-                        <td style={{ padding: "10px 10px", position: "sticky", left: 0, background: "#fff", zIndex: 1, borderRight: "1px solid #E5E7EB", verticalAlign: "top" }}>
+                      return (<tr key={emp.id} style={{ borderBottom: "1px solid #F3F4F6", background: dragEmpId === emp.id ? "#DBEAFE" : undefined }}>
+                        <td draggable
+                          onDragStart={() => setDragEmpId(emp.id)}
+                          onDragOver={e => e.preventDefault()}
+                          onDrop={() => {
+                            if (dragEmpId && dragEmpId !== emp.id) {
+                              const order = sortedEmps.map(e => e.id);
+                              const fromIdx = order.indexOf(dragEmpId);
+                              const toIdx = order.indexOf(emp.id);
+                              if (fromIdx >= 0 && toIdx >= 0) {
+                                const [moved] = order.splice(fromIdx, 1);
+                                order.splice(toIdx, 0, moved);
+                                setEmpOrder(order);
+                              }
+                            }
+                            setDragEmpId(null);
+                          }}
+                          onDragEnd={() => setDragEmpId(null)}
+                          style={{ padding: "10px 10px", position: "sticky", left: 0, background: dragEmpId === emp.id ? "#DBEAFE" : "#fff", zIndex: 1, borderRight: "1px solid #E5E7EB", verticalAlign: "top", cursor: "grab" }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ color: "#D1D5DB", fontSize: 12, cursor: "grab" }}>{"\u2807"}</span>
                             <div style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: roleCircle[emp.role] || "#9CA3AF", color: "#fff", fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{initials}</div>
                             <div>
                               <div style={{ fontWeight: 700, fontSize: 12, color: below ? "#DC2626" : "#374151", lineHeight: 1.2 }}>{emp.name}</div>
@@ -1796,6 +1820,15 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                                 </div>
                               );
                             })}
+                            {/* Add shift button — show when employee has no shifts this day and schedule is editable */}
+                            {shifts.length === 0 && !hasTO && !showUnavail && !isSaved && draft && (
+                              <div onClick={() => setAddShiftPopup({ empId: emp.id, empName: emp.name, empRole: emp.role, date: d })}
+                                style={{ padding: "8px 8px", borderRadius: 6, border: "1px dashed #D1D5DB", cursor: "pointer", textAlign: "center", color: "#9CA3AF", fontSize: 11, fontWeight: 600, transition: "all 0.15s" }}
+                                onMouseOver={e => { e.currentTarget.style.background = "#F0FDF4"; e.currentTarget.style.borderColor = "#22C55E"; e.currentTarget.style.color = "#16A34A"; }}
+                                onMouseOut={e => { e.currentTarget.style.background = ""; e.currentTarget.style.borderColor = "#D1D5DB"; e.currentTarget.style.color = "#9CA3AF"; }}>
+                                + Add Shift
+                              </div>
+                            )}
                           </td>);
                         })}
                       </tr>);
@@ -1929,6 +1962,56 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
               onClose={() => setEditingShift(null)}
             />
           )}
+
+          {/* Add Shift Popup */}
+          {addShiftPopup && !isSaved && draft && (() => {
+            const { empId, empName, empRole, date } = addShiftPopup;
+            const shiftTypes = [
+              { type: "day", label: "Day Shift", start: "12:00", end: "18:00", hours: 6, color: "#22C55E" },
+              { type: "mid", label: "Mid Shift", start: "15:00", end: "19:00", hours: 4, color: "#FB923C" },
+              { type: "evening", label: "Evening Shift", start: "18:00", end: "22:30", hours: 4.5, color: "#A855F7" },
+              { type: "mc_helper", label: "MC Helper", start: "18:00", end: "23:45", hours: 5.75, isMC: true, color: "#F59E0B" },
+            ];
+            const addShift = (st) => {
+              const newSchedule = {};
+              Object.keys(draft.schedule).forEach(dd => { newSchedule[dd] = [...draft.schedule[dd]]; });
+              const maxOrder = newSchedule[date].reduce((m, s) => Math.max(m, s.order || 0), 0);
+              newSchedule[date].push({
+                type: st.type, label: st.label, start: st.start, end: st.end, hours: st.hours,
+                slOnly: false, isMC: st.isMC || false, order: maxOrder + 1,
+                empId, empName, empRole,
+                _dateStr: date, _isWE: [0,6].includes(new Date(date + "T12:00:00").getDay()), _isFri: new Date(date + "T12:00:00").getDay() === 5,
+              });
+              const newSc = {}, newSh = {};
+              employees.filter(e2 => e2.status === "active").forEach(e2 => { newSc[e2.id] = 0; newSh[e2.id] = 0; });
+              Object.values(newSchedule).forEach(daySlots => { daySlots.forEach(slot => { if (slot.empId) { newSc[slot.empId] = (newSc[slot.empId] || 0) + 1; newSh[slot.empId] = (newSh[slot.empId] || 0) + slot.hours; } }); });
+              setDraft({ ...draft, schedule: newSchedule, empShiftCount: newSc, empHours: newSh });
+              setAddShiftPopup(null);
+            };
+            return (
+              <div onClick={() => setAddShiftPopup(null)} style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.3)", zIndex: 999, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 12, padding: 20, minWidth: 280, boxShadow: "0 8px 30px rgba(0,0,0,0.2)" }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#4A3F2F", marginBottom: 4 }}>Add Shift</div>
+                  <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 14 }}>{empName} — {new Date(date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {shiftTypes.map(st => (
+                      <button key={st.type} onClick={() => addShift(st)} style={{
+                        padding: "10px 14px", borderRadius: 8, border: "1px solid #E5E7EB", background: "#fff", cursor: "pointer",
+                        display: "flex", alignItems: "center", gap: 10, fontFamily: font, transition: "all 0.15s",
+                      }} onMouseOver={e => e.currentTarget.style.background = "#F9FAFB"} onMouseOut={e => e.currentTarget.style.background = "#fff"}>
+                        <div style={{ width: 10, height: 10, borderRadius: "50%", background: st.color, flexShrink: 0 }} />
+                        <div style={{ textAlign: "left" }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>{st.label}</div>
+                          <div style={{ fontSize: 10, color: "#9CA3AF" }}>{fmtTime(st.start)}–{fmtTime(st.end)} ({st.hours}h)</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={() => setAddShiftPopup(null)} style={{ marginTop: 10, width: "100%", padding: "8px", borderRadius: 8, border: "1px solid #D1D5DB", background: "#F9FAFB", cursor: "pointer", fontSize: 11, fontWeight: 600, color: "#6B7280", fontFamily: font }}>Cancel</button>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Employee Summary */}
           <div style={{ background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
