@@ -130,7 +130,12 @@ function parseTimeOffs(text, employees, weekDates) {
 // === GENERATE ENGINE ===
 function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, dayStaffingOverrides, availOverrides, weeklyMaxOverrides, approvedBreaks) {
   // ─────────────────────────────────────────────────────────────────
-  // RULE CLASSIFICATION (final):
+  // ENGINE PHILOSOPHY (V4):
+  // 1. SLs first — 1 per shift, 15-20h, rotate who gets fewer hours
+  // 2. Regulars — split remaining slots equally (everyone ~same hours)
+  // 3. Trainees — Mon-Thu evenings only (leave 10:30pm), 10-15h
+  //    - Trainees only on weekends if explicitly added (5th slot)
+  //    - Thu: SL + 2 reg + 1 trainee evening (trainee leaves before MC)
   //
   // CANNOT BREAK (never relaxed, slot stays empty before breaking):
   //   - No doubles
@@ -146,21 +151,20 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   //   - Mon–Thu day shifts: only 1 SL (the Day Lead slot)
   //   - Thu MC: Crystal leads + 2 regular helpers
   //   - Crystal off Sundays (unless availability override set)
-  //   - Distribute hours equally (balance pass always runs)
-  //   - Time off = less hours, redistribute to others
+  //   - Equal hours distribution (balance pass always runs)
   //
-  // FLEXIBLE (asked before breaking, in this priority order):
+  // FLEXIBLE (asked before breaking, in priority order):
   //   F1: Good weekend people preferred on weekends
   //   F2: Grae max 1 weekend shift
   //   F3: 2nd day priority list (Lena, Abrar first)
-  //   F4: Trainees preferred on Mon/Tue evenings
+  //   F4: Trainees preferred on Mon-Thu evenings
   //   F5: Regulars preferred over SLs on weekday 2nd day slots
   //   F6: Max shifts cap per employee
   //   F7: No Fri+Sat night same person
   //   F8: No Sat+Sun night same person
   //   F9: Max 3 consecutive days
   //   F10: Min 2 swirlers per weekend shift
-  //   F11: Fri/Sat/Sun target 2 SLs per evening (extremely preferred, last resort)
+  //   F11: Fri/Sat/Sun target 2 SLs per evening
   // ─────────────────────────────────────────────────────────────────
   const schedule = {};
   const active = employees.filter(e => e.status === "active");
@@ -374,21 +378,57 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   const pickBest = (cands, slot) => {
     if (cands.length === 0) return null;
     const isWS = slot._isWE || (slot._isFri && tm(slot.start) >= 1020);
+    const isTraineeSlot = slot.isTraineeSlot;
+    const isWeekdayEve = !slot._isWE && !slot._isFri && tm(slot.start) >= 1020;
+
     cands.sort((a, b) => {
+      // 1. Availability overrides always win
       const aOv = availOverrides?.[slot._dateStr + ":" + a.id] ? 1 : 0;
       const bOv = availOverrides?.[slot._dateStr + ":" + b.id] ? 1 : 0;
       if (bOv !== aOv) return bOv - aOv;
+
+      // 2. Guaranteed days
       const aG = (a.guaranteedDays || []).includes(slot._dayKey) ? 1 : 0;
       const bG = (b.guaranteedDays || []).includes(slot._dayKey) ? 1 : 0;
       if (bG !== aG) return bG - aG;
+
+      // 3. For trainee slots: prefer trainees
+      if (isTraineeSlot) {
+        const aT = a.role === "trainee" ? 1 : 0;
+        const bT = b.role === "trainee" ? 1 : 0;
+        if (bT !== aT) return bT - aT;
+      }
+
+      // 4. For Mon-Thu evening (non-trainee slots): prefer trainees LAST (regulars first)
+      //    BUT if this is a trainee slot, we already handled above
+      if (isWeekdayEve && !isTraineeSlot) {
+        const aT = a.role === "trainee" ? 1 : 0;
+        const bT = b.role === "trainee" ? 1 : 0;
+        if (aT !== bT) return aT - bT; // trainees sort to end
+      }
+
+      // 5. For weekend slots: prefer non-trainees (solid people on busy days)
+      if (isWS) {
+        const aT = a.role === "trainee" ? 1 : 0;
+        const bT = b.role === "trainee" ? 1 : 0;
+        if (aT !== bT) return aT - bT; // trainees sort to end
+      }
+
+      // 6. CORE: person with fewest hours so far gets priority (equal distribution)
+      if (sh[a.id] !== sh[b.id]) return sh[a.id] - sh[b.id];
+
+      // 7. Remaining budget (person with more unused budget = more underutilized)
       const aRemain = a._budget - sc[a.id];
       const bRemain = b._budget - sc[b.id];
       if (bRemain !== aRemain) return bRemain - aRemain;
+
+      // 8. For weekends, prefer people with fewer weekend shifts already
       if (isWS) {
         const aWEc = [4,5,6].reduce((c, wi) => c + (sd[a.id].has(weekDates[wi]) ? 1 : 0), 0);
         const bWEc = [4,5,6].reduce((c, wi) => c + (sd[b.id].has(weekDates[wi]) ? 1 : 0), 0);
         if (aWEc !== bWEc) return aWEc - bWEc;
       }
+
       return Math.random() - 0.5;
     });
     return cands[0];
@@ -455,6 +495,10 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       }
       const regHelpers = isSun ? 2 : 2; // Thu: 2 reg helpers, Sun: 2 reg helpers
       for (let i = 0; i < regHelpers; i++) { slots.push({ type: "mc_helper", label: "MC Helper", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: false, isMC: true, order: 22 + i }); }
+      // Thu: add trainee evening slot (6pm-10:30pm, leaves before MC cleaning starts)
+      if (isThu) {
+        slots.push({ type: "evening", label: "Evening (Trainee)", start: eveS, end: eveE, hours: hrs(eveS, eveE), slOnly: false, isMC: false, isTraineeSlot: true, order: 25 });
+      }
     } else {
       for (let i = 0; i < (staffing.evening || 3); i++) {
         slots.push({ type: i === 0 ? "evening_sl" : "evening", label: i === 0 ? "Evening SL" : "Evening", start: eveS, end: eveE, hours: hrs(eveS, eveE), slOnly: i === 0, order: 20 + i });
@@ -615,10 +659,20 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       }
     }
 
-    // GROUP 8: Wed/Thu evening — regulars only (no SLs, no trainees)
+    // GROUP 8: Wed/Thu evening — regulars preferred, trainee for trainee slots
     if (group === 8) {
-      const nonSL = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee");
-      if (nonSL.length > 0) cands = nonSL;
+      if (slot.isTraineeSlot) {
+        // Thu trainee slot: strongly prefer trainees, fallback to regulars
+        const trainees = cands.filter(e => e.role === "trainee");
+        if (trainees.length > 0) { cands = trainees; }
+        else {
+          const nonSL = cands.filter(e => e.role !== "shift_lead");
+          if (nonSL.length > 0) cands = nonSL;
+        }
+      } else {
+        const nonSL = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee");
+        if (nonSL.length > 0) cands = nonSL;
+      }
     }
 
     // GROUP 9: Mon/Tue evening — trainee priority, then regulars, NO SLs
