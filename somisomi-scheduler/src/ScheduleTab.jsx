@@ -1057,6 +1057,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
   const [selected, setSelected] = useState(null);
   const [editingShift, setEditingShift] = useState(null);
   const [dayStaffing, setDayStaffing] = useState(null);
+  const [warningsOpen, setWarningsOpen] = useState(false);
   const [approvedBreaks, setApprovedBreaks] = useState([]); // rule IDs manager approved breaking
   const [pendingApprovals, setPendingApprovals] = useState(null); // rulesNeeded from last run, waiting for approval
   const [ruleApprovalChecked, setRuleApprovalChecked] = useState([]); // checkboxes in approval modal
@@ -1372,6 +1373,53 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                   </tbody>
                 </table>
               </div>
+
+              {/* Evening shift start times */}
+              <div style={{ marginTop: 12, padding: 12, background: "#FAF5FF", borderRadius: 8, border: "1px solid #E9D5FF" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#7C3AED", marginBottom: 8 }}>Evening Start Times</div>
+                <div style={{ fontSize: 10, color: "#9CA3AF", marginBottom: 8 }}>Set when each evening person starts. E.g. 2 at 6pm, 1 at 6:30pm.</div>
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11, minWidth: 700 }}>
+                    <thead><tr>
+                      <th style={{ padding: "4px 6px", fontSize: 10, fontWeight: 700, color: "#9CA3AF", textAlign: "left", width: 60 }}></th>
+                      {weekDates.map((d, i) => {
+                        const eveCount = dayStaffing[d]?.evening || 0;
+                        return (<th key={d} style={{ padding: "4px 4px", textAlign: "center", fontSize: 10, fontWeight: 700, color: "#374151" }}>
+                          {dayLabels[i]} ({eveCount})
+                        </th>);
+                      })}
+                    </tr></thead>
+                    <tbody>
+                      {[0,1,2,3,4].map(slotIdx => {
+                        const anyHasThisSlot = weekDates.some(d => (dayStaffing[d]?.evening || 0) > slotIdx);
+                        if (!anyHasThisSlot) return null;
+                        const defaults = ["18:00","18:00","18:15","18:30","19:00"];
+                        return (
+                          <tr key={slotIdx}>
+                            <td style={{ padding: "3px 6px", fontSize: 10, fontWeight: 600, color: "#7C3AED" }}>#{slotIdx + 1}</td>
+                            {weekDates.map(d => {
+                              const eveCount = dayStaffing[d]?.evening || 0;
+                              if (slotIdx >= eveCount) return <td key={d}></td>;
+                              const timesKey = d + "_eveTimes";
+                              const times = dayStaffing[timesKey] || defaults.slice(0, eveCount);
+                              const val = times[slotIdx] || defaults[slotIdx] || "18:00";
+                              return (<td key={d} style={{ padding: "2px 2px", textAlign: "center" }}>
+                                <input type="time" value={val} onChange={e => {
+                                  setDayStaffing(prev => {
+                                    const newTimes = [...(prev[timesKey] || defaults.slice(0, eveCount))];
+                                    newTimes[slotIdx] = e.target.value;
+                                    return { ...prev, [timesKey]: newTimes };
+                                  });
+                                }} style={{ width: 75, padding: "2px 4px", borderRadius: 4, border: "1px solid #D1D5DB", fontSize: 10, fontFamily: font }} />
+                              </td>);
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           )}
           <div style={{ display: "flex", gap: 8 }}>
@@ -1436,14 +1484,21 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
           )}
 
           {result.warnings.length > 0 && (
-            <div style={{ background: "#FEF3C7", borderRadius: 12, padding: 14, marginBottom: 16, border: "1px solid #FDE68A" }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "#92400E", marginBottom: 6 }}>{"\u26a0"} Warnings ({result.warnings.length})</div>
-              {result.warnings.map((w, i) => (
-                <div key={i} style={{ fontSize: 12, color: "#92400E", marginBottom: 2 }}>
-                  {w.date && <span style={{ fontWeight: 600 }}>{new Date(w.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} — </span>}
-                  {w.msg}
+            <div style={{ background: "#FEF3C7", borderRadius: 12, marginBottom: 16, border: "1px solid #FDE68A", overflow: "hidden" }}>
+              <div onClick={() => setWarningsOpen(!warningsOpen)} style={{ padding: "10px 14px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#92400E" }}>{"\u26a0"} Warnings ({result.warnings.length})</div>
+                <span style={{ fontSize: 12, color: "#92400E", transform: warningsOpen ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>{"\u25b6"}</span>
+              </div>
+              {warningsOpen && (
+                <div style={{ padding: "0 14px 10px" }}>
+                  {result.warnings.map((w, i) => (
+                    <div key={i} style={{ fontSize: 12, color: "#92400E", marginBottom: 2 }}>
+                      {w.date && <span style={{ fontWeight: 600 }}>{new Date(w.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} — </span>}
+                      {w.msg}
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
 
@@ -1918,6 +1973,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                   <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 700, color: "#6B7280", fontSize: 10, textTransform: "uppercase" }}>Week</th>
                   <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 700, color: "#7C3AED", fontSize: 10, textTransform: "uppercase" }}>Thu MC</th>
                   <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 700, color: "#2563EB", fontSize: 10, textTransform: "uppercase" }}>Sun MC</th>
+                  <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 700, color: "#DC2626", fontSize: 10, textTransform: "uppercase" }}>Didn't MC</th>
                 </tr>
               </thead>
               <tbody>
@@ -1931,6 +1987,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                   const thuDate = dates[3], sunDate = dates[6];
                   const thuMC = { leader: null, helpers: [] };
                   const sunMC = { leader: null, helpers: [] };
+                  const allMCNames = new Set();
                   
                   [thuDate, sunDate].forEach(dt => {
                     if (!schedule[dt] || !Array.isArray(schedule[dt])) return;
@@ -1938,11 +1995,16 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                     schedule[dt].forEach(slot => {
                       if (!slot.isMC || !slot.empId) return;
                       const name = slot.empName || "?";
+                      allMCNames.add(name);
                       const mc = isThu ? thuMC : sunMC;
                       if (slot.type === "mc_leader") mc.leader = name;
                       else mc.helpers.push(name);
                     });
                   });
+
+                  // Find SLs who didn't MC this week
+                  const slNames = employees.filter(e => e.role === "shift_lead" && e.status === "active").map(e => e.name);
+                  const didntMC = slNames.filter(n => !allMCNames.has(n));
 
                   const fmtWeek = (() => {
                     try {
@@ -1971,6 +2033,13 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                             {sunMC.helpers.length > 0 && <span style={{ color: "#9CA3AF" }}> + {sunMC.helpers.join(", ")}</span>}
                           </>
                         ) : <span style={{ color: "#D1D5DB" }}>—</span>}
+                      </td>
+                      <td style={{ padding: "8px 12px" }}>
+                        {didntMC.length > 0 ? (
+                          didntMC.map((n, i) => (
+                            <span key={n} style={{ fontWeight: 600, color: "#DC2626", background: "#FEF2F2", padding: "2px 8px", borderRadius: 6, fontSize: 11, marginRight: 4 }}>{n}</span>
+                          ))
+                        ) : <span style={{ color: "#16A34A", fontSize: 11 }}>All SLs cleaned</span>}
                       </td>
                     </tr>
                   );
