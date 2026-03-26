@@ -183,6 +183,7 @@ export default function App() {
         return e;
       });
       const r = data.rules || SEED_RULES;
+      if (!r.mcRotation) r.mcRotation = SEED_RULES.mcRotation;
       if (r.mcRotation && !r.mcRotation.shiftLeadPool) {
         r.mcRotation.shiftLeadPool = [
           ...(r.mcRotation.thursdayLeaders || []),
@@ -195,6 +196,7 @@ export default function App() {
       }
       // Migrate: add any new constraints that don't exist yet
       const seedConstraints = SEED_RULES.constraints;
+      if (!r.constraints) r.constraints = [];
       seedConstraints.forEach(sc => {
         if (!r.constraints.find(c => c.id === sc.id)) {
           r.constraints.push(sc);
