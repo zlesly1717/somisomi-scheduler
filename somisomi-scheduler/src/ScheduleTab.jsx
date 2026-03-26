@@ -651,9 +651,31 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         return aLast.localeCompare(bLast); // earlier = longer ago = pick first
       });
     }
-    // Weekend/Fri evening: no trainees, prefer swirlers + good weekend people
+    // Weekend/Fri evening: no trainees (except near-grads on Fri/Sat night)
+    // Fri night + Sat night: the evening_sl slot is already filled by an SL.
+    // The remaining evening slots should be regulars — avoid placing a 2nd SL.
     else if (isWeekendSlot && tm(slot.start) >= 1020) {
-      cands = cands.filter(e => e.role !== "trainee");
+      const dow3 = new Date(dateStr + "T12:00:00").getDay();
+      const isFriOrSatNight = (dow3 === 5 || dow3 === 6) && slot.type === "evening";
+      const isSunNight = dow3 === 0;
+      // Near-grad trainees (20h+) can work Fri/Sat night — they're experienced enough
+      const nearGradHours = rules.trainee?.graduationHours ? rules.trainee.graduationHours * 0.67 : 20;
+      const nearGrad = e => e.role === "trainee" && (e.traineeCumulative || 0) >= nearGradHours;
+      if (isSunNight) {
+        // Sun night: no trainees (MC night, already blocked, but filter here too)
+        cands = cands.filter(e => e.role !== "trainee");
+      } else if (isFriOrSatNight) {
+        // Fri/Sat night: no SLs as 2nd person, trainees only if near-grad
+        const nonSL = cands.filter(e => e.role !== "shift_lead");
+        cands = nonSL.length > 0 ? nonSL : cands;
+        // Filter out trainees who aren't near graduation
+        const noEarlyTrainees = cands.filter(e => e.role !== "trainee" || nearGrad(e));
+        if (noEarlyTrainees.length > 0) cands = noEarlyTrainees;
+      } else {
+        // Other weekend evenings: no trainees
+        const noT = cands.filter(e => e.role !== "trainee");
+        if (noT.length > 0) cands = noT;
+      }
       if (cands.length === 0) cands = getCandidates(slot); // fallback
       if (needsSwirler(slot)) {
         const sw = cands.filter(e => canSwirl(e));
@@ -661,7 +683,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       }
       const goodWE = rules.goodWeekendPeople || [];
       const good = cands.filter(e => goodWE.includes(e.name));
-      if (good.length > 0 && good.length >= 2) cands = good;
+      if (good.length > 0) cands = good;
     }
     // Weekend day / Fri day: no trainees
     else if (isWeekendSlot || slot._isFri) {
@@ -727,6 +749,10 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (!weekendNightOK(sl, dateStr, slot.start)) return;
         if (!consecOK(sl, weekDates.indexOf(dateStr))) return;
         if (slot.isMC && mcCount[sl.id] >= 1) return;
+        // Fri + Sat nights: SL overflow should not take regular evening slots
+        // (those belong to regulars — 1 SL per shift is the rule)
+        const slDow = new Date(dateStr + "T12:00:00").getDay();
+        if ((slDow === 5 || slDow === 6) && slot.type === "evening") return;
         openSlots.push({ dateStr, idx, slot });
       });
     });
@@ -824,6 +850,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
             // Don't put SLs on Mon-Wed evening via swap
             const sDow = new Date(dateStr + "T12:00:00").getDay();
             if (under.role === "shift_lead" && slot.type === "evening" && sDow >= 1 && sDow <= 3) continue;
+            // Don't put SLs on Fri/Sat night regular evening slots via swap
+            if (under.role === "shift_lead" && slot.type === "evening" && (sDow === 5 || sDow === 6)) continue;
 
             // Execute swap
             sc[over.id]--; sh[over.id] -= slot.hours;
@@ -863,7 +891,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     { id: "F8",  label: "No Sat + Sun night — same person both nights" },
     { id: "F9",  label: "Max 3 consecutive days" },
     { id: "F10", label: "Min 2 swirlers per weekend shift" },
-    { id: "F11", label: "Fri/Sat/Sun target 2 SLs per evening" },
+    { id: "F11", label: "Fri/Sat night: 1 SL + 1 regular (no double SLs)" },
   ];
 
   const simulateRelax = (slot, ruleId) => {
