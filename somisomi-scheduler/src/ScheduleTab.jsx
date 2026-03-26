@@ -374,12 +374,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       // SLs can only be on Mon-Wed evening via the slOnly evening_sl slot
       // Regular "evening" type slots on Mon-Wed are for regulars only
       if (emp.role === "shift_lead" && slot.type === "evening" && !isWE && !isFri && dow >= 1 && dow <= 4) return false;
-      // CANNOT BREAK: Mon–Thu regular day slots only 1 SL (the Day Lead handles it)
-      // Only applies to the open "day" type (2nd day slot), not to SL-required evening slots
-      if (emp.role === "shift_lead" && slot.type === "day" && !isWE && !isFri) {
-        const slAlreadyOnDay = schedule[dateStr].some(a => a.empId && active.find(e => e.id === a.empId)?.role === "shift_lead" && tm(a.start) < 1020);
-        if (slAlreadyOnDay) return false;
-      }
+      // CANNOT BREAK: Only 1 SL on day shifts (the Day Lead slot)
+      // The "day" type (2nd day slot) should never have an SL — regulars only
+      if (emp.role === "shift_lead" && slot.type === "day") return false;
       if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
 
       // ── FLEXIBLE rules (blocked unless approved) ──
