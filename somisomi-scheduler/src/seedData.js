@@ -143,7 +143,7 @@ export const SEED_EMPLOYEES = [
   {
     id:"reg-7",name:"Grae McKown",role:"regular",status:"active",
     maxShifts:2,minShifts:2,maxHours:12,minHours:8,
-    tags:["can_swirl","good_weekend"],
+    tags:["can_swirl","good_weekend","mc_exempt"],
     unavailability:{
       mon:{allDay:true,start:"",end:""},
       tue:{allDay:false,start:"06:00",end:"15:00"},

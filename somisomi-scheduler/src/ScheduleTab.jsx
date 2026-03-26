@@ -352,6 +352,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (sd[emp.id].has(dateStr)) return false; // no doubles
       if (!slCheck(slot, emp)) return false; // SL-only slots need SL
       if (slot.isMC && emp.role === "trainee") return false; // no trainees on MC
+      if (slot.isMC && (emp.tags || []).includes("mc_exempt")) return false; // mc_exempt employees never MC
       if (con("no_mc_twice") && slot.isMC && mcCount[emp.id] >= 1) return false; // no MC twice
       if (emp.role === "trainee" && !isWE && !isFri && (slot.type === "day_lead" || slot.type === "day")) return false; // no trainees weekday day
       if (!traineeOK(emp, dateStr)) return false; // no two trainees same day
