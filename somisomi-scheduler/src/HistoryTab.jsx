@@ -19,7 +19,7 @@ function extractMCInfo(weekData, employees) {
   const empShifts = {};
 
   Object.entries(schedule).forEach(([dateStr, slots]) => {
-    if (!Array.isArray(slots)) return;
+    if (!Array.isArray(slots) || slots.length === 0) return;
     const dow = new Date(dateStr + "T12:00:00").getDay();
     slots.forEach(slot => {
       if (slot.empId) {
@@ -53,6 +53,7 @@ function extractMCInfo(weekData, employees) {
 
 export function HistoryTab({ employees, savedSchedules, rules }) {
   const [expandedWeek, setExpandedWeek] = useState(null);
+  if (!employees || !savedSchedules || !rules) return <div style={{ padding: 40, textAlign: "center", color: "#9CA3AF" }}>Loading...</div>;
 
   const weeks = Object.entries(savedSchedules || {})
     .map(([key, data]) => ({ key, ...data }))
