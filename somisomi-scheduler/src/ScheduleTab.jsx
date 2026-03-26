@@ -1647,12 +1647,12 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
           <div style={{ overflowX: "auto", background: "#fff", borderRadius: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginBottom: 16 }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 1000 }}>
               <thead><tr style={{ borderBottom: "2px solid #E5E7EB" }}>
-                <th style={{ padding: "12px 10px", textAlign: "left", fontWeight: 700, color: "#6B7280", fontSize: 10, width: 150, position: "sticky", left: 0, background: "#fff", zIndex: 2 }}></th>
+                <th style={{ padding: "8px 8px", textAlign: "left", fontWeight: 700, color: "#6B7280", fontSize: 10, width: 140, position: "sticky", left: 0, background: "#fff", zIndex: 2 }}></th>
                 {weekDates.map((d, i) => {
                   const dt = new Date(d + "T12:00:00");
                   const dayType = getDayType(d, schoolDates);
                   const isH = dayType.includes("Holiday");
-                  return (<th key={d} style={{ padding: "12px 6px", textAlign: "center", fontWeight: 700, fontSize: 13, color: isH ? "#DC2626" : "#374151", borderBottom: "none", minWidth: 110 }}>
+                  return (<th key={d} style={{ padding: "7px 4px", textAlign: "center", fontWeight: 700, fontSize: 11, color: isH ? "#DC2626" : "#374151", borderBottom: "none", minWidth: 110 }}>
                     <div>{["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][dt.getDay()]}, {dt.getDate()}</div>
                   </th>);
                 })}
@@ -1667,17 +1667,17 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                   // Add any new employees not in custom order
                   if (empOrder) { defaultSort.forEach(e => { if (!sortedEmps.find(s => s.id === e.id)) sortedEmps.push(e); }); }
                   const shiftColors = {
-                    day_lead: { bg: "#22C55E", text: "#fff", label: "Day Shift Lead" },
-                    day: { bg: "#4ADE80", text: "#fff", label: "Weekday Day" },
-                    mid: { bg: "#FB923C", text: "#fff", label: "Mid Shift" },
+                    day_lead: { bg: "#F97316", text: "#fff", label: "Day Shift Lead" },
+                    day: { bg: "#EAB308", text: "#fff", label: "Weekday Day" },
+                    mid: { bg: "#EAB308", text: "#fff", label: "Mid Shift" },
                     evening_sl: { bg: "#EF4444", text: "#fff", label: "Shift Lead" },
                     evening: { bg: "#A855F7", text: "#fff", label: "Night Shift" },
-                    mc_leader: { bg: "#F59E0B", text: "#fff", label: "Shiftlead/Machineclean" },
-                    mc_sl_helper: { bg: "#F59E0B", text: "#fff", label: "Machineclean" },
-                    mc_helper: { bg: "#F59E0B", text: "#fff", label: "Machineclean" },
+                    mc_leader: { bg: "#22C55E", text: "#fff", label: "Shiftlead/Machineclean" },
+                    mc_sl_helper: { bg: "#22C55E", text: "#fff", label: "Machineclean" },
+                    mc_helper: { bg: "#22C55E", text: "#fff", label: "Machineclean" },
                   };
-                  const weekendDayColor = { bg: "#3B82F6", text: "#fff", label: "Weekend Day" };
-                  const roleCircle = { shift_lead: "#EF4444", regular: "#3B82F6", trainee: "#A855F7" };
+                  const weekendDayColor = { bg: "#EAB308", text: "#fff", label: "Weekend Day" };
+                  const roleCircle = { shift_lead: "#EF4444", regular: "#3B82F6", trainee: "#22C3E6" };
 
                   return (<>
                     {sortedEmps.map(emp => {
@@ -1702,13 +1702,13 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                             setDragEmpId(null);
                           }}
                           onDragEnd={() => setDragEmpId(null)}
-                          style={{ padding: "10px 10px", position: "sticky", left: 0, background: dragEmpId === emp.id ? "#DBEAFE" : "#fff", zIndex: 1, borderRight: "1px solid #E5E7EB", verticalAlign: "top", cursor: "grab" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ color: "#D1D5DB", fontSize: 12, cursor: "grab" }}>{"\u2807"}</span>
-                            <div style={{ width: 32, height: 32, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: roleCircle[emp.role] || "#9CA3AF", color: "#fff", fontSize: 11, fontWeight: 800, flexShrink: 0 }}>{initials}</div>
+                          style={{ padding: "6px 8px", position: "sticky", left: 0, background: dragEmpId === emp.id ? "#DBEAFE" : "#fff", zIndex: 1, borderRight: "1px solid #E5E7EB", verticalAlign: "top", cursor: "grab" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                            <span style={{ color: "#D1D5DB", fontSize: 10, cursor: "grab" }}>{"\u2807"}</span>
+                            <div style={{ width: 26, height: 26, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: roleCircle[emp.role] || "#9CA3AF", color: "#fff", fontSize: 9, fontWeight: 800, flexShrink: 0 }}>{initials}</div>
                             <div>
-                              <div style={{ fontWeight: 700, fontSize: 12, color: below ? "#DC2626" : "#374151", lineHeight: 1.2 }}>{emp.name}</div>
-                              <div style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 600 }}>{totalHrs.toFixed(2)} hrs</div>
+                              <div style={{ fontWeight: 700, fontSize: 11, color: below ? "#DC2626" : "#374151", lineHeight: 1.2 }}>{emp.name}</div>
+                              <div style={{ fontSize: 9, color: "#9CA3AF", fontWeight: 600 }}>{totalHrs.toFixed(1)} hrs</div>
                               {!isSaved && draft && (() => {
                                 const actualShifts = result.empShiftCount?.[emp.id] || 0;
                                 const override = weeklyMaxOverrides[emp.id];
@@ -1730,9 +1730,9 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                                 
                                 return (
                                   <div style={{ display: "flex", alignItems: "center", gap: 3, marginTop: 2 }}>
-                                    <button onClick={() => adjust(-1)} style={{ width: 18, height: 18, borderRadius: 4, border: "1px solid #E5E7EB", background: "#FEF2F2", color: "#DC2626", cursor: "pointer", fontSize: 11, fontWeight: 800, padding: 0, lineHeight: "16px" }}>{"\u2212"}</button>
+                                    <button onClick={() => adjust(-1)} style={{ width: 15, height: 15, borderRadius: 3, border: "1px solid #E5E7EB", background: "#FEF2F2", color: "#DC2626", cursor: "pointer", fontSize: 11, fontWeight: 800, padding: 0, lineHeight: "16px" }}>{"\u2212"}</button>
                                     <span style={{ fontSize: 11, fontWeight: 800, minWidth: 16, textAlign: "center", color: hasChange ? (target > actualShifts ? "#16A34A" : "#DC2626") : "#374151" }}>{displayNum}</span>
-                                    <button onClick={() => adjust(1)} style={{ width: 18, height: 18, borderRadius: 4, border: "1px solid #E5E7EB", background: "#F0FDF4", color: "#16A34A", cursor: "pointer", fontSize: 11, fontWeight: 800, padding: 0, lineHeight: "16px" }}>+</button>
+                                    <button onClick={() => adjust(1)} style={{ width: 15, height: 15, borderRadius: 3, border: "1px solid #E5E7EB", background: "#F0FDF4", color: "#16A34A", cursor: "pointer", fontSize: 11, fontWeight: 800, padding: 0, lineHeight: "16px" }}>+</button>
                                     {hasChange ? (
                                       <>
                                         <span style={{ fontSize: 9, color: target > actualShifts ? "#16A34A" : "#DC2626", fontWeight: 700 }}>
@@ -1806,9 +1806,9 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                               setDraft({ ...draft, schedule: newSchedule, empShiftCount: newSc, empHours: newSh });
                               setDragSlot(null);
                             } : undefined}
-                            style={{ padding: "6px 4px", verticalAlign: "top", minHeight: 60, background: dragSlot ? "#FEFCE8" : undefined }}>
+                            style={{ padding: "3px 3px", verticalAlign: "top", minHeight: 44, background: dragSlot ? "#FEFCE8" : undefined }}>
                             {hasTO && weekTO.map((to, ti) => (
-                              <div key={"to-" + ti} style={{ padding: "6px 8px", borderRadius: 6, marginBottom: 3, background: "#F3F4F6", border: "1px solid #D1D5DB" }}>
+                              <div key={"to-" + ti} style={{ padding: "4px 6px", borderRadius: 5, marginBottom: 2, background: "#F3F4F6", border: "1px solid #D1D5DB" }}>
                                 <div style={{ fontSize: 10, color: "#6B7280", fontWeight: 600 }}>{"\u23f0"} Time-off</div>
                                 <div style={{ fontSize: 9, color: "#9CA3AF" }}>{to.allDay ? "All Day" : fmtTime(to.start) + "\u2013" + fmtTime(to.end)}</div>
                               </div>
@@ -1823,7 +1823,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                                     if (isSaved) return;
                                     if (ov) { setAvailOverrides(prev => { const n = { ...prev }; delete n[ovKey]; return n; }); }
                                     else { setOverridePopup({ date: d, empId: emp.id, x: ev.clientX, y: ev.clientY }); }
-                                  }} style={{ padding: "6px 8px", borderRadius: 6, marginBottom: 3, background: ov ? "#F0FDF4" : "#F9FAFB", border: ov ? "2px solid #22C55E" : "1px dashed #D1D5DB", cursor: isSaved ? "default" : "pointer" }}>
+                                  }} style={{ padding: "4px 6px", borderRadius: 5, marginBottom: 2, background: ov ? "#F0FDF4" : "#F9FAFB", border: ov ? "2px solid #22C55E" : "1px dashed #D1D5DB", cursor: isSaved ? "default" : "pointer" }}>
                                     {ov ? (
                                       <>
                                         <div style={{ fontSize: 10, color: "#22C55E", fontWeight: 700 }}>{"\u2713"} Override: {ovLabels[ov]}</div>
@@ -1844,6 +1844,8 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                               let sColors = shiftColors[s.type] || { bg: "#6B7280", text: "#fff", label: s.label };
                               if (isWE && (s.type === "day_lead" || s.type === "day")) sColors = { ...sColors, ...weekendDayColor, label: s.type === "day_lead" ? "Shift Lead" : "Weekend Day" };
                               if (s.type === "day_lead" && !isWE) sColors = { ...sColors, label: "Day Shift Lead" };
+                              // Trainees always show in blue regardless of shift type
+                              if (s.empRole === "trainee") sColors = { ...sColors, bg: "#22C3E6" };
                               const canClick = !isSaved && draft;
                               const isDragging = dragSlot && dragSlot.date === d && dragSlot.type === s.type && dragSlot.order === s.order;
                               const isDropTarget = dragSlot && !(dragSlot.date === d && dragSlot.type === s.type && dragSlot.order === s.order);
@@ -1891,9 +1893,9 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                                     setDragSlot(null);
                                   } : undefined}
                                   onClick={canClick ? () => setEditingShift({ date: d, type: s.type, order: s.order, slot: s }) : undefined}
-                                  style={{ padding: "7px 8px", borderRadius: 6, marginBottom: 3, background: isDropTarget ? "#FEF9C3" : sColors.bg, color: isDropTarget ? "#92400E" : sColors.text, minHeight: 36, cursor: canClick && s.empId ? "grab" : "pointer", opacity: isDragging ? 0.4 : 1, transition: "all 0.15s", border: isDropTarget ? "2px dashed #F59E0B" : "2px solid transparent" }}>
-                                  <div style={{ fontSize: 11, fontWeight: 700 }}>{fmtTime(s.start)}{"\u2013"}{fmtTime(s.end)}</div>
-                                  <div style={{ fontSize: 9, fontWeight: 600, opacity: 0.9 }}>{sColors.label}</div>
+                                  style={{ padding: "4px 6px", borderRadius: 5, marginBottom: 2, background: isDropTarget ? "#FEF9C3" : sColors.bg, color: isDropTarget ? "#92400E" : sColors.text, minHeight: 36, cursor: canClick && s.empId ? "grab" : "pointer", opacity: isDragging ? 0.4 : 1, transition: "all 0.15s", border: isDropTarget ? "2px dashed #F59E0B" : "2px solid transparent" }}>
+                                  <div style={{ fontSize: 9.5, fontWeight: 700 }}>{fmtTime(s.start)}{"\u2013"}{fmtTime(s.end)}</div>
+                                  <div style={{ fontSize: 8, fontWeight: 600, opacity: 0.9 }}>{sColors.label}</div>
                                 </div>
                               );
                             })}
@@ -1911,14 +1913,14 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                       </tr>);
                     })}
                     <tr style={{ borderTop: "2px solid #E5E7EB", background: "#F9FAFB" }}>
-                      <td style={{ padding: "10px 10px", fontWeight: 700, fontSize: 11, color: "#374151", position: "sticky", left: 0, background: "#F9FAFB", zIndex: 1, borderRight: "1px solid #E5E7EB" }}>Hours</td>
+                      <td style={{ padding: "6px 8px", fontWeight: 700, fontSize: 10, color: "#374151", position: "sticky", left: 0, background: "#F9FAFB", zIndex: 1, borderRight: "1px solid #E5E7EB" }}>Hours</td>
                       {weekDates.map(d => {
                         const dayAssignments = result.schedule[d] || [];
                         const filled = dayAssignments.filter(a => a.empId);
                         const totalHrs = filled.reduce((sum, a) => sum + a.hours, 0);
-                        return (<td key={d} style={{ padding: "8px 6px", textAlign: "center" }}>
+                        return (<td key={d} style={{ padding: "4px 4px", textAlign: "center" }}>
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                            <span style={{ fontSize: 11, color: "#6B7280" }}>{"\ud83d\udc64"} {filled.length}</span>
+                            <span style={{ fontSize: 9, color: "#9CA3AF" }}>{filled.length} ppl</span>
                             <span style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>{totalHrs.toFixed(2)}</span>
                           </div>
                         </td>);
@@ -2090,33 +2092,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
             );
           })()}
 
-          {/* Employee Summary */}
-          <div style={{ background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#4A3F2F", marginBottom: 10 }}>Employee Summary</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 8 }}>
-              {employees.filter(e => e.status === "active").sort((a, b) => {
-                const o = { shift_lead: 0, regular: 1, trainee: 2 };
-                return (o[a.role] || 3) - (o[b.role] || 3);
-              }).map(emp => {
-                const shifts = result.empShiftCount?.[emp.id] || 0;
-                const hours = result.empHours?.[emp.id] || 0;
-                const below = shifts < emp.minShifts;
-                const rc = { shift_lead: "#F59E0B", regular: "#3B82F6", trainee: "#8B5CF6" };
-                return (
-                  <div key={emp.id} style={{ padding: "9px 11px", borderRadius: 8, background: below ? "#FEF2F2" : "#F9FAFB", border: below ? "2px solid #FCA5A5" : "1px solid #E5E7EB" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>{emp.name}</span>
-                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: rc[emp.role] }} />
-                    </div>
-                    <div style={{ display: "flex", gap: 10, marginTop: 3, fontSize: 11 }}>
-                      <span style={{ color: below ? "#DC2626" : "#6B7280", fontWeight: below ? 700 : 500 }}>{shifts} shifts{below ? " (min: " + emp.minShifts + ")" : ""}</span>
-                      <span style={{ color: "#9CA3AF" }}>{hours.toFixed(1)}h</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          
         </>
       )}
 
