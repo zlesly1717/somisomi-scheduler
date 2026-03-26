@@ -129,6 +129,7 @@ function buildMCHistorySeed() {
 const tabs = [
   { id: "schedule", label: "Schedule", icon: "\ud83d\udcc5" },
   { id: "employees", label: "Employees", icon: "\ud83d\udc65" },
+  { id: "history", label: "History", icon: "\ud83d\udcca" },
   { id: "settings", label: "Settings", icon: "\u2699\ufe0f" },
 ];
 
@@ -154,6 +155,7 @@ export default function App() {
         // Auto-migrate: force specific employees inactive/promoted
         if ((e.name === "Christina Mullins" || e.id === "reg-8") && e.status !== "inactive") e.status = "inactive";
         if ((e.name === "Tiernan Hollister" || e.id === "tr-2") && e.status !== "inactive") e.status = "inactive";
+        if ((e.name === "Lena Maslak" || e.id === "reg-3") && e.status !== "inactive") e.status = "inactive";
         if ((e.name === "Yise Moya" || e.id === "tr-1") && e.role === "trainee") {
           e.role = "regular"; e.maxShifts = 4; e.minShifts = 3; e.maxHours = 20; e.minHours = 12;
           if (!(e.tags || []).includes("can_swirl")) e.tags = [...(e.tags || []), "can_swirl", "can_mc"];
@@ -242,6 +244,7 @@ export default function App() {
 
       {activeTab === "schedule" && <ScheduleTab employees={employees} setEmployees={setEmployees} rules={rules} schoolDates={schoolDates} timeOffs={timeOffs} savedSchedules={savedSchedules} setSavedSchedules={setSavedSchedules} />}
       {activeTab === "employees" && <EmployeesTab employees={employees} setEmployees={setEmployees} />}
+      {activeTab === "history" && <HistoryTab employees={employees} savedSchedules={savedSchedules} rules={rules} />}
       {activeTab === "settings" && <RulesTab rules={rules} setRules={setRules} employees={employees} schoolDates={schoolDates} setSchoolDates={setSchoolDates} />}
     </div>
   );

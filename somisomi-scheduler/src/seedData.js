@@ -86,7 +86,7 @@ export const SEED_EMPLOYEES = [
     notes:"Mon & Wed all day off. 4th shift priority.",traineeCumulative:0,guaranteedDays:[],
   },
   {
-    id:"reg-3",name:"Lena Maslak",role:"regular",status:"active",
+    id:"reg-3",name:"Lena Maslak",role:"regular",status:"inactive",
     maxShifts:4,minShifts:3,maxHours:20,minHours:12,
     tags:["can_swirl","fourth_shift_priority","second_day_priority","can_mc"],
     unavailability:{
@@ -255,13 +255,13 @@ export const SEED_RULES = {
     mcHolidayStagedArrivals:["18:00","18:00","18:15","18:30"],
     weekdayClose:"22:30",weekendClose:"23:30",mcClose:"23:45",
   },
-  fourthShiftPriority:["Sam Castillo","Lena Maslak","Susan Thai","Abrar Uddin","Yise Moya","Trainees"],
-  secondDayPriority:["Lena Maslak","Abrar Uddin"],
+  fourthShiftPriority:["Sam Castillo","Susan Thai","Abrar Uddin","Yise Moya","Trainees"],
+  secondDayPriority:["Abrar Uddin"],
   goodWeekendPeople:["Kennedy Bean","Gwen Ursua","Abrar Uddin","Grae McKown"],
   swirl:{
     minPerShift: 2,
     weekendOnly: true,
-    swirlers: ["Chan In","Zoe Rains","Kaitlyn Trevino","Spencer Losch","Crystal Guel","Kennedy Bean","Sam Castillo","Lena Maslak","Gwen Ursua","Susan Thai","Abrar Uddin","Yise Moya","Grae McKown"],
+    swirlers: ["Chan In","Zoe Rains","Kaitlyn Trevino","Spencer Losch","Crystal Guel","Kennedy Bean","Sam Castillo","Gwen Ursua","Susan Thai","Abrar Uddin","Yise Moya","Grae McKown"],
   },
   fixedRules: [
     {id:"fr-1",empName:"Crystal Guel",rule:"Always leads Thursday MC",desc:"Crystal is off Sundays, so she must lead MC on Thursday every week. Crew = Crystal + 2 regular helpers."},
@@ -269,7 +269,7 @@ export const SEED_RULES = {
   ],
   mcRotation: {
     shiftLeadPool:["Chan In","Zoe Rains","Kaitlyn Trevino","Spencer Losch","Crystal Guel"],
-    assistantPool:["Sam Castillo","Lena Maslak","Gwen Ursua","Susan Thai","Abrar Uddin","Kennedy Bean","Yise Moya"],
+    assistantPool:["Sam Castillo","Gwen Ursua","Susan Thai","Abrar Uddin","Kennedy Bean","Yise Moya"],
     noBackToBackHelpers:true,
   },
   weekendSLRotation: {
