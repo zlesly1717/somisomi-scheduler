@@ -80,6 +80,20 @@ function buildMCHistorySeed() {
       sun: { leader: "Crystal Guel", slHelper: "Kaitlyn Trevino", helpers: ["Abrar Uddin", "Sam Castillo"] },
       breakSL: "Chan In", savedAt: "2026-03-22T20:00:00Z",
     },
+    { key: "2026-03-23", // Mar 23-29
+      // Thu Mar 26: Crystal(lead) + Chan + Marissa (trainee)
+      // Sun Mar 29: Spencer(lead) + Kaitlyn(SL helper) + Kennedy + Susan
+      thu: { leader: "Crystal Guel", helpers: ["Chan In", "Marissa Shelton"] },
+      sun: { leader: "Spencer Losch", slHelper: "Kaitlyn Trevino", helpers: ["Kennedy Bean", "Susan Thai"] },
+      breakSL: null, savedAt: "2026-03-29T20:00:00Z",
+    },
+    { key: "2026-03-30", // Mar 30 - Apr 5
+      // Thu Apr 2: Kaitlyn(lead) + Zoe + Nani (trainee) — Crystal's break week
+      // Sun Apr 5: Spencer(lead) + Kaitlyn(SL helper) + Gwen + Chan
+      thu: { leader: "Kaitlyn Trevino", helpers: ["Zoe Rains", "Nani Hoomes"] },
+      sun: { leader: "Spencer Losch", slHelper: "Kaitlyn Trevino", helpers: ["Gwen Ursua", "Chan In"] },
+      breakSL: "Crystal Guel", savedAt: "2026-04-05T20:00:00Z",
+    },
   ];
 
   const result = {};
@@ -194,7 +208,7 @@ export default function App() {
       setTimeOffs(data.timeOffs || []);
       // Migrate: pre-seed MC rotation history from past 4 weeks if not already saved
       const existing = data.savedSchedules || {};
-      if (!existing["2026-02-16"]) {
+      if (!existing["2026-02-16"] || !existing["2026-03-23"] || !existing["2026-03-30"]) {
         const mcHistory = buildMCHistorySeed();
         Object.entries(mcHistory).forEach(([k, v]) => { if (!existing[k]) existing[k] = v; });
       }
