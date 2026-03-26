@@ -186,13 +186,13 @@ export const SEED_EMPLOYEES = [
     id:"tr-3",name:"Marissa Shelton",role:"trainee",status:"active",
     maxShifts:3,minShifts:1,maxHours:15,minHours:0,
     tags:[],unavailability:newUnavail(),
-    notes:"Trainee. 20h completed.",traineeCumulative:20.0,guaranteedDays:[],
+    notes:"Trainee. 30.5h completed. Graduated.",traineeCumulative:30.5,guaranteedDays:[],
   },
   {
     id:"tr-4",name:"Nani Hoomes",role:"trainee",status:"active",
     maxShifts:3,minShifts:1,maxHours:15,minHours:0,
     tags:[],unavailability:newUnavail(),
-    notes:"Trainee. 16h completed.",traineeCumulative:16.0,guaranteedDays:[],
+    notes:"Trainee. 20h completed.",traineeCumulative:20.0,guaranteedDays:[],
   },
   {
     id:"tr-5",name:"Alli Campos",role:"trainee",status:"active",
@@ -206,7 +206,7 @@ export const SEED_EMPLOYEES = [
       sat:{allDay:false,start:"",end:""},
       sun:{allDay:false,start:"",end:""},
     },
-    notes:"Trainee. 4h completed. Tue/Thu 6am-4:30pm, Wed 6am-1:30pm unavail.",traineeCumulative:4.0,guaranteedDays:[],
+    notes:"Trainee. 15h completed. Tue/Thu 6am-4:30pm, Wed 6am-1:30pm unavail.",traineeCumulative:15.0,guaranteedDays:[],
   },
 ];
 
