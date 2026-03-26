@@ -555,9 +555,13 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       const aG = (a.guaranteedDays || []).includes(slot._dayKey) ? 1 : 0;
       const bG = (b.guaranteedDays || []).includes(slot._dayKey) ? 1 : 0;
       if (bG !== aG) return bG - aG;
-      // Fewest hours for rotation fairness
+      // SLs furthest under 18h get priority (need hours most)
+      const slMin = 18;
+      const aUnder = Math.max(0, slMin - sh[a.id]);
+      const bUnder = Math.max(0, slMin - sh[b.id]);
+      if (bUnder !== aUnder) return bUnder - aUnder;
+      // Then fewest hours overall
       if (sh[a.id] !== sh[b.id]) return sh[a.id] - sh[b.id];
-      // Fewest shifts
       if (sc[a.id] !== sc[b.id]) return sc[a.id] - sc[b.id];
       return Math.random() - 0.5;
     });
@@ -706,7 +710,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       // If no regulars available, allow trainees (better than unfilled)
     }
 
-    // PICK: fewest hours first
+    // PICK: SLs under their 18h minimum get priority, then fewest hours
+    const slMinHours = 18;
     cands.sort((a, b) => {
       const aOv = availOverrides?.[dateStr + ":" + a.id] ? 1 : 0;
       const bOv = availOverrides?.[dateStr + ":" + b.id] ? 1 : 0;
@@ -714,6 +719,10 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       const aG = (a.guaranteedDays || []).includes(slot._dayKey) ? 1 : 0;
       const bG = (b.guaranteedDays || []).includes(slot._dayKey) ? 1 : 0;
       if (bG !== aG) return bG - aG;
+      // SLs under 18h get priority over regulars who are at or above their fair share
+      const aSLUnder = a.role === "shift_lead" && sh[a.id] < slMinHours ? 1 : 0;
+      const bSLUnder = b.role === "shift_lead" && sh[b.id] < slMinHours ? 1 : 0;
+      if (bSLUnder !== aSLUnder) return bSLUnder - aSLUnder;
       if (sh[a.id] !== sh[b.id]) return sh[a.id] - sh[b.id];
       if (sc[a.id] !== sc[b.id]) return sc[a.id] - sc[b.id];
       if (isWeekendSlot) {
@@ -809,20 +818,24 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   }
 
   // ── STEP 6: Balance pass ──────────────────────────────────────────
-  // Swap shifts between over/under-assigned regulars to equalize hours
+  // Two-phase: first equalize SLs (target 18-22h), then equalize regulars.
+  // SLs are priority workers — they get hours first, regulars split what remains.
   const isBalanceExempt = (emp) => emp.name === "Grae McKown" || emp.role === "trainee";
+  const SL_MIN_TARGET = 18;
+  const SL_MAX_TARGET = 22;
 
+  // Phase A: SL balance — bring all SLs into 18-22h range
   let balanceChanged = true;
   let balanceSafety = 40;
   while (balanceChanged && balanceSafety-- > 0) {
     balanceChanged = false;
-    const pool = active.filter(e => !isBalanceExempt(e) && e._budget > 0);
+    const pool = active.filter(e => e.role === "shift_lead" && !isBalanceExempt(e) && e._budget > 0);
     if (pool.length < 2) break;
 
     pool.sort((a, b) => sh[b.id] - sh[a.id]);
     const maxH = sh[pool[0].id];
     const minH = sh[pool[pool.length - 1].id];
-    if (maxH - minH <= 5) break;
+    if (maxH - minH <= 3) break; // SLs within 3h of each other — close enough
 
     const overP = pool.filter(e => sh[e.id] >= maxH - 1);
     const underP = pool.filter(e => sh[e.id] <= minH + 1);
@@ -863,6 +876,62 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
             assign(dateStr, si, under, { ...slot, _isWE: slot._isWE, _isFri: slot._isFri, _dayKey: slot._dayKey });
             swapped = true; balanceChanged = true;
             break outer;
+          }
+        }
+      }
+    }
+    if (!swapped) break;
+  }
+
+  // ── STEP 6B: Regular balance pass ────────────────────────────────
+  // After SLs are equalized, balance regulars among themselves.
+  // Regulars share hours equally — person with fewest hours picks first.
+  let balanceChangedB = true;
+  let balanceSafetyB = 40;
+  while (balanceChangedB && balanceSafetyB-- > 0) {
+    balanceChangedB = false;
+    const pool = active.filter(e => e.role === "regular" && !isBalanceExempt(e) && e._budget > 0);
+    if (pool.length < 2) break;
+
+    pool.sort((a, b) => sh[b.id] - sh[a.id]);
+    const maxH = sh[pool[0].id];
+    const minH = sh[pool[pool.length - 1].id];
+    if (maxH - minH <= 4) break;
+
+    const overP = pool.filter(e => sh[e.id] >= maxH - 1);
+    const underP = pool.filter(e => sh[e.id] <= minH + 1);
+
+    let swapped = false;
+    outer2: for (const under of underP) {
+      for (const over of overP) {
+        if (under.id === over.id) continue;
+        for (const dateStr of weekDates) {
+          if (sd[under.id].has(dateStr) || !sd[over.id].has(dateStr)) continue;
+          if (!friSatSunOK(under, dateStr)) continue;
+
+          for (let si = 0; si < schedule[dateStr].length; si++) {
+            const slot = schedule[dateStr][si];
+            if (slot.empId !== over.id) continue;
+            if (slot.slOnly) continue; // can't take SL-required slots
+            if (slot.isMC && under.role === "trainee") continue;
+            if (slot.isTraineeSlot && under.role !== "trainee") continue;
+            if (!isAvail(under, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) continue;
+            if (con("no_mc_twice") && slot.isMC && mcCount[under.id] >= 1) continue;
+            if (!weekendNightOK(under, dateStr, slot.start)) continue;
+            if (sh[under.id] + slot.hours > (under._effMaxHours || 24)) continue;
+            if (!consecOK(under, weekDates.indexOf(dateStr))) continue;
+            // Don't take Fri/Sat night slots from regulars who are SLs
+            const sDow = new Date(dateStr + "T12:00:00").getDay();
+            if (over.role === "shift_lead" && slot.type === "evening" && (sDow === 5 || sDow === 6)) continue;
+
+            sc[over.id]--; sh[over.id] -= slot.hours;
+            if (!schedule[dateStr].some((s, i) => i !== si && s.empId === over.id)) sd[over.id].delete(dateStr);
+            if (slot.isMC) mcCount[over.id] = Math.max(0, mcCount[over.id] - 1);
+            if (slot._isWE || (slot._isFri && tm(slot.start) >= 1020)) weCount[over.id] = Math.max(0, weCount[over.id] - 1);
+            if (nightMap[dateStr]) nightMap[dateStr].delete(over.id);
+            assign(dateStr, si, under, { ...slot, _isWE: slot._isWE, _isFri: slot._isFri, _dayKey: slot._dayKey });
+            swapped = true; balanceChangedB = true;
+            break outer2;
           }
         }
       }
