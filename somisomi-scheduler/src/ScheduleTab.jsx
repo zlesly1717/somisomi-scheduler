@@ -1520,15 +1520,15 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
             </div>
           )}
 
-          {result.warnings.length > 0 && (
+          {(result.warnings || []).length > 0 && (
             <div style={{ background: "#FEF3C7", borderRadius: 12, marginBottom: 16, border: "1px solid #FDE68A", overflow: "hidden" }}>
               <div onClick={() => setWarningsOpen(!warningsOpen)} style={{ padding: "10px 14px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#92400E" }}>{"\u26a0"} Warnings ({result.warnings.length})</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "#92400E" }}>{"\u26a0"} Warnings ({(result.warnings || []).length})</div>
                 <span style={{ fontSize: 12, color: "#92400E", transform: warningsOpen ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>{"\u25b6"}</span>
               </div>
               {warningsOpen && (
                 <div style={{ padding: "0 14px 10px" }}>
-                  {result.warnings.map((w, i) => (
+                  {(result.warnings || []).map((w, i) => (
                     <div key={i} style={{ fontSize: 12, color: "#92400E", marginBottom: 2 }}>
                       {w.date && <span style={{ fontWeight: 600 }}>{new Date(w.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} — </span>}
                       {w.msg}
@@ -1638,9 +1638,9 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
 
                   return (<>
                     {sortedEmps.map(emp => {
-                      const totalHrs = result.empHours[emp.id] || 0;
+                      const totalHrs = result.empHours?.[emp.id] || 0;
                       const initials = emp.name.split(" ").map(w => w[0]).join("").toUpperCase();
-                      const below = (result.empShiftCount[emp.id] || 0) < emp.minShifts;
+                      const below = (result.empShiftCount?.[emp.id] || 0) < emp.minShifts;
                       return (<tr key={emp.id} style={{ borderBottom: "1px solid #F3F4F6", background: dragEmpId === emp.id ? "#DBEAFE" : undefined }}>
                         <td draggable
                           onDragStart={() => setDragEmpId(emp.id)}
@@ -2055,8 +2055,8 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                 const o = { shift_lead: 0, regular: 1, trainee: 2 };
                 return (o[a.role] || 3) - (o[b.role] || 3);
               }).map(emp => {
-                const shifts = result.empShiftCount[emp.id] || 0;
-                const hours = result.empHours[emp.id] || 0;
+                const shifts = result.empShiftCount?.[emp.id] || 0;
+                const hours = result.empHours?.[emp.id] || 0;
                 const below = shifts < emp.minShifts;
                 const rc = { shift_lead: "#F59E0B", regular: "#3B82F6", trainee: "#8B5CF6" };
                 return (
