@@ -113,19 +113,19 @@ function buildMCHistorySeed() {
 
     // Thu MC slots
     schedule[thuDate] = [
-      { type: "mc_leader", label: "MC Leader", start: "18:00", end: "23:45", hours: 5.75, isMC: true, empId: "seed", empName: w.thu.leader, empRole: "shift_lead" },
-      ...w.thu.helpers.map((h, i) => ({ type: "mc_helper", label: "MC Helper", start: "18:00", end: "23:45", hours: 5.75, isMC: true, empId: "seed-h" + i, empName: h, empRole: "regular" })),
+      { type: "mc_leader", label: "MC Leader (Eve SL)", start: "18:00", end: "23:45", hours: 5.75, isMC: true, order: 20, empId: "seed", empName: w.thu.leader, empRole: "shift_lead" },
+      ...w.thu.helpers.map((h, i) => ({ type: "mc_helper", label: "MC Helper", start: "18:00", end: "23:45", hours: 5.75, isMC: true, order: 22 + i, empId: "seed-h" + i, empName: h, empRole: "regular" })),
     ];
 
     // Sun MC slots
     const sunSlots = [
-      { type: "mc_leader", label: "MC Leader", start: "18:00", end: "23:45", hours: 5.75, isMC: true, empId: "seed-sl", empName: w.sun.leader, empRole: "shift_lead" },
+      { type: "mc_leader", label: "MC Leader (Eve SL)", start: "18:00", end: "23:45", hours: 5.75, isMC: true, order: 20, empId: "seed-sl", empName: w.sun.leader, empRole: "shift_lead" },
     ];
     if (w.sun.slHelper) {
-      sunSlots.push({ type: "mc_sl_helper", label: "MC Helper (SL)", start: "18:00", end: "23:45", hours: 5.75, isMC: true, empId: "seed-sl2", empName: w.sun.slHelper, empRole: "shift_lead" });
+      sunSlots.push({ type: "mc_sl_helper", label: "MC Helper (SL)", start: "18:00", end: "23:45", hours: 5.75, isMC: true, order: 21, empId: "seed-sl2", empName: w.sun.slHelper, empRole: "shift_lead" });
     }
     w.sun.helpers.forEach((h, i) => {
-      sunSlots.push({ type: "mc_helper", label: "MC Helper", start: "18:00", end: "23:45", hours: 5.75, isMC: true, empId: "seed-sh" + i, empName: h, empRole: "regular" });
+      sunSlots.push({ type: "mc_helper", label: "MC Helper", start: "18:00", end: "23:45", hours: 5.75, isMC: true, order: 22 + i, empId: "seed-sh" + i, empName: h, empRole: "regular" });
     });
     schedule[sunDate] = sunSlots;
 
