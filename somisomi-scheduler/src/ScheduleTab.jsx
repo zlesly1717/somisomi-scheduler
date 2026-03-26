@@ -380,6 +380,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (schedule[dateStr].some(a => a.empId === emp.id)) return false;
 
       // ── FLEXIBLE rules (blocked unless approved) ──
+      if (emp._effMaxShifts === 0) return false; // CANNOT BREAK: manual 0-shift override
       if (!approved.has("F6") && sc[emp.id] >= emp._effMaxShifts) return false;
       if (sh[emp.id] + slot.hours > emp._effMaxHours * (approved.has("F6") ? 1.5 : 1)) return false;
       if (!weekendNightOK(emp, dateStr, slot.start)) return false; // F7/F8
