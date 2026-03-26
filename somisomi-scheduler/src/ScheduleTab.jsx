@@ -753,11 +753,12 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       const fromPri = cands.filter(e => pri.includes(e.name));
       if (fromPri.length > 0) cands = fromPri;
     }
-    // Weekday evening (remaining slots after trainees placed): prefer regulars, allow trainee as fallback
+    // Weekday evening: prefer regulars + graduated trainees, then non-graduated trainees as fallback
     else if (tm(slot.start) >= 1020) {
-      const regsOnly = cands.filter(e => e.role === "regular");
+      // Include graduated trainees (isEffectivelyGraduated) as "regulars" for filling purposes
+      const regsOnly = cands.filter(e => e.role === "regular" || isEffectivelyGraduated(e));
       if (regsOnly.length > 0) cands = regsOnly;
-      // If no regulars available, allow trainees (better than unfilled)
+      // If still no one, allow trainees (better than unfilled)
     }
 
     // PICK: SLs under their 18h minimum get priority, then fewest hours
