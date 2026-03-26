@@ -466,8 +466,16 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (isSun) {
         slots.push({ type: "mc_sl_helper", label: "MC Helper (SL)", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: true, isMC: true, order: 21 });
       }
-      const regHelpers = isSun ? 2 : 2; // Thu: 2 reg helpers, Sun: 2 reg helpers
+      // MC helpers: always 2 for Thu, 2 for Sun
+      const regHelpers = isSun ? 2 : 2;
       for (let i = 0; i < regHelpers; i++) { slots.push({ type: "mc_helper", label: "MC Helper", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: false, isMC: true, order: 22 + i }); }
+      // Extra evening workers (non-MC): if staffing.evening > base, add evening slots
+      // These can be trainees or regulars working the floor alongside the MC crew
+      const baseEvening = isSun ? 4 : 3; // Sun default=4 (mc_leader+mc_sl_helper+2helpers), Thu default=3
+      const extraEvening = (staffing.evening || baseEvening) - baseEvening;
+      for (let i = 0; i < extraEvening; i++) {
+        slots.push({ type: "evening", label: "Evening", start: eveS, end: eveE, hours: hrs(eveS, eveE), slOnly: false, isMC: false, isTraineeSlot: i === 0, order: 30 + i });
+      }
       // Thu MC crew: Crystal (MC leader) + 2 regular helpers = 3 people total
       // No separate floor SL — Crystal covers the SL presence
     } else {
