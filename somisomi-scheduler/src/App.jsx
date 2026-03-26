@@ -46,52 +46,52 @@ const font = "'DM Sans',sans-serif";
 function buildMCHistorySeed() {
   const mcWeeks = [
     { key: "2026-02-16", // Feb 16-22
-      // Thu Feb 19: Spencer(lead) + Crystal + Chan (3 = Lesly helped)
-      // Sun Feb 22: Kaitlyn(lead) + Zoe + Susan + Abrar (4 = full crew)
-      thu: { leader: "Spencer Losch", helpers: ["Crystal Guel", "Chan In"] },
-      sun: { leader: "Kaitlyn Trevino", slHelper: null, helpers: ["Zoe Rains", "Susan Thai", "Abrar Uddin"] },
+      // Thu Feb 19: Chan SL + Spencer + Crystal
+      // Sun Feb 22: Zoe SL + Kaitlyn + Abrar + Susan
+      thu: { leader: "Chan In", helpers: ["Spencer Losch", "Crystal Guel"] },
+      sun: { leader: "Zoe Rains", slHelper: null, helpers: ["Kaitlyn Trevino", "Abrar Uddin", "Susan Thai"] },
       breakSL: null, savedAt: "2026-02-22T20:00:00Z",
     },
     { key: "2026-02-23", // Feb 23-Mar 1
-      // Thu Feb 26: Crystal(lead) + Kaitlyn + Kennedy (3 = Lesly helped)
-      // Sun Mar 1: Spencer(lead) + Chan + Zoe + Kennedy (4 = full crew)
-      thu: { leader: "Crystal Guel", helpers: ["Kaitlyn Trevino", "Kennedy Bean"] },
-      sun: { leader: "Spencer Losch", slHelper: null, helpers: ["Chan In", "Zoe Rains", "Kennedy Bean"] },
+      // Thu Feb 26: Kaitlyn SL + Crystal + Kennedy
+      // Sun Mar 1: Chan SL + Zoe + Spencer + Kennedy
+      thu: { leader: "Kaitlyn Trevino", helpers: ["Crystal Guel", "Kennedy Bean"] },
+      sun: { leader: "Chan In", slHelper: null, helpers: ["Zoe Rains", "Spencer Losch", "Kennedy Bean"] },
       breakSL: null, savedAt: "2026-03-01T20:00:00Z",
     },
     { key: "2026-03-02", // Mar 2-8
-      // Thu Mar 5: Crystal(lead) + Zoe + Sam (3 = Lesly helped)
-      // Sun Mar 8: Kaitlyn(lead) + Spencer + Chan + Lena (4 = full crew)
-      thu: { leader: "Crystal Guel", helpers: ["Zoe Rains", "Sam Castillo"] },
+      // Thu Mar 5: Zoe SL + Crystal + Sam
+      // Sun Mar 8: Kaitlyn SL + Spencer + Chan + Lena
+      thu: { leader: "Zoe Rains", helpers: ["Crystal Guel", "Sam Castillo"] },
       sun: { leader: "Kaitlyn Trevino", slHelper: null, helpers: ["Spencer Losch", "Chan In", "Lena Maslak"] },
       breakSL: null, savedAt: "2026-03-08T20:00:00Z",
     },
     { key: "2026-03-09", // Mar 9-15
-      // Thu Mar 12: Crystal(lead) + Spencer + Susan + Zoe (4 = full crew)
-      // Sun Mar 15: Chan(lead) + Gwen (2 only — Lesly + David helped)
-      thu: { leader: "Crystal Guel", helpers: ["Spencer Losch", "Susan Thai", "Zoe Rains"] },
+      // Thu Mar 12: Zoe SL + Spencer + Crystal + Susan
+      // Sun Mar 15: Chan SL + Gwen
+      thu: { leader: "Zoe Rains", helpers: ["Spencer Losch", "Crystal Guel", "Susan Thai"] },
       sun: { leader: "Chan In", slHelper: null, helpers: ["Gwen Ursua"] },
       breakSL: "Kaitlyn Trevino", savedAt: "2026-03-15T20:00:00Z",
     },
-    { key: "2026-03-16", // Mar 16-22 (current week)
-      // Thu Mar 19: Spencer(lead) + Yise + Zoe (3 = Lesly helped)
-      // Sun Mar 22: Crystal(lead) + Kaitlyn + Abrar + Sam (4 = full crew)
-      thu: { leader: "Spencer Losch", helpers: ["Yise Moya", "Zoe Rains"] },
-      sun: { leader: "Crystal Guel", slHelper: "Kaitlyn Trevino", helpers: ["Abrar Uddin", "Sam Castillo"] },
+    { key: "2026-03-16", // Mar 16-22
+      // Thu Mar 19: Spencer SL + Zoe + Yise
+      // Sun Mar 22: Kaitlyn SL + Crystal + Abrar + Sam
+      thu: { leader: "Spencer Losch", helpers: ["Zoe Rains", "Yise Moya"] },
+      sun: { leader: "Kaitlyn Trevino", slHelper: null, helpers: ["Crystal Guel", "Abrar Uddin", "Sam Castillo"] },
       breakSL: "Chan In", savedAt: "2026-03-22T20:00:00Z",
     },
     { key: "2026-03-23", // Mar 23-29
-      // Thu Mar 26: Crystal(lead) + Chan + Marissa (trainee)
-      // Sun Mar 29: Spencer(lead) + Kaitlyn(SL helper) + Kennedy + Susan
+      // Thu Mar 26: Crystal SL + Chan + Marissa (trainee)
+      // Sun Mar 29: Spencer SL + Kaitlyn + Kennedy + Susan
       thu: { leader: "Crystal Guel", helpers: ["Chan In", "Marissa Shelton"] },
       sun: { leader: "Spencer Losch", slHelper: "Kaitlyn Trevino", helpers: ["Kennedy Bean", "Susan Thai"] },
       breakSL: null, savedAt: "2026-03-29T20:00:00Z",
     },
     { key: "2026-03-30", // Mar 30 - Apr 5
-      // Thu Apr 2: Kaitlyn(lead) + Zoe + Nani (trainee) — Crystal's break week
-      // Sun Apr 5: Spencer(lead) + Kaitlyn(SL helper) + Gwen + Chan
+      // Thu Apr 2: Kaitlyn SL + Zoe + Nani (trainee) — Crystal's break week
+      // Sun Apr 5: Spencer SL + Chan + Gwen + Alli (trainee)
       thu: { leader: "Kaitlyn Trevino", helpers: ["Zoe Rains", "Nani Hoomes"] },
-      sun: { leader: "Spencer Losch", slHelper: "Kaitlyn Trevino", helpers: ["Gwen Ursua", "Chan In"] },
+      sun: { leader: "Spencer Losch", slHelper: null, helpers: ["Chan In", "Gwen Ursua", "Alli Campos"] },
       breakSL: "Crystal Guel", savedAt: "2026-04-05T20:00:00Z",
     },
   ];
