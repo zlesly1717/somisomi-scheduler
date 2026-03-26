@@ -306,7 +306,12 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   const traineeOK = (emp, dateStr) => {
     if (!isTrainee(emp)) return true;
     if (!con("no_two_trainees")) return true;
-    return !schedule[dateStr].some(a => a.empId && active.find(e => e.id === a.empId)?.role === "trainee");
+    // Check using isTrainee() so graduated trainees don't count as "trainees"
+    return !schedule[dateStr].some(a => {
+      if (!a.empId) return false;
+      const existing = active.find(e => e.id === a.empId);
+      return existing && isTrainee(existing);
+    });
   };
 
   const canSwirl = (emp) => {
@@ -643,7 +648,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   });
 
   // Mon/Tue/Wed: assign trainee to last unfilled evening slot
+  // Rotate trainees across days — don't put same trainee on consecutive days
   const traineeQueue = [...availTrainees].sort((a, b) => sh[a.id] - sh[b.id]);
+  let lastPlacedTraineeId = null; // track who worked yesterday to avoid consecutive days
   for (let di = 0; di < 3; di++) { // Mon=0, Tue=1, Wed=2
     const dateStr = weekDates[di];
     // Find unfilled evening slots
@@ -652,18 +659,27 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (slot.empId || tm(slot.start) < 1020 || slot.isMC || slot.slOnly) return;
       eveSlots.push({ slot, idx });
     });
-    if (eveSlots.length === 0) continue;
+    if (eveSlots.length === 0) { lastPlacedTraineeId = null; continue; }
     const targetSlot = eveSlots[eveSlots.length - 1]; // last evening slot
 
-    for (const trainee of traineeQueue) {
-      if (sd[trainee.id].has(dateStr)) continue;
-      if (!traineeOK(trainee, dateStr)) continue;
-      if (!isAvail(trainee, dateStr, targetSlot.slot.start, targetSlot.slot.end, weeklyTimeOffs, availOverrides)) continue;
-      if (!consecOK(trainee, di)) continue;
-      if (sc[trainee.id] >= trainee._effMaxShifts) continue;
-      assign(dateStr, targetSlot.idx, trainee, targetSlot.slot);
-      break;
+    // Try non-consecutive first (skip trainee who worked yesterday)
+    let placed = false;
+    for (const skipConsec of [true, false]) { // first pass: skip consecutive; second: allow
+      for (const trainee of traineeQueue) {
+        if (skipConsec && trainee.id === lastPlacedTraineeId) continue; // prefer rotation
+        if (sd[trainee.id].has(dateStr)) continue;
+        if (!traineeOK(trainee, dateStr)) continue;
+        if (!isAvail(trainee, dateStr, targetSlot.slot.start, targetSlot.slot.end, weeklyTimeOffs, availOverrides)) continue;
+        if (!consecOK(trainee, di)) continue;
+        if (sc[trainee.id] >= trainee._effMaxShifts) continue;
+        assign(dateStr, targetSlot.idx, trainee, targetSlot.slot);
+        lastPlacedTraineeId = trainee.id;
+        placed = true;
+        break;
+      }
+      if (placed) break;
     }
+    if (!placed) lastPlacedTraineeId = null;
     traineeQueue.sort((a, b) => sh[a.id] - sh[b.id]); // re-sort after each placement
   }
 
@@ -674,8 +690,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   const remainingSlots = [];
   weekDates.forEach(dateStr => {
     schedule[dateStr].forEach((slot, idx) => {
-      if (slot.empId || slot.slOnly || slot.isTraineeSlot) return;
-      remainingSlots.push({ dateStr, idx, slot });
+      if (slot.empId || slot.slOnly) return;
+      remainingSlots.push({ dateStr, idx, slot }); // isTraineeSlot unfilled = Step 4 fills with regular
     });
   });
 
@@ -1917,8 +1933,12 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                               let sColors = shiftColors[s.type] || { bg: "#6B7280", text: "#fff", label: s.label };
                               if (isWE && (s.type === "day_lead" || s.type === "day")) sColors = { ...sColors, ...weekendDayColor, label: s.type === "day_lead" ? "Shift Lead" : "Weekend Day" };
                               if (s.type === "day_lead" && !isWE) sColors = { ...sColors, label: "Day Shift Lead" };
-                              // Trainees always show in blue regardless of shift type
-                              if (s.empRole === "trainee") sColors = { ...sColors, bg: "#22C3E6" };
+                              // Trainees show in blue, but graduated trainees show as regulars
+                              if (s.empRole === "trainee") {
+                                const emp = employees.find(e => e.id === s.empId);
+                                const isGraduated = emp && (emp.traineeCumulative || 0) >= (rules?.trainee?.graduationHours || 30);
+                                if (!isGraduated) sColors = { ...sColors, bg: "#22C3E6" };
+                              }
                               const canClick = !isSaved && draft;
                               const isDragging = dragSlot && dragSlot.date === d && dragSlot.type === s.type && dragSlot.order === s.order;
                               const isDropTarget = dragSlot && !(dragSlot.date === d && dragSlot.type === s.type && dragSlot.order === s.order);
