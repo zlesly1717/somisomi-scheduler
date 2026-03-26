@@ -351,10 +351,13 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
       if (sd[emp.id].has(dateStr)) return false; // no doubles
       if (!slCheck(slot, emp)) return false; // SL-only slots need SL
+      if (slot.noTrainee && emp.role === "trainee") return false; // no trainees on first 4 weekend night slots
       if (slot.isMC && emp.role === "trainee") return false; // no trainees on MC
       if (slot.isMC && (emp.tags || []).includes("mc_exempt")) return false; // mc_exempt employees never MC
       if (con("no_mc_twice") && slot.isMC && mcCount[emp.id] >= 1) return false; // no MC twice
-      if (emp.role === "trainee" && !isWE && !isFri && (slot.type === "day_lead" || slot.type === "day")) return false; // no trainees weekday day
+      if (emp.role === "trainee" && (slot.type === "day_lead" || slot.type === "day")) return false; // no trainees on any day shift
+      if (emp.role === "trainee" && slot.type === "evening_sl") return false; // no trainees on SL-only evening slots
+      if (emp.role === "trainee" && slot.type === "evening_sl2") return false; // no trainees on 2nd SL slot
       if (!traineeOK(emp, dateStr)) return false; // no two trainees same day
       if (!friSatSunOK(emp, dateStr)) return false; // no all 3 weekend days
       if (!dayAfterMCOK(emp, dateStr, slot.start)) return false; // no day after MC night
@@ -465,7 +468,18 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       }
     } else {
       for (let i = 0; i < (staffing.evening || 3); i++) {
-        slots.push({ type: i === 0 ? "evening_sl" : "evening", label: i === 0 ? "Evening SL" : "Evening", start: eveS, end: eveE, hours: hrs(eveS, eveE), slOnly: i === 0, order: 20 + i });
+        // Fri/Sat nights: first 2 slots are SL-only (2 SLs required)
+        // Sun is MC night so handled separately above with mc_leader + mc_sl_helper
+        // Trainees only allowed as 5th+ person on Fri/Sat nights
+        const needsSL = i <= 1 && (isFri || isSat);
+        slots.push({
+          type: i === 0 ? "evening_sl" : (needsSL ? "evening_sl2" : "evening"),
+          label: i === 0 ? "Evening SL" : (needsSL ? "Evening SL 2" : "Evening"),
+          start: eveS, end: eveE, hours: hrs(eveS, eveE),
+          slOnly: needsSL,
+          noTrainee: (isFri || isSat) && i < 4, // no trainees on first 4 slots of Fri/Sat nights
+          order: 20 + i
+        });
       }
     }
     slots.sort((a, b) => a.order - b.order);
@@ -507,7 +521,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     const pri = (s) => {
       if (s.isMC && s._dow === 4) return 0;  // Thu MC Leader (Crystal)
       if (s.isMC && s._dow === 0) return 1;  // Sun MC SLs
-      if (s.type === "evening_sl" && (s._isFri || s._isSat || s._isSun)) return 2; // Weekend Eve SL
+      if ((s.type === "evening_sl" || s.type === "evening_sl2") && (s._isFri || s._isSat || s._isSun)) return 2; // Weekend Eve SLs (both slots)
       if (s.type === "day_lead" && (s._isSat || s._isSun)) return 3; // Weekend DL
       if (s.type === "day_lead") return 4;    // Weekday DL
       if (s.type === "evening_sl") return 5;  // Thu Eve SL
@@ -656,28 +670,28 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         return aLast.localeCompare(bLast); // earlier = longer ago = pick first
       });
     }
-    // Weekend/Fri evening: no trainees (except near-grads on Fri/Sat night)
-    // Fri night + Sat night: the evening_sl slot is already filled by an SL.
-    // The remaining evening slots should be regulars — avoid placing a 2nd SL.
+    // Weekend/Fri evening: slots 1+2 are slOnly (handled in Step 2 by evening_sl/evening_sl2)
+    // Remaining evening slots (3rd, 4th): prefer regulars, no SLs, no trainees unless 5th slot
+    // Trainees only on slot order >= 24 (5th person, index 4) if near graduation (20h+)
     else if (isWeekendSlot && tm(slot.start) >= 1020) {
       const dow3 = new Date(dateStr + "T12:00:00").getDay();
-      const isFriOrSatNight = (dow3 === 5 || dow3 === 6) && slot.type === "evening";
-      const isSunNight = dow3 === 0;
-      // Near-grad trainees (20h+) can work Fri/Sat night — they're experienced enough
+      const isWeekendNight = dow3 === 5 || dow3 === 6; // Sun nights are MC slots, handled separately
       const nearGradHours = rules.trainee?.graduationHours ? rules.trainee.graduationHours * 0.67 : 20;
       const nearGrad = e => e.role === "trainee" && (e.traineeCumulative || 0) >= nearGradHours;
-      if (isSunNight) {
-        // Sun night: no trainees (MC night, already blocked, but filter here too)
-        cands = cands.filter(e => e.role !== "trainee");
-      } else if (isFriOrSatNight) {
-        // Fri/Sat night: no SLs as 2nd person, trainees only if near-grad
-        const nonSL = cands.filter(e => e.role !== "shift_lead");
-        cands = nonSL.length > 0 ? nonSL : cands;
-        // Filter out trainees who aren't near graduation
-        const noEarlyTrainees = cands.filter(e => e.role !== "trainee" || nearGrad(e));
-        if (noEarlyTrainees.length > 0) cands = noEarlyTrainees;
+      // Weekend nights: no SLs on regular evening slots (SLs belong on slOnly slots)
+      if (isWeekendNight && slot.type === "evening") {
+        const noSL = cands.filter(e => e.role !== "shift_lead");
+        if (noSL.length > 0) cands = noSL;
+        // Trainees only as 5th person (slot order 24+) and only near-grads
+        const isFifthSlot = slot.order >= 24;
+        if (!isFifthSlot) {
+          cands = cands.filter(e => e.role !== "trainee");
+        } else {
+          const noEarlyT = cands.filter(e => e.role !== "trainee" || nearGrad(e));
+          if (noEarlyT.length > 0) cands = noEarlyT;
+        }
       } else {
-        // Other weekend evenings: no trainees
+        // Non-weekend-night weekend slots: no trainees
         const noT = cands.filter(e => e.role !== "trainee");
         if (noT.length > 0) cands = noT;
       }
@@ -759,10 +773,10 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (!weekendNightOK(sl, dateStr, slot.start)) return;
         if (!consecOK(sl, weekDates.indexOf(dateStr))) return;
         if (slot.isMC && mcCount[sl.id] >= 1) return;
-        // Fri + Sat nights: SL overflow should not take regular evening slots
-        // (those belong to regulars — 1 SL per shift is the rule)
+        // Fri/Sat/Sun nights: SL overflow should not take regular evening slots
+        // (2 SL slots are slOnly, remaining evening slots go to regulars)
         const slDow = new Date(dateStr + "T12:00:00").getDay();
-        if ((slDow === 5 || slDow === 6) && slot.type === "evening") return;
+        if ((slDow === 5 || slDow === 6 || slDow === 0) && slot.type === "evening") return;
         openSlots.push({ dateStr, idx, slot });
       });
     });
@@ -864,8 +878,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
             // Don't put SLs on Mon-Wed evening via swap
             const sDow = new Date(dateStr + "T12:00:00").getDay();
             if (under.role === "shift_lead" && slot.type === "evening" && sDow >= 1 && sDow <= 3) continue;
-            // Don't put SLs on Fri/Sat night regular evening slots via swap
-            if (under.role === "shift_lead" && slot.type === "evening" && (sDow === 5 || sDow === 6)) continue;
+            // Don't put SLs on Fri/Sat/Sun night regular evening slots via swap
+            if (under.role === "shift_lead" && slot.type === "evening" && (sDow === 5 || sDow === 6 || sDow === 0)) continue;
 
             // Execute swap
             sc[over.id]--; sh[over.id] -= slot.hours;
@@ -1309,7 +1323,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
 
   const getRows = () => {
     if (!result) return [];
-    const typeOrder = ["day_lead", "day", "mid", "evening_sl", "evening", "mc_leader", "mc_sl_helper", "mc_helper"];
+    const typeOrder = ["day_lead", "day", "mid", "evening_sl", "evening_sl2", "evening", "mc_leader", "mc_sl_helper", "mc_helper"];
     const all = {};
     weekDates.forEach(d => { (result.schedule[d] || []).forEach(a => { const k = a.type + "-" + a.order; if (!all[k]) all[k] = { type: a.type, label: a.label, order: a.order }; }); });
     return Object.values(all).sort((a, b) => { const ai = typeOrder.indexOf(a.type); const bi = typeOrder.indexOf(b.type); return ai !== bi ? ai - bi : a.order - b.order; });
@@ -1318,6 +1332,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
   const tc = {
     day_lead: { color: "#B45309", bg: "#FEF3C7" }, day: { color: "#16A34A", bg: "#F0FDF4" },
     mid: { color: "#0891B2", bg: "#ECFEFF" }, evening_sl: { color: "#E11D48", bg: "#FFF1F2" },
+    evening_sl2: { color: "#E11D48", bg: "#FFF1F2" },
     evening: { color: "#2563EB", bg: "#EFF6FF" }, mc_leader: { color: "#7C3AED", bg: "#F5F3FF" },
     mc_sl_helper: { color: "#9333EA", bg: "#FAF5FF" }, mc_helper: { color: "#8B5CF6", bg: "#EDE9FE" },
   };
@@ -1671,6 +1686,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                     day: { bg: "#EAB308", text: "#fff", label: "Weekday Day" },
                     mid: { bg: "#EAB308", text: "#fff", label: "Mid Shift" },
                     evening_sl: { bg: "#EF4444", text: "#fff", label: "Shift Lead" },
+                    evening_sl2: { bg: "#EF4444", text: "#fff", label: "Shift Lead" },
                     evening: { bg: "#A855F7", text: "#fff", label: "Night Shift" },
                     mc_leader: { bg: "#22C55E", text: "#fff", label: "Shiftlead/Machineclean" },
                     mc_sl_helper: { bg: "#22C55E", text: "#fff", label: "Machineclean" },
