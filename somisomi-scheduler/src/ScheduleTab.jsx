@@ -303,7 +303,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 
   // CANNOT BREAK: No two trainees same day
   const traineeOK = (emp, dateStr) => {
-    if (emp.role !== "trainee") return true;
+    if (!isTrainee(emp)) return true;
     if (!con("no_two_trainees")) return true;
     return !schedule[dateStr].some(a => a.empId && active.find(e => e.id === a.empId)?.role === "trainee");
   };
@@ -313,6 +313,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     if (swirlList.length > 0) return swirlList.includes(emp.name);
     return (emp.tags || []).includes("can_swirl");
   };
+
+  // For rule checking: graduated trainees behave like regulars
+  const isTrainee = (emp) => emp.role === "trainee" && !isEffectivelyGraduated(emp);
 
   // CANNOT BREAK: Crystal off Sundays (unless explicit availability override)
   const crystalSundayOK = (emp, dateStr) => {
@@ -351,13 +354,13 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
       if (sd[emp.id].has(dateStr)) return false; // no doubles
       if (!slCheck(slot, emp)) return false; // SL-only slots need SL
-      if (slot.noTrainee && emp.role === "trainee") return false; // no trainees on first 4 weekend night slots
-      if (slot.isMC && emp.role === "trainee") return false; // no trainees on MC
+      if (slot.noTrainee && isTrainee(emp)) return false; // no trainees on first 4 weekend night slots
+      if (slot.isMC && isTrainee(emp)) return false; // no trainees on MC
       if (slot.isMC && (emp.tags || []).includes("mc_exempt")) return false; // mc_exempt employees never MC
       if (con("no_mc_twice") && slot.isMC && mcCount[emp.id] >= 1) return false; // no MC twice
-      if (emp.role === "trainee" && (slot.type === "day_lead" || slot.type === "day")) return false; // no trainees on any day shift
-      if (emp.role === "trainee" && slot.type === "evening_sl") return false; // no trainees on SL-only evening slots
-      if (emp.role === "trainee" && slot.type === "evening_sl2") return false; // no trainees on 2nd SL slot
+      if (isTrainee(emp) && (slot.type === "day_lead" || slot.type === "day")) return false; // no trainees on any day shift
+      if (isTrainee(emp) && slot.type === "evening_sl") return false; // no trainees on SL-only evening slots
+      if (isTrainee(emp) && slot.type === "evening_sl2") return false; // no trainees on 2nd SL slot
       if (!traineeOK(emp, dateStr)) return false; // no two trainees same day
       if (!friSatSunOK(emp, dateStr)) return false; // no all 3 weekend days
       if (!dayAfterMCOK(emp, dateStr, slot.start)) return false; // no day after MC night
@@ -508,9 +511,12 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   //   - Regulars get equal hours — person with fewest hours picks first
   // ══════════════════════════════════════════════════════════════════
 
+  const gradHours = rules.trainee?.graduationHours || 30;
+  // Treat graduated trainees as regulars for scheduling (even if role not updated yet)
+  const isEffectivelyGraduated = e => e.role === "trainee" && (e.traineeCumulative || 0) >= gradHours;
   const sls = active.filter(e => e.role === "shift_lead");
-  const regs = active.filter(e => e.role === "regular");
-  const traineeEmps = active.filter(e => e.role === "trainee");
+  const regs = active.filter(e => e.role === "regular" || isEffectivelyGraduated(e));
+  const traineeEmps = active.filter(e => e.role === "trainee" && !isEffectivelyGraduated(e));
 
   // ── STEP 2: Place SLs on SL-REQUIRED slots ────────────────────────
   // Only fills slots marked slOnly=true. No overflow yet.
@@ -586,7 +592,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   // 1 trainee per day. Thu has a dedicated isTraineeSlot. Mon-Wed take the last evening slot.
   // Place BEFORE regulars so trainees don't get squeezed out.
 
-  const availTrainees = traineeEmps.filter(e => e._budget > 0);
+  const availTrainees = traineeEmps.filter(e => e._budget > 0); // only non-graduated trainees
 
   // Thu trainee slot first (dedicated)
   weekDates.forEach(dateStr => {
@@ -677,7 +683,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       const dow3 = new Date(dateStr + "T12:00:00").getDay();
       const isWeekendNight = dow3 === 5 || dow3 === 6; // Sun nights are MC slots, handled separately
       const nearGradHours = rules.trainee?.graduationHours ? rules.trainee.graduationHours * 0.67 : 20;
-      const nearGrad = e => e.role === "trainee" && (e.traineeCumulative || 0) >= nearGradHours;
+      const nearGrad = e => isTrainee(e) && (e.traineeCumulative || 0) >= nearGradHours;
       // Weekend nights: no SLs on regular evening slots (SLs belong on slOnly slots)
       if (isWeekendNight && slot.type === "evening") {
         const noSL = cands.filter(e => e.role !== "shift_lead");
@@ -685,9 +691,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         // Trainees only as 5th person (slot order 24+) and only near-grads
         const isFifthSlot = slot.order >= 24;
         if (!isFifthSlot) {
-          cands = cands.filter(e => e.role !== "trainee");
+          cands = cands.filter(e => !isTrainee(e));
         } else {
-          const noEarlyT = cands.filter(e => e.role !== "trainee" || nearGrad(e));
+          const noEarlyT = cands.filter(e => !isTrainee(e) || nearGrad(e));
           if (noEarlyT.length > 0) cands = noEarlyT;
         }
       } else {
@@ -706,7 +712,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     }
     // Weekend day / Fri day: no trainees
     else if (isWeekendSlot || slot._isFri) {
-      const noT = cands.filter(e => e.role !== "trainee");
+      const noT = cands.filter(e => !isTrainee(e));
       if (noT.length > 0) cands = noT;
     }
     // Weekday 2nd day: no SLs, no trainees, prefer 2nd day priority list
@@ -834,7 +840,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   // ── STEP 6: Balance pass ──────────────────────────────────────────
   // Two-phase: first equalize SLs (target 18-22h), then equalize regulars.
   // SLs are priority workers — they get hours first, regulars split what remains.
-  const isBalanceExempt = (emp) => emp.name === "Grae McKown" || emp.role === "trainee";
+  const isBalanceExempt = (emp) => emp.name === "Grae McKown" || isTrainee(emp);
   const SL_MIN_TARGET = 18;
   const SL_MAX_TARGET = 22;
 
@@ -954,14 +960,27 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   }
 
   // ── Gap fill: any remaining empty slots ───────────────────────────
-  weekDates.forEach(dateStr => {
-    schedule[dateStr].forEach((slot, idx) => {
-      if (slot.empId) return;
-      const cands = getCandidates(slot);
-      cands.sort((a, b) => sh[a.id] - sh[b.id] || Math.random() - 0.5);
-      if (cands[0]) assign(dateStr, idx, cands[0], slot);
+  // First pass: respect all rules. Second pass: relax max-shifts (F6) to fill gaps.
+  const gapFillPass = (relaxMaxShifts) => {
+    if (relaxMaxShifts) approved.add("F6");
+    weekDates.forEach(dateStr => {
+      schedule[dateStr].forEach((slot, idx) => {
+        if (slot.empId) return;
+        const cands = getCandidates(slot);
+        // Prefer people with fewest hours who are still under maxHours
+        cands.sort((a, b) => {
+          const aUnder = sh[a.id] < (a.maxHours || 20) ? 1 : 0;
+          const bUnder = sh[b.id] < (b.maxHours || 20) ? 1 : 0;
+          if (bUnder !== aUnder) return bUnder - aUnder;
+          return sh[a.id] - sh[b.id] || Math.random() - 0.5;
+        });
+        if (cands[0]) assign(dateStr, idx, cands[0], slot);
+      });
     });
-  });
+    if (relaxMaxShifts) approved.delete("F6");
+  };
+  gapFillPass(false); // first pass: respect max shifts
+  gapFillPass(true);  // second pass: relax max shifts to fill any remaining gaps
 
   // ── Flexible rule detection ───────────────────────────────────────
   const FLEXIBLE_RULES = [
@@ -1255,7 +1274,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
         daySlots.forEach(slot => {
           if (slot.empId) {
             const emp = employees.find(e => e.id === slot.empId);
-            if (emp && emp.role === "trainee") {
+            if (emp && emp.role === "trainee" && (emp.traineeCumulative || 0) < (rules.trainee?.graduationHours || 30)) {
               traineeHours[emp.id] = (traineeHours[emp.id] || 0) + (slot.hours || 0);
             }
           }
