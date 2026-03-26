@@ -41,7 +41,11 @@ function extractMCInfo(weekData, employees) {
     });
   });
 
-  // Find SLs and determine who had the "break" (fewest shifts or 0 shifts)
+  // Use seeded breakSL if available (seeded weeks use fake empIds so shift counts are 0)
+  // Otherwise compute from actual shift data
+  if (weekData.breakSL !== undefined) {
+    return { mc, empHours, empShifts, breakSL: weekData.breakSL, slBreak: [] };
+  }
   const slEmps = employees.filter(e => e.role === "shift_lead" && e.status === "active");
   const slBreak = slEmps
     .map(e => ({ name: e.name, shifts: empShifts[e.id] || 0, hours: empHours[e.id] || 0 }))
@@ -63,13 +67,18 @@ export function HistoryTab({ employees, savedSchedules, rules }) {
   const mcFreq = {};
   weeks.forEach(w => {
     const info = extractMCInfo(w, employees);
-    [...info.mc.thu.helpers, ...info.mc.sun.helpers].forEach(name => {
+    const allParticipants = [
+      info.mc.thu.leader, info.mc.sun.leader, info.mc.sun.slHelper,
+      ...info.mc.thu.helpers, ...info.mc.sun.helpers,
+    ].filter(Boolean);
+    allParticipants.forEach(name => {
       mcFreq[name] = (mcFreq[name] || 0) + 1;
     });
   });
 
   // Trainee progress (active only)
-  const trainees = employees.filter(e => e.status === "active" && (e.role === "trainee" || (e.traineeCumulative && e.traineeCumulative > 0 && e.role !== "shift_lead")));
+  // Only show actual trainees (role === "trainee"), not graduated regulars
+  const trainees = employees.filter(e => e.status === "active" && e.role === "trainee");
   const graduationHours = rules?.trainee?.graduationHours || 30;
 
   return (
@@ -96,26 +105,65 @@ export function HistoryTab({ employees, savedSchedules, rules }) {
               <tbody>
                 {weeks.map(w => {
                   const info = extractMCInfo(w, employees);
+                  const thuAll = [
+                    info.mc.thu.leader ? { name: info.mc.thu.leader, role: "leader" } : null,
+                    ...info.mc.thu.helpers.map(n => ({ name: n, role: "helper" })),
+                  ].filter(Boolean);
+                  const sunAll = [
+                    info.mc.sun.leader ? { name: info.mc.sun.leader, role: "leader" } : null,
+                    info.mc.sun.slHelper ? { name: info.mc.sun.slHelper, role: "slhelper" } : null,
+                    ...info.mc.sun.helpers.map(n => ({ name: n, role: "helper" })),
+                  ].filter(Boolean);
                   return (
                     <tr key={w.key} style={{ borderBottom: "1px solid #F3F4F6" }}>
-                      <td style={{ padding: "10px 14px", fontWeight: 600, color: "#374151" }}>{formatWeek(w.key)}</td>
+                      <td style={{ padding: "10px 14px", fontWeight: 600, color: "#374151", whiteSpace: "nowrap" }}>{formatWeek(w.key)}</td>
                       <td style={{ padding: "10px 14px" }}>
-                        <span style={{ fontWeight: 700, color: "#7C3AED" }}>{info.mc.thu.leader || "—"}</span>
-                        {info.mc.thu.helpers.length > 0 && (
-                          <span style={{ color: "#9CA3AF" }}> + {info.mc.thu.helpers.join(", ")}</span>
-                        )}
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                          {thuAll.length > 0 ? thuAll.map((p, i) => (
+                            <span key={i} style={{
+                              fontSize: 11, fontWeight: p.role === "leader" ? 700 : 500,
+                              padding: "2px 8px", borderRadius: 6,
+                              background: p.role === "leader" ? "#EDE9FE" : "#F3F4F6",
+                              color: p.role === "leader" ? "#7C3AED" : "#374151",
+                              border: p.role === "leader" ? "1px solid #DDD6FE" : "1px solid #E5E7EB",
+                            }}>
+                              {p.role === "leader" ? "★ " : ""}{p.name}
+                            </span>
+                          )) : <span style={{ color: "#9CA3AF", fontSize: 11 }}>—</span>}
+                        </div>
                       </td>
                       <td style={{ padding: "10px 14px" }}>
-                        <span style={{ fontWeight: 700, color: "#2563EB" }}>{info.mc.sun.leader || "—"}</span>
-                        {info.mc.sun.slHelper && <span style={{ color: "#F59E0B" }}> + {info.mc.sun.slHelper}</span>}
-                        {info.mc.sun.helpers.length > 0 && (
-                          <span style={{ color: "#9CA3AF" }}> + {info.mc.sun.helpers.join(", ")}</span>
-                        )}
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                          {sunAll.length > 0 ? sunAll.map((p, i) => (
+                            <span key={i} style={{
+                              fontSize: 11, fontWeight: p.role === "leader" ? 700 : 500,
+                              padding: "2px 8px", borderRadius: 6,
+                              background: p.role === "leader" ? "#DBEAFE" : p.role === "slhelper" ? "#FEF3C7" : "#F3F4F6",
+                              color: p.role === "leader" ? "#2563EB" : p.role === "slhelper" ? "#B45309" : "#374151",
+                              border: p.role === "leader" ? "1px solid #BFDBFE" : p.role === "slhelper" ? "1px solid #FDE68A" : "1px solid #E5E7EB",
+                            }}>
+                              {p.role === "leader" ? "★ " : p.role === "slhelper" ? "SL " : ""}{p.name}
+                            </span>
+                          )) : <span style={{ color: "#9CA3AF", fontSize: 11 }}>—</span>}
+                        </div>
                       </td>
                       <td style={{ padding: "10px 14px" }}>
-                        {info.breakSL ? (
-                          <span style={{ fontWeight: 600, color: "#DC2626", background: "#FEF2F2", padding: "2px 8px", borderRadius: 6, fontSize: 11 }}>{info.breakSL}</span>
-                        ) : <span style={{ color: "#9CA3AF" }}>None</span>}
+                        {(() => {
+                          // Collect all SL names who MCed this week
+                          const mcedNames = new Set([
+                            info.mc.thu.leader,
+                            info.mc.sun.leader,
+                            info.mc.sun.slHelper,
+                            ...info.mc.thu.helpers,
+                            ...info.mc.sun.helpers,
+                          ].filter(Boolean));
+                          const didntMC = employees
+                            .filter(e => e.role === "shift_lead" && e.status === "active" && !mcedNames.has(e.name));
+                          if (didntMC.length === 0) return <span style={{ color: "#16A34A", fontSize: 11, fontWeight: 600 }}>All SLs cleaned</span>;
+                          return didntMC.map(e => (
+                            <span key={e.id} style={{ fontWeight: 600, color: "#DC2626", background: "#FEF2F2", padding: "2px 8px", borderRadius: 6, fontSize: 11, marginRight: 4, display: "inline-block" }}>{e.name}</span>
+                          ));
+                        })()}
                       </td>
                     </tr>
                   );

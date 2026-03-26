@@ -288,12 +288,15 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   // CANNOT BREAK: No Fri+Sat+Sun all 3 days
   const friSatSunOK = (emp, dateStr) => {
     if (!con("no_fri_sat_sun")) return true;
+    const d2 = new Date(dateStr + "T12:00:00").getDay();
+    // Rule only applies when assigning a weekend day (Fri/Sat/Sun)
+    if (d2 !== 5 && d2 !== 6 && d2 !== 0) return true;
     const overrideKey = dateStr + ":" + emp.id;
     if (availOverrides && availOverrides[overrideKey]) return true;
-    const d2 = new Date(dateStr + "T12:00:00").getDay();
     const hasFri = sd[emp.id].has(weekDates[4]);
     const hasSat = sd[emp.id].has(weekDates[5]);
     const hasSun = sd[emp.id].has(weekDates[6]);
+    // Count how many weekend days they'd have after this assignment
     const wouldHave = (d2 === 5 ? 1 : (hasFri ? 1 : 0)) + (d2 === 6 ? 1 : (hasSat ? 1 : 0)) + (d2 === 0 ? 1 : (hasSun ? 1 : 0));
     return wouldHave < 3;
   };
@@ -394,69 +397,10 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     return cands;
   };
 
-  const pickBest = (cands, slot) => {
-    if (cands.length === 0) return null;
-    const isWS = slot._isWE || (slot._isFri && tm(slot.start) >= 1020);
-    const isTraineeSlot = slot.isTraineeSlot;
-    const isWeekdayEve = !slot._isWE && !slot._isFri && tm(slot.start) >= 1020;
-
-    cands.sort((a, b) => {
-      // 1. Availability overrides always win
-      const aOv = availOverrides?.[slot._dateStr + ":" + a.id] ? 1 : 0;
-      const bOv = availOverrides?.[slot._dateStr + ":" + b.id] ? 1 : 0;
-      if (bOv !== aOv) return bOv - aOv;
-
-      // 2. Guaranteed days
-      const aG = (a.guaranteedDays || []).includes(slot._dayKey) ? 1 : 0;
-      const bG = (b.guaranteedDays || []).includes(slot._dayKey) ? 1 : 0;
-      if (bG !== aG) return bG - aG;
-
-      // 3. For trainee slots: prefer trainees
-      if (isTraineeSlot) {
-        const aT = a.role === "trainee" ? 1 : 0;
-        const bT = b.role === "trainee" ? 1 : 0;
-        if (bT !== aT) return bT - aT;
-      }
-
-      // 4. For Mon-Thu evening (non-trainee slots): prefer trainees LAST (regulars first)
-      //    BUT if this is a trainee slot, we already handled above
-      if (isWeekdayEve && !isTraineeSlot) {
-        const aT = a.role === "trainee" ? 1 : 0;
-        const bT = b.role === "trainee" ? 1 : 0;
-        if (aT !== bT) return aT - bT; // trainees sort to end
-      }
-
-      // 5. For weekend slots: prefer non-trainees (solid people on busy days)
-      if (isWS) {
-        const aT = a.role === "trainee" ? 1 : 0;
-        const bT = b.role === "trainee" ? 1 : 0;
-        if (aT !== bT) return aT - bT; // trainees sort to end
-      }
-
-      // 6. CORE: person with fewest hours so far gets priority (equal distribution)
-      if (sh[a.id] !== sh[b.id]) return sh[a.id] - sh[b.id];
-
-      // 7. Remaining budget (person with more unused budget = more underutilized)
-      const aRemain = a._budget - sc[a.id];
-      const bRemain = b._budget - sc[b.id];
-      if (bRemain !== aRemain) return bRemain - aRemain;
-
-      // 8. For weekends, prefer people with fewer weekend shifts already
-      if (isWS) {
-        const aWEc = [4,5,6].reduce((c, wi) => c + (sd[a.id].has(weekDates[wi]) ? 1 : 0), 0);
-        const bWEc = [4,5,6].reduce((c, wi) => c + (sd[b.id].has(weekDates[wi]) ? 1 : 0), 0);
-        if (aWEc !== bWEc) return aWEc - bWEc;
-      }
-
-      return Math.random() - 0.5;
-    });
-    return cands[0];
-  };
-
   const assignSlotInSchedule = (slot, emp) => {
     const dateStr = slot._dateStr;
     const idx = schedule[dateStr].findIndex(s =>
-      s.type === slot.type && s.start === slot.start && s.end === slot.end && s.empId === null && s.order === slot.order
+      s.type === slot.type && s.order === slot.order && !s.empId
     );
     if (idx >= 0) assign(dateStr, idx, emp, slot);
   };
@@ -886,6 +830,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
             if (!schedule[dateStr].some((s, i) => i !== si && s.empId === over.id)) sd[over.id].delete(dateStr);
             if (slot.isMC) mcCount[over.id] = Math.max(0, mcCount[over.id] - 1);
             if (slot._isWE || (slot._isFri && tm(slot.start) >= 1020)) weCount[over.id] = Math.max(0, weCount[over.id] - 1);
+            if (nightMap[dateStr]) nightMap[dateStr].delete(over.id);
             assign(dateStr, si, under, { ...slot, _isWE: slot._isWE, _isFri: slot._isFri, _dayKey: slot._dayKey });
             swapped = true; balanceChanged = true;
             break outer;
@@ -1218,7 +1163,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
               ...(graduated && emp.role === "trainee" ? {
                 role: "regular",
                 maxShifts: 4, minShifts: 3, maxHours: 20, minHours: 12,
-                tags: [...(emp.tags || []), "can_swirl", "can_mc"],
+                tags: [...new Set([...(emp.tags || []), "can_swirl", "can_mc"])],
                 notes: (emp.notes || "") + ` Graduated from trainee at ${newCumulative.toFixed(1)}h.`,
               } : {}),
             };
