@@ -496,9 +496,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       // MC slots for the cleaning crew
       // Thu MC: 1 SL leader + 2 reg helpers = 3 total (owner helps in person)
       // Sun MC: 1 SL leader + 1 SL helper + 2 reg helpers = 4 total (no outside help)
-      slots.push({ type: "mc_leader", label: "MC Leader (Eve SL)", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: true, isMC: true, order: 20 });
+      slots.push({ type: "mc_leader", label: "MC Lead", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: true, isMC: true, order: 20 });
       if (isSun) {
-        slots.push({ type: "mc_sl_helper", label: "MC Helper (SL)", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: true, isMC: true, order: 21 });
+        slots.push({ type: "mc_sl_helper", label: "MC Crew (SL)", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: true, isMC: true, order: 21 });
       }
       for (let i = 0; i < 2; i++) { slots.push({ type: "mc_helper", label: "MC Helper", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: false, isMC: true, order: 22 + i }); }
 
@@ -534,7 +534,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         const isFriSatNight = isFri || isSat;
         const needsSL = i === 0 || (i === 1 && isFriSatNight);
         const slotType = i === 0 ? "evening_sl" : (i === 1 && isFriSatNight ? "evening_sl2" : "evening");
-        const slotLabel = i === 0 ? "Evening SL" : (i === 1 && isFriSatNight ? "Evening SL 2" : "Evening");
+        const slotLabel = i === 0 ? "Evening SL" : (i === 1 && isFriSatNight ? "Evening SL" : "Evening");
         slots.push({
           type: slotType, label: slotLabel,
           start: eveS, end: eveE, hours: hrs(eveS, eveE),
@@ -638,6 +638,16 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         approved.add("F7"); approved.add("F8");
         cands = getCandidates(slot, c => c.filter(e => e.role === "shift_lead"));
         approved.delete("F7"); approved.delete("F8");
+        cands.sort(mcSortFn);
+      }
+      // If still no candidates, relax all soft rules — MC crew must be filled
+      if (cands.length === 0) {
+        const sunDate = slot._dateStr;
+        cands = sls.filter(e => {
+          if (!isAvail(e, sunDate, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
+          if (sd[e.id].has(sunDate)) return false; // truly no doubles
+          return true;
+        });
         cands.sort(mcSortFn);
       }
       if (cands[0]) { assignSlotInSchedule(slot, cands[0]); continue; }
@@ -1654,14 +1664,15 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
     setStep("review");
   };
 
-  const handleGenerate = (breaks) => {
+  const handleGenerate = (breaks, maxOverridesOverride) => {
     const useBreaks = breaks || approvedBreaks;
+    const useMaxOverrides = maxOverridesOverride !== undefined ? maxOverridesOverride : weeklyMaxOverrides;
     setGenerating(true); setStep("result"); setPendingApprovals(null);
     const ds = dayStaffing || initDayStaffing(weekDates);
     setTimeout(() => {
       try {
         const allTOs = [...(timeOffs || []), ...weeklyTOs];
-        const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs, ds, availOverrides, weeklyMaxOverrides, useBreaks, savedSchedules, priorityRanking);
+        const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs, ds, availOverrides, useMaxOverrides, useBreaks, savedSchedules, priorityRanking);
         // If there are unfilled slots that need rule breaks, surface them for approval
         if (r.rulesNeeded?.length > 0) {
           setPendingApprovals(r.rulesNeeded);
@@ -1693,7 +1704,8 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
     setWeeklyMaxOverrides(overrides);
     savePriorityRanking({ sl: slRanking || [], reg: regRanking || [], leftovers: leftoverIds || [] });
     setShowNuance(false);
-    setTimeout(() => handleGenerate(approvedBreaks), 50);
+    // Pass overrides directly — React state update is async so weeklyMaxOverrides would be stale
+    setTimeout(() => handleGenerate(approvedBreaks, overrides), 50);
   };
 
   const handleApproveBreaks = (approvedIds) => {
@@ -2164,9 +2176,9 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                     evening_sl: { bg: "#EF4444", text: "#fff", label: "Shift Lead" },
                     evening_sl2: { bg: "#EF4444", text: "#fff", label: "Shift Lead" },
                     evening: { bg: "#A855F7", text: "#fff", label: "Night Shift" },
-                    mc_leader: { bg: "#22C55E", text: "#fff", label: "Shiftlead/Machineclean" },
-                    mc_sl_helper: { bg: "#22C55E", text: "#fff", label: "Machineclean" },
-                    mc_helper: { bg: "#22C55E", text: "#fff", label: "Machineclean" },
+                    mc_leader: { bg: "#22C55E", text: "#fff", label: "MC Lead" },
+                    mc_sl_helper: { bg: "#22C55E", text: "#fff", label: "MC Crew" },
+                    mc_helper: { bg: "#22C55E", text: "#fff", label: "MC Crew" },
                   };
                   const weekendDayColor = { bg: "#EAB308", text: "#fff", label: "Weekend Day" };
                   const roleCircle = { shift_lead: "#EF4444", regular: "#3B82F6", trainee: "#22C3E6" };
@@ -2435,7 +2447,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <button onClick={handleAccept} style={{ padding: "8px 24px", borderRadius: 8, border: "none", background: "#22C55E", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: font }}>{"\u2713"} Save</button>
                 <button onClick={handleReject} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: "#4A3F2F", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: font }}>{"\ud83d\udd04"} Regenerate</button>
-                <button onClick={() => { setDraft(null); setStep("timeoff"); setNotes([]); setWeeklyMaxOverrides({}); }} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #D1D5DB", background: "#fff", color: "#6B7280", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: font }}>{"\u2715"} Start Over</button>
+                <button onClick={() => { setDraft(null); setStep("timeoff"); setNotes([]); setWeeklyMaxOverrides({}); setDayStaffing(null); }} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #D1D5DB", background: "#fff", color: "#6B7280", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: font }}>{"\u2715"} Start Over</button>
                 <div style={{ flex: 1 }} />
                 {Object.keys(availOverrides).length > 0 && (
                   <span style={{ fontSize: 10, color: "#16A34A", fontWeight: 600, padding: "4px 8px", background: "#F0FDF4", borderRadius: 6 }}>{"\u2713"} {Object.keys(availOverrides).length} override{Object.keys(availOverrides).length > 1 ? "s" : ""}</span>
