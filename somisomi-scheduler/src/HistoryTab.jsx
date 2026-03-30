@@ -119,32 +119,40 @@ export function HistoryTab({ employees, savedSchedules, rules }) {
                       <td style={{ padding: "10px 14px", fontWeight: 600, color: "#374151", whiteSpace: "nowrap" }}>{formatWeek(w.key)}</td>
                       <td style={{ padding: "10px 14px" }}>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                          {thuAll.length > 0 ? thuAll.map((p, i) => (
-                            <span key={i} style={{
-                              fontSize: 11, fontWeight: p.role === "leader" ? 700 : 500,
-                              padding: "2px 8px", borderRadius: 6,
-                              background: p.role === "leader" ? "#EDE9FE" : "#F3F4F6",
-                              color: p.role === "leader" ? "#7C3AED" : "#374151",
-                              border: p.role === "leader" ? "1px solid #DDD6FE" : "1px solid #E5E7EB",
-                            }}>
-                              {p.role === "leader" ? "★ " : ""}{p.name}
-                            </span>
-                          )) : <span style={{ color: "#9CA3AF", fontSize: 11 }}>—</span>}
+                          {thuAll.length > 0 ? thuAll.map((p, i) => {
+                            const isLeader = p.role === "leader";
+                            const isSLHelper = p.role === "slhelper";
+                            return (
+                              <span key={i} style={{
+                                fontSize: 11, fontWeight: isLeader ? 700 : 500,
+                                padding: "2px 8px", borderRadius: 6,
+                                background: isLeader ? "#EDE9FE" : isSLHelper ? "#FEF3C7" : "#F3F4F6",
+                                color: isLeader ? "#7C3AED" : isSLHelper ? "#B45309" : "#374151",
+                                border: isLeader ? "1px solid #DDD6FE" : isSLHelper ? "1px solid #FDE68A" : "1px solid #E5E7EB",
+                              }}>
+                                {isLeader ? "★ " : ""}{p.name}
+                              </span>
+                            );
+                          }) : <span style={{ color: "#9CA3AF", fontSize: 11 }}>—</span>}
                         </div>
                       </td>
                       <td style={{ padding: "10px 14px" }}>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                          {sunAll.length > 0 ? sunAll.map((p, i) => (
-                            <span key={i} style={{
-                              fontSize: 11, fontWeight: p.role === "leader" ? 700 : 500,
-                              padding: "2px 8px", borderRadius: 6,
-                              background: p.role === "leader" ? "#DBEAFE" : p.role === "slhelper" ? "#FEF3C7" : "#F3F4F6",
-                              color: p.role === "leader" ? "#2563EB" : p.role === "slhelper" ? "#B45309" : "#374151",
-                              border: p.role === "leader" ? "1px solid #BFDBFE" : p.role === "slhelper" ? "1px solid #FDE68A" : "1px solid #E5E7EB",
-                            }}>
-                              {p.role === "leader" ? "★ " : p.role === "slhelper" ? "SL " : ""}{p.name}
-                            </span>
-                          )) : <span style={{ color: "#9CA3AF", fontSize: 11 }}>—</span>}
+                          {sunAll.length > 0 ? sunAll.map((p, i) => {
+                            const isLeader = p.role === "leader";
+                            const isSLHelper = p.role === "slhelper";
+                            return (
+                              <span key={i} style={{
+                                fontSize: 11, fontWeight: isLeader ? 700 : 500,
+                                padding: "2px 8px", borderRadius: 6,
+                                background: isLeader ? "#EDE9FE" : isSLHelper ? "#FEF3C7" : "#F3F4F6",
+                                color: isLeader ? "#7C3AED" : isSLHelper ? "#B45309" : "#374151",
+                                border: isLeader ? "1px solid #DDD6FE" : isSLHelper ? "1px solid #FDE68A" : "1px solid #E5E7EB",
+                              }}>
+                                {isLeader ? "★ " : ""}{p.name}
+                              </span>
+                            );
+                          }) : <span style={{ color: "#9CA3AF", fontSize: 11 }}>—</span>}
                         </div>
                       </td>
                       <td style={{ padding: "10px 14px" }}>

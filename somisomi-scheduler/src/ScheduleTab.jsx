@@ -2263,8 +2263,8 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                     for (let i = 0; i < 7; i++) { const dd = new Date(d); dd.setDate(d.getDate() + i); dates.push(dd.toISOString().split("T")[0]); }
                   } catch { return null; }
                   const thuDate = dates[3], sunDate = dates[6];
-                  const thuMC = { leader: null, helpers: [] };
-                  const sunMC = { leader: null, helpers: [] };
+                  const thuMC = { leader: null, slHelpers: [], helpers: [] };
+                  const sunMC = { leader: null, slHelpers: [], helpers: [] };
                   const allMCNames = new Set();
                   
                   [thuDate, sunDate].forEach(dt => {
@@ -2276,6 +2276,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                       allMCNames.add(name);
                       const mc = isThu ? thuMC : sunMC;
                       if (slot.type === "mc_leader") mc.leader = name;
+                      else if (slot.type === "mc_sl_helper") mc.slHelpers.push(name);
                       else mc.helpers.push(name);
                     });
                   });
@@ -2298,18 +2299,20 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                       <td style={{ padding: "8px 12px", fontWeight: 600, color: "#374151", whiteSpace: "nowrap" }}>{fmtWeek}</td>
                       <td style={{ padding: "8px 12px" }}>
                         {thuMC.leader ? (
-                          <>
-                            <span style={{ fontWeight: 700, color: "#7C3AED" }}>{thuMC.leader}</span>
-                            {thuMC.helpers.length > 0 && <span style={{ color: "#9CA3AF" }}> + {thuMC.helpers.join(", ")}</span>}
-                          </>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6, background: "#EDE9FE", color: "#7C3AED", border: "1px solid #DDD6FE" }}>★ {thuMC.leader}</span>
+                            {thuMC.slHelpers.map((n, i) => <span key={i} style={{ fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 6, background: "#FEF3C7", color: "#B45309", border: "1px solid #FDE68A" }}>{n}</span>)}
+                            {thuMC.helpers.map((n, i) => <span key={i} style={{ fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 6, background: "#F3F4F6", color: "#374151", border: "1px solid #E5E7EB" }}>{n}</span>)}
+                          </div>
                         ) : <span style={{ color: "#D1D5DB" }}>—</span>}
                       </td>
                       <td style={{ padding: "8px 12px" }}>
                         {sunMC.leader ? (
-                          <>
-                            <span style={{ fontWeight: 700, color: "#2563EB" }}>{sunMC.leader}</span>
-                            {sunMC.helpers.length > 0 && <span style={{ color: "#9CA3AF" }}> + {sunMC.helpers.join(", ")}</span>}
-                          </>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6, background: "#EDE9FE", color: "#7C3AED", border: "1px solid #DDD6FE" }}>★ {sunMC.leader}</span>
+                            {sunMC.slHelpers.map((n, i) => <span key={i} style={{ fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 6, background: "#FEF3C7", color: "#B45309", border: "1px solid #FDE68A" }}>{n}</span>)}
+                            {sunMC.helpers.map((n, i) => <span key={i} style={{ fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 6, background: "#F3F4F6", color: "#374151", border: "1px solid #E5E7EB" }}>{n}</span>)}
+                          </div>
                         ) : <span style={{ color: "#D1D5DB" }}>—</span>}
                       </td>
                       <td style={{ padding: "8px 12px" }}>
