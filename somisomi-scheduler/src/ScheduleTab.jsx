@@ -359,6 +359,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   const assign = (dateStr, slotIndex, emp, slot) => {
     // Hard cap: never exceed _effMaxShifts regardless of which phase is assigning
     if (sc[emp.id] >= emp._effMaxShifts) return;
+    // ABSOLUTE: never assign someone to two shifts on the same day
+    if (sd[emp.id].has(dateStr)) return;
     schedule[dateStr][slotIndex] = { ...slot, empId: emp.id, empName: emp.name, empRole: emp.role };
     sc[emp.id]++; sh[emp.id] += slot.hours; sd[emp.id].add(dateStr);
     if (slot.isMC) mcCount[emp.id]++;
@@ -509,27 +511,25 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       // Thu: SL already covered by MC leader (Crystal). Extra floor slots = evening count - 3 MC slots.
       // Sun: 2 SL evening slots + regular evening slots for floor workers.
       if (isSun) {
-        // Sunday: MC crew is 4 people (mc_leader + mc_sl_helper + 2 mc_helpers)
-        // staffing.evening = TOTAL evening people including MC crew
-        // So floor workers = staffing.evening - 4 MC crew members
-        // MC crew = 4 fixed (mc_leader + mc_sl_helper + 2 mc_helpers)
-        // staffing.evening = total evening people on Sunday including MC crew
-        // Floor slots = total - 4. First floor slot is SL, rest are regular.
+        // Sunday floor: MC crew stays 6-11:45pm, floor person leaves early 6-10:30pm
         const MC_CREW_SIZE = 4;
         const floorTotal = Math.max(0, (staffing.evening || 5) - MC_CREW_SIZE);
+        const floorEnd = T.weekdayEvening?.end || "22:30"; // 10:30pm early leave
         for (let i = 0; i < floorTotal; i++) {
-          // Only 1 SL slot on floor (i=0). All others are regular evening slots.
           const slotType = i === 0 ? "evening_sl" : "evening";
-          const slotLabel = i === 0 ? "Evening SL" : "Evening";
-          const slOnly = i === 0; // only first floor slot is SL-required
-          slots.push({ type: slotType, label: slotLabel, start: eveS, end: eveE, hours: hrs(eveS, eveE), slOnly, noTrainee: true, isMC: false, order: 30 + i });
+          const slotLabel = i === 0 ? "Evening SL (early)" : "Evening (early)";
+          const slOnly = i === 0;
+          slots.push({ type: slotType, label: slotLabel, start: eveS, end: floorEnd, hours: hrs(eveS, floorEnd), slOnly, noTrainee: true, isMC: false, order: 30 + i });
         }
       } else {
-        // Thu: extra floor evening slots beyond MC crew
-        const baseEvening = 3; // mc_leader + 2 mc_helpers = 3 on MC
+        // Thu floor: 1 trainee preferred, leaves early at 10:30pm (before MC cleaning starts)
+        // MC crew = Crystal + 2 reg helpers (11:45pm). Floor person leaves at 10:30pm.
+        const baseEvening = 3; // mc_leader + 2 mc_helpers
         const extraEvening = (staffing.evening || baseEvening) - baseEvening;
+        const floorEnd = T.weekdayEvening?.end || "22:30"; // 10:30pm
         for (let i = 0; i < extraEvening; i++) {
-          slots.push({ type: "evening", label: "Evening", start: eveS, end: eveE, hours: hrs(eveS, eveE), slOnly: false, isMC: false, isTraineeSlot: i === 0, order: 30 + i });
+          // Thursday floor slot: trainee preferred, early leave
+          slots.push({ type: "evening", label: "Evening (early)", start: eveS, end: floorEnd, hours: hrs(eveS, floorEnd), slOnly: false, isMC: false, isTraineeSlot: true, order: 30 + i });
         }
       }
     } else {
@@ -721,11 +721,12 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     // No trainees (including recently graduated) on important evenings
     if (importantEvenings instanceof Set && importantEvenings.has(dateStr)) return;
 
-    // Find mid shift slot first
+    // Find preferred trainee slot:
+    // Priority 1: dedicated isTraineeSlot (mid shift OR Thu floor "Evening (early)")
     let targetSlot = null;
     schedule[dateStr].forEach((slot, idx) => {
       if (slot.empId || slot.slOnly || slot.isMC) return;
-      if (slot.type === "mid" && slot.isTraineeSlot) targetSlot = { slot, idx };
+      if (slot.isTraineeSlot) targetSlot = { slot, idx }; // catches both mid and Thu floor
     });
 
     // If no mid slot, find last evening slot (weekday) or 5th evening slot (weekend)
@@ -1186,44 +1187,51 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   fillEmptySlots((emps, dateStr, slot) => getCandidates(slot));
   SOFT_RULES.forEach(r => approved.delete(r));
 
-  // Pass 4: Bypass getCandidates — only hard rules: no doubles, availability, role match
-  // Also override _effMaxShifts caps — anyone with room in their real maxShifts can help
+  // Pass 4: Use real maxShifts, bypass soft rules, availability required
   SOFT_RULES.forEach(r => approved.add(r));
   fillEmptySlots((emps, dateStr, slot) =>
     emps.filter(emp => {
-      if (sd[emp.id].has(dateStr)) return false; // no doubles
       if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
       if (slot.slOnly && emp.role !== "shift_lead") return false;
       if (slot.isMC && emp.role === "trainee") return false;
       if (slot.isImportant && emp.role === "trainee") return false;
-      // Use real maxShifts not _effMaxShifts — someone with max=2 can still take a 2nd if needed
-      if (sc[emp.id] >= emp.maxShifts) return false;
+      if (sc[emp.id] >= emp.maxShifts) return false; // use real maxShifts
       return true;
     })
   );
   SOFT_RULES.forEach(r => approved.delete(r));
 
-  // Pass 5: Ignore shift caps entirely — only no doubles + role match
-  fillEmptySlots((emps, dateStr, slot) =>
-    emps.filter(emp => {
-      if (sd[emp.id].has(dateStr)) return false; // no doubles
-      if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
-      if (slot.slOnly && emp.role !== "shift_lead") return false;
+  // Pass 5: Ignore shift caps. If slOnly slot has no SL available, allow strong regulars.
+  SOFT_RULES.forEach(r => approved.add(r));
+  fillEmptySlots((emps, dateStr, slot) => {
+    const available = emps.filter(emp =>
+      isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)
+    );
+    // For SL-only slots: try SLs first, fall back to non-trainees if no SL available
+    if (slot.slOnly) {
+      const slCands = available.filter(e => e.role === "shift_lead");
+      if (slCands.length > 0) return slCands;
+      // No SL available — use any non-trainee (better than empty)
+      return available.filter(e => e.role !== "trainee" || isEffectivelyGraduated(e));
+    }
+    return available.filter(emp => {
       if (slot.isMC && emp.role === "trainee") return false;
       return true;
-    })
-  );
+    });
+  });
+  SOFT_RULES.forEach(r => approved.delete(r));
 
-  // Pass 6: Ignore availability too — only no doubles + role match
-  // This handles edge cases where everyone's marked unavailable but we still need coverage
-  fillEmptySlots((emps, dateStr, slot) =>
-    emps.filter(emp => {
-      if (sd[emp.id].has(dateStr)) return false; // still no doubles — can't work two shifts same day
-      if (slot.slOnly && emp.role !== "shift_lead") return false;
-      if (slot.isMC && emp.role === "trainee") return false;
-      return true;
-    })
-  );
+  // Pass 6: Ignore availability entirely — no doubles enforced inside assign()
+  // Absolute last resort — a slot being empty is never acceptable
+  fillEmptySlots((emps, dateStr, slot) => {
+    if (slot.slOnly) {
+      const slCands = emps.filter(e => e.role === "shift_lead");
+      if (slCands.length > 0) return slCands;
+      return emps.filter(e => e.role !== "trainee" || isEffectivelyGraduated(e));
+    }
+    if (slot.isMC) return emps.filter(e => e.role !== "trainee" || isEffectivelyGraduated(e));
+    return emps;
+  });
 
   // ── Flexible rule detection ───────────────────────────────────────
   const FLEXIBLE_RULES = [
