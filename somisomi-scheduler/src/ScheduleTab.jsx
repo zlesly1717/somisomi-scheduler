@@ -386,6 +386,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (sd[emp.id].has(dateStr)) return false; // no doubles
       if (!slCheck(slot, emp)) return false; // SL-only slots need SL
       if (slot.noTrainee && isTrainee(emp)) return false; // no trainees on first 4 weekend night slots
+      if (slot.isImportant && isTrainee(emp)) return false; // no trainees on important evenings
       if (slot.isMC && isTrainee(emp)) return false; // no trainees on MC
       if (slot.isMC && (emp.tags || []).includes("mc_exempt")) return false; // mc_exempt employees never MC
       if (con("no_mc_twice") && slot.isMC && mcCount[emp.id] >= 1) return false; // no MC twice
@@ -717,6 +718,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     // Check if trainee already placed this day
     const traineeAlreadyToday = schedule[dateStr].some(s => s.empId && isTrainee(active.find(e => e.id === s.empId)));
     if (traineeAlreadyToday) return;
+    // No trainees on important evenings
+    if (importantEvenings instanceof Set && importantEvenings.has(dateStr)) return;
 
     // Find mid shift slot first
     let targetSlot = null;
