@@ -106,10 +106,10 @@ function buildMCHistorySeed() {
       breakSL: "Crystal Guel", savedAt: "2026-04-05T20:00:00Z",
     },
     { key: "2026-04-06", // Apr 6-12
-      // Thu Apr 10: Crystal SL (back from break) + 2 reg helpers
-      // Sun Apr 12: Chan SL + Zoe SL helper + 2 reg helpers. Spencer on break.
+      // Thu Apr 10: Crystal SL + 2 reg helpers
+      // Sun Apr 12: 3 SLs (Chan leader + Zoe + Kaitlyn) + 1 reg helper. Spencer on break.
       thu: { leader: "Crystal Guel", helpers: ["Sam Castillo", "Kennedy Bean"] },
-      sun: { leader: "Chan In", slHelper: "Zoe Rains", helpers: ["Susan Thai", "Gwen Ursua"] },
+      sun: { leader: "Chan In", slHelper: "Zoe Rains", helpers: ["Kaitlyn Trevino", "Susan Thai"] },
       breakSL: "Spencer Losch", savedAt: "2026-04-12T20:00:00Z",
     },
   ];

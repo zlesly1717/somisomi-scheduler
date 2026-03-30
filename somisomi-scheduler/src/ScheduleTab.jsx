@@ -725,13 +725,24 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     // MC helpers: ALL regulars rotate (except mc_exempt and trainees), prefer those who haven't cleaned recently
     // If no reg helpers available, fall back to SLs to keep 4-person MC crew (never drop below 4)
     if (slot.isMC) {
+      const isSunMC = slot._dow === 0;
       const nonSLT = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee" && !(e.tags || []).includes("mc_exempt"));
       if (nonSLT.length > 0) {
         cands = nonSLT;
       } else {
         // No reg helpers available — use SL fallback to keep crew at 4
+        // On Sunday this is preferred anyway (3 SLs better than 2 SLs + gap)
         const slFallback = cands.filter(e => e.role === "shift_lead");
         if (slFallback.length > 0) cands = slFallback;
+      }
+      // On Sunday, if only 1 reg is available but SLs are also available,
+      // prefer filling with SLs to get 3 SLs total rather than 2 SLs + 1 reg
+      if (isSunMC) {
+        const sunSLsAlreadyOnMC = schedule[slot._dateStr]?.filter(s => s.isMC && s.empId && (s.type === "mc_leader" || s.type === "mc_sl_helper")).length || 0;
+        if (sunSLsAlreadyOnMC < 2) {
+          const slAvail = cands.filter(e => e.role === "shift_lead");
+          if (slAvail.length > 0) cands = slAvail;
+        }
       }
       // Sort by MC rotation: fewest MC times first, then longest since last MC
       // Strongly deprioritize anyone who MC'd last week (no back-to-back)
