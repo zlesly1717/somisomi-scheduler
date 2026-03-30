@@ -491,7 +491,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     for (let i = 0; i < (staffing.day || 2); i++) {
       slots.push({ type: i === 0 ? "day_lead" : "day", label: i === 0 ? "Day Lead (SL)" : "Day / 2nd Day", start: dayS, end: dayE, hours: hrs(dayS, dayE), slOnly: i === 0, order: i });
     }
-    if (staffing.mid > 0) { for (let i = 0; i < staffing.mid; i++) { slots.push({ type: "mid", label: "Mid Shift", start: midS, end: midE, hours: hrs(midS, midE), slOnly: false, order: 10 + i }); } }
+    if (staffing.mid > 0) { for (let i = 0; i < staffing.mid; i++) { slots.push({ type: "mid", label: "Mid Shift", start: midS, end: midE, hours: hrs(midS, midE), slOnly: false, isTraineeSlot: true, order: 10 + i }); } }
     if (isMC) {
       // MC slots for the cleaning crew
       // Thu MC: 1 SL leader + 2 reg helpers = 3 total (owner helps in person)
@@ -689,45 +689,66 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   }
 
   // ── STEP 3: Place trainees on Mon-Thu evenings ─────────────────────
-  // 1 trainee per day. Thu has a dedicated isTraineeSlot. Mon-Wed take the last evening slot.
-  // Place BEFORE regulars so trainees don't get squeezed out.
+  // ── STEP 3: Place trainees ────────────────────────────────────────
+  // Rules:
+  // - Max 1 trainee per day, any day of the week
+  // - Weekdays (Mon-Thu): place on mid shift (3-7pm) if exists, else last evening slot
+  // - Weekends (Fri/Sat/Sun): place on mid shift if exists, else as 5th+ person on evening
+  // - Spread across days — don't put same trainee on consecutive days
+  // - Max 1 trainee per weekend day total
 
-  const availTrainees = traineeEmps.filter(e => e._budget > 0); // only non-graduated trainees
-
-  // Thu trainee slot first (dedicated)
-  weekDates.forEach(dateStr => {
-    schedule[dateStr].forEach((slot, idx) => {
-      if (slot.empId || !slot.isTraineeSlot) return;
-      let cands = getCandidates(slot).filter(e => e.role === "trainee");
-      cands.sort((a, b) => sh[a.id] - sh[b.id] || Math.random() - 0.5);
-      if (cands[0]) assign(dateStr, idx, cands[0], slot);
-    });
-  });
-
-  // Mon/Tue/Wed: assign trainee to last unfilled evening slot
-  // Rotate trainees across days — don't put same trainee on consecutive days
+  const availTrainees = traineeEmps.filter(e => e._budget > 0);
   const traineeQueue = [...availTrainees].sort((a, b) => sh[a.id] - sh[b.id]);
-  let lastPlacedTraineeId = null; // track who worked yesterday to avoid consecutive days
-  for (let di = 0; di < 3; di++) { // Mon=0, Tue=1, Wed=2
-    const dateStr = weekDates[di];
-    // Find unfilled evening slots
-    const eveSlots = [];
-    schedule[dateStr].forEach((slot, idx) => {
-      if (slot.empId || tm(slot.start) < 1020 || slot.isMC || slot.slOnly) return;
-      eveSlots.push({ slot, idx });
-    });
-    if (eveSlots.length === 0) { lastPlacedTraineeId = null; continue; }
-    const targetSlot = eveSlots[eveSlots.length - 1]; // last evening slot
+  let lastPlacedTraineeId = null;
 
-    // Try non-consecutive first (skip trainee who worked yesterday)
+  const tryPlaceTrainee = (dateStr, dayIndex) => {
+    // Find the best trainee slot for this day:
+    // Priority 1: mid shift (isTraineeSlot + type=mid)
+    // Priority 2: last evening slot (weekday) or 5th+ evening slot (weekend)
+    const dow = new Date(dateStr + "T12:00:00").getDay();
+    const isWeekend = dow === 0 || dow === 5 || dow === 6;
+
+    // Check if trainee already placed this day
+    const traineeAlreadyToday = schedule[dateStr].some(s => s.empId && isTrainee(active.find(e => e.id === s.empId)));
+    if (traineeAlreadyToday) return;
+
+    // Find mid shift slot first
+    let targetSlot = null;
+    schedule[dateStr].forEach((slot, idx) => {
+      if (slot.empId || slot.slOnly || slot.isMC) return;
+      if (slot.type === "mid" && slot.isTraineeSlot) targetSlot = { slot, idx };
+    });
+
+    // If no mid slot, find last evening slot (weekday) or 5th evening slot (weekend)
+    if (!targetSlot) {
+      const eveSlots = [];
+      schedule[dateStr].forEach((slot, idx) => {
+        if (slot.empId || slot.slOnly || slot.isMC || tm(slot.start) < 1020) return;
+        eveSlots.push({ slot, idx });
+      });
+      if (isWeekend) {
+        // Weekend: only place trainee as 5th+ person — count already-assigned evening people
+        const assignedEve = schedule[dateStr].filter(s => s.empId && tm(s.start) >= 1020).length;
+        if (assignedEve >= 4 && eveSlots.length > 0) {
+          targetSlot = eveSlots[eveSlots.length - 1];
+        }
+      } else {
+        // Weekday: last evening slot
+        if (eveSlots.length > 0) targetSlot = eveSlots[eveSlots.length - 1];
+      }
+    }
+
+    if (!targetSlot) return;
+
+    // Try placing a trainee, prefer non-consecutive
     let placed = false;
-    for (const skipConsec of [true, false]) { // first pass: skip consecutive; second: allow
+    for (const skipConsec of [true, false]) {
       for (const trainee of traineeQueue) {
-        if (skipConsec && trainee.id === lastPlacedTraineeId) continue; // prefer rotation
+        if (skipConsec && trainee.id === lastPlacedTraineeId) continue;
         if (sd[trainee.id].has(dateStr)) continue;
         if (!traineeOK(trainee, dateStr)) continue;
         if (!isAvail(trainee, dateStr, targetSlot.slot.start, targetSlot.slot.end, weeklyTimeOffs, availOverrides)) continue;
-        if (!consecOK(trainee, di)) continue;
+        if (!consecOK(trainee, dayIndex)) continue;
         if (sc[trainee.id] >= trainee._effMaxShifts) continue;
         assign(dateStr, targetSlot.idx, trainee, targetSlot.slot);
         lastPlacedTraineeId = trainee.id;
@@ -737,8 +758,11 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (placed) break;
     }
     if (!placed) lastPlacedTraineeId = null;
-    traineeQueue.sort((a, b) => sh[a.id] - sh[b.id]); // re-sort after each placement
-  }
+    traineeQueue.sort((a, b) => sh[a.id] - sh[b.id]);
+  };
+
+  // Process all days Mon-Sun in order
+  weekDates.forEach((dateStr, di) => tryPlaceTrainee(dateStr, di));
 
   // ── STEP 4: Place regulars on all remaining slots ──────────────────
   // Process order: MC helpers → Weekend evening → Weekend day → Fri → Mid → Weekday 2nd day → Weekday evening
@@ -814,26 +838,30 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         return aLastMC.localeCompare(bLastMC); // earlier = longer ago = pick first
       });
     }
-    // Weekend/Fri evening: slots 1+2 are slOnly (handled in Step 2 by evening_sl/evening_sl2)
-    // Trainees on weekends: max 1 per shift, only as 5th+ person (slot order >= 24)
+    // Weekend/Fri evening: trainees only if shift already has 4 people (they become the 5th)
+    // Max 1 trainee per shift period. No trainees on weekend day shifts.
     else if (isWeekendSlot && tm(slot.start) >= 1020) {
       const dow3 = new Date(dateStr + "T12:00:00").getDay();
       const isWeekendNight = dow3 === 5 || dow3 === 6;
-      // Count trainees already assigned this day for the evening period
+      // Count people already assigned to the evening period this day
+      const eveningAssigned = schedule[dateStr].filter(s =>
+        s.empId && tm(s.start) >= 1020
+      ).length;
       const traineesThisEvening = schedule[dateStr].filter(s =>
         s.empId && isTrainee(active.find(e => e.id === s.empId)) && tm(s.start) >= 1020
       ).length;
-      const alreadyHasTrainee = traineesThisEvening > 0;
-      // Trainees only allowed as 5th+ person AND only if no trainee already on this shift
-      const isFifthSlot = slot.order >= 24;
-      const traineeAllowed = isFifthSlot && !alreadyHasTrainee;
+      // Trainee allowed only if: 4+ already assigned (they'd be 5th+) AND no trainee yet this shift
+      const traineeAllowed = eveningAssigned >= 4 && traineesThisEvening === 0;
 
       if (isWeekendNight && slot.type === "evening") {
         // No SLs on regular evening slots
         const noSL = cands.filter(e => e.role !== "shift_lead");
         if (noSL.length > 0) cands = noSL;
-        // Block trainees unless 5th slot and no trainee already scheduled
-        if (!traineeAllowed) {
+        // Prefer trainee if 5th slot opportunity — actively pick trainee when allowed
+        if (traineeAllowed) {
+          const traineeFirst = cands.filter(e => isTrainee(e));
+          if (traineeFirst.length > 0) cands = traineeFirst; // prioritize trainee for this slot
+        } else {
           const noT = cands.filter(e => !isTrainee(e));
           if (noT.length > 0) cands = noT;
         }
@@ -963,16 +991,18 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         const dow = new Date(dateStr + "T12:00:00").getDay();
         const isWeekday = dow >= 1 && dow <= 4; // Mon-Thu
         const isWeekend = dow === 0 || dow === 5 || dow === 6;
-        const canTraineeFill = samePeriod.length >= 4 || (isWeekday && isEve);
 
+        // Weekend rule: trainee only if 4+ people already on the shift AND no trainee yet
+        if (isWeekend && isEve) {
+          const alreadyFilled = samePeriod.length;
+          // Max 1 trainee per day on weekends
+          const traineeAlreadyToday = schedule[dateStr].some(s => s.empId && isTrainee(active.find(e => e.id === s.empId)));
+          if (alreadyFilled < 4 || traineeAlreadyToday) return;
+        }
+
+        const canTraineeFill = samePeriod.length >= 4 || (isWeekday && isEve);
         if (!canTraineeFill) return;
         if (slot.slOnly || slot.isMC) return;
-
-        // On weekends: max 1 trainee per shift — skip if one already assigned this evening
-        if (isWeekend && isEve) {
-          const traineeAlreadyHere = samePeriod.some(s => isTrainee(active.find(e => e.id === s.empId)));
-          if (traineeAlreadyHere) return;
-        }
 
         // Find a trainee
         for (const trainee of traineesStillAvail.sort((a, b) => sh[a.id] - sh[b.id])) {
@@ -1390,11 +1420,10 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
 
   const handleConfirm = () => {
     const finalOverrides = { ...localOverrides };
-    // Leftover people get max 1 shift
+    // Leftover people ALWAYS get max 1 shift — overrides any previous setting
     leftoverIds.forEach(id => {
-      if (!localOverrides[id]) finalOverrides[id] = { min: 0, max: 1 };
+      finalOverrides[id] = { min: 0, max: 1 };
     });
-    // Pass ranking info so scheduler knows priority order
     setWeeklyMaxOverrides(finalOverrides);
     onGenerate(finalOverrides, slRanking, regRanking, [...leftoverIds]);
   };
@@ -1690,9 +1719,14 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
   const [priorityRanking, setPriorityRanking] = useState(() => {
     try {
       const saved = localStorage.getItem("somisomi-priority-ranking");
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Ensure leftovers key exists
+        if (!parsed.leftovers) parsed.leftovers = ["tr-4"]; // Nani default
+        return parsed;
+      }
     } catch(e) {}
-    return { sl: [], reg: [] };
+    return { sl: [], reg: [], leftovers: ["tr-4"] }; // tr-4 = Nani
   });
 
   const savePriorityRanking = (ranking) => {
@@ -1704,6 +1738,8 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
     setWeeklyMaxOverrides(overrides);
     savePriorityRanking({ sl: slRanking || [], reg: regRanking || [], leftovers: leftoverIds || [] });
     setShowNuance(false);
+    // Reset dayStaffing so it reinitializes from rules defaults fresh
+    setDayStaffing(null);
     // Pass overrides directly — React state update is async so weeklyMaxOverrides would be stale
     setTimeout(() => handleGenerate(approvedBreaks, overrides), 50);
   };
@@ -1931,7 +1967,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                     })}
                   </tr></thead>
                   <tbody>
-                    {[{ key: "day", label: "Day", color: "#16A34A" }, { key: "mid", label: "Mid", color: "#0891B2" }, { key: "evening", label: "Eve", color: "#7C3AED" }].map(row => (
+                    {[{ key: "day", label: "Day", color: "#16A34A" }, { key: "mid", label: "Mid", color: "#0891B2" }, { key: "evening", label: "Eve*", color: "#7C3AED" }].map(row => (
                       <tr key={row.key}>
                         <td style={{ padding: "3px 6px", fontSize: 10, fontWeight: 700, color: row.color }}>{row.label}</td>
                         {weekDates.map(d => {
@@ -1955,6 +1991,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                     </tr>
                   </tbody>
                 </table>
+                <div style={{ fontSize: 10, color: "#9CA3AF", marginTop: 6 }}>* Sunday Eve = total evening including MC crew (4 fixed). Min 5 = 4 MC + 1 floor SL.</div>
               </div>
 
               {/* Evening shift start times */}
