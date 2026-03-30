@@ -335,6 +335,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   };
 
   const assign = (dateStr, slotIndex, emp, slot) => {
+    // Hard cap: never exceed _effMaxShifts regardless of which phase is assigning
+    if (sc[emp.id] >= emp._effMaxShifts) return;
     schedule[dateStr][slotIndex] = { ...slot, empId: emp.id, empName: emp.name, empRole: emp.role };
     sc[emp.id]++; sh[emp.id] += slot.hours; sd[emp.id].add(dateStr);
     if (slot.isMC) mcCount[emp.id]++;
@@ -489,16 +491,16 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         // Slot 0 = always SL-only (1 SL required every evening)
         // Fri/Sat slot 1 = also SL-only (2 SLs required on weekend nights)
         // Trainees only on slot 5+ on Fri/Sat nights
-        const isFriSatNight = isFri || isSat;
-        const needsSL = i === 0 || (i === 1 && isFriSatNight);
-        const slotType = i === 0 ? "evening_sl" : (i === 1 && isFriSatNight ? "evening_sl2" : "evening");
-        const slotLabel = i === 0 ? "Evening SL" : (i === 1 && isFriSatNight ? "Evening SL 2" : "Evening");
+        const isFriSatSunNight = isFri || isSat || isSun;
+        const needsSL = i === 0 || (i === 1 && isFriSatSunNight);
+        const slotType = i === 0 ? "evening_sl" : (i === 1 && isFriSatSunNight ? "evening_sl2" : "evening");
+        const slotLabel = i === 0 ? "Evening SL" : (i === 1 && isFriSatSunNight ? "Evening SL 2" : "Evening");
         slots.push({
           type: slotType,
           label: slotLabel,
           start: eveS, end: eveE, hours: hrs(eveS, eveE),
           slOnly: needsSL,
-          noTrainee: isFriSatNight && i < 4,
+          noTrainee: isFriSatSunNight && i < 4,
           order: 20 + i
         });
       }
@@ -907,9 +909,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         });
 
         // Allow trainee as 5th+ person (4+ already assigned to this period)
-        // OR any unfilled weekday evening slot
+        // OR any unfilled weekday evening slot (Mon-Thu)
         const dow = new Date(dateStr + "T12:00:00").getDay();
-        const isWeekday = dow >= 1 && dow <= 3; // Mon-Wed only; Thu trainees handled by Step 3
+        const isWeekday = dow >= 1 && dow <= 4; // Mon-Thu
         const canTraineeFill = samePeriod.length >= 4 || (isWeekday && isEve);
 
         if (!canTraineeFill) return;
@@ -1073,6 +1075,30 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   gapFillPass(false); // first pass: respect max shifts
   gapFillPass(true);  // second pass: relax max shifts to fill any remaining gaps
 
+  // ── Nuclear gap fill: relax ALL soft rules to guarantee no unfilled slots ──
+  // This is a last resort — every slot MUST be filled.
+  const SOFT_RULES = ["F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11",
+    "no_fri_sat_night","no_sat_sun_night","no_fri_sat_sun","max_consecutive_3",
+    "min_swirlers_weekend","sat_night_sl_neq_sun_sl"];
+  SOFT_RULES.forEach(r => approved.add(r));
+  weekDates.forEach(dateStr => {
+    schedule[dateStr].forEach((slot, idx) => {
+      if (slot.empId) return;
+      // Try all active employees — anyone available for this shift
+      let cands = active.filter(emp => {
+        if (emp._effMaxShifts === 0) return false;
+        if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
+        if (sd[emp.id].has(dateStr)) return false; // no doubles
+        if (slot.slOnly && emp.role !== "shift_lead") return false;
+        if (slot.isMC && isTrainee(emp)) return false;
+        return true;
+      });
+      cands.sort((a, b) => sh[a.id] - sh[b.id]);
+      if (cands[0]) assign(dateStr, idx, cands[0], slot);
+    });
+  });
+  SOFT_RULES.forEach(r => { if (!approved.has(r)) return; approved.delete(r); });
+
   // ── Flexible rule detection ───────────────────────────────────────
   const FLEXIBLE_RULES = [
     { id: "F1",  label: "Good weekend people preferred on weekends" },
@@ -1189,6 +1215,105 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   return { schedule, empShiftCount: sc, empHours: sh, warnings: warnings2, shortSLs, extraUnfilled, rulesNeeded, hasUnfilled };
 }
 
+// === PRE-SCHEDULE NUANCE MODAL ===
+function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onGenerate, onClose, font }) {
+  const active = employees.filter(e => e.status === "active");
+  const sls = active.filter(e => e.role === "shift_lead");
+  const regs = active.filter(e => e.role === "regular");
+  const trainees = active.filter(e => e.role === "trainee");
+
+  // Local copy so changes only apply when confirmed
+  const [localOverrides, setLocalOverrides] = useState(() => {
+    const init = {};
+    active.forEach(e => {
+      if (weeklyMaxOverrides[e.id]) {
+        init[e.id] = { ...weeklyMaxOverrides[e.id] };
+      }
+    });
+    return init;
+  });
+
+  const getMax = (emp) => {
+    return localOverrides[emp.id]?.max ?? emp.maxShifts;
+  };
+
+  const setMax = (emp, val) => {
+    const clamped = Math.max(0, Math.min(emp.maxShifts, val));
+    setLocalOverrides(prev => {
+      const n = { ...prev };
+      if (clamped === emp.maxShifts) {
+        delete n[emp.id]; // back to default, remove override
+      } else {
+        n[emp.id] = { min: clamped, max: clamped };
+      }
+      return n;
+    });
+  };
+
+  const handleConfirm = () => {
+    setWeeklyMaxOverrides(localOverrides);
+    onGenerate(localOverrides);
+  };
+
+  const si2 = { fontSize: 11, fontFamily: font };
+  const sectionLabel = (txt) => (
+    <div style={{ fontSize: 10, fontWeight: 800, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6, marginTop: 14 }}>{txt}</div>
+  );
+
+  const EmpRow = ({ emp }) => {
+    const cur = getMax(emp);
+    const isReduced = cur < emp.maxShifts;
+    const rc = { shift_lead: { color: "#B45309", bg: "#FEF3C7" }, regular: { color: "#1D4ED8", bg: "#DBEAFE" }, trainee: { color: "#6D28D9", bg: "#EDE9FE" } }[emp.role];
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #F3F4F6" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: rc.color, background: rc.bg, padding: "1px 7px", borderRadius: 10 }}>{emp.name}</span>
+          <span style={{ fontSize: 10, color: "#9CA3AF" }}>max {emp.maxShifts} shifts normally</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 10, color: "#9CA3AF" }}>this week:</span>
+          <button onClick={() => setMax(emp, cur - 1)} style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid #E5E7EB", background: "#FEF2F2", color: "#DC2626", cursor: "pointer", fontSize: 13, fontWeight: 800, padding: 0 }}>−</button>
+          <span style={{ fontSize: 13, fontWeight: 800, minWidth: 18, textAlign: "center", color: isReduced ? "#DC2626" : "#374151" }}>{cur}</span>
+          <button onClick={() => setMax(emp, cur + 1)} style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid #E5E7EB", background: "#F0FDF4", color: "#16A34A", cursor: "pointer", fontSize: 13, fontWeight: 800, padding: 0 }}>+</button>
+          {isReduced && <span style={{ fontSize: 10, color: "#DC2626", fontWeight: 700 }}>↓ light week</span>}
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, padding: 16 }} onClick={onClose}>
+      <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 520, maxHeight: "85vh", overflowY: "auto", boxShadow: "0 25px 60px rgba(0,0,0,0.3)" }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#4A3F2F" }}>⚙️ Before You Generate</h3>
+            <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 3 }}>Adjust who gets fewer shifts this week. Everyone else gets their normal max.</div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#9CA3AF" }}>×</button>
+        </div>
+
+        <div style={{ background: "#FFF7ED", borderRadius: 8, padding: "10px 14px", marginTop: 12, fontSize: 12, color: "#92400E", borderLeft: "3px solid #F59E0B" }}>
+          💡 Use this to set light weeks — e.g. if Nani is lowest priority this week, reduce her to 1 shift. The scheduler will fill gaps with higher-priority people first.
+        </div>
+
+        {sectionLabel("Shift Leads")}
+        {sls.map(e => <EmpRow key={e.id} emp={e} />)}
+
+        {sectionLabel("Regular Staff")}
+        {regs.map(e => <EmpRow key={e.id} emp={e} />)}
+
+        {sectionLabel("Trainees")}
+        {trainees.map(e => <EmpRow key={e.id} emp={e} />)}
+
+        <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "1px solid #D1D5DB", background: "#fff", color: "#6B7280", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: font }}>Cancel</button>
+          <button onClick={handleConfirm} style={{ flex: 2, padding: "10px 0", borderRadius: 8, border: "none", background: "#4A3F2F", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: font }}>⚡ Generate Schedule</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // === EDIT SHIFT MODAL ===
 function EditShiftModal({ slot, date, employees, onSave, onClose }) {
   const [empId, setEmpId] = useState(slot.empId || "");
@@ -1275,6 +1400,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
   const [dragEmpId, setDragEmpId] = useState(null); // for employee row reordering
   const [addShiftPopup, setAddShiftPopup] = useState(null); // { empId, date }
   const [approvedBreaks, setApprovedBreaks] = useState([]); // rule IDs manager approved breaking
+  const [showNuance, setShowNuance] = useState(false); // pre-schedule nuance modal
   const [pendingApprovals, setPendingApprovals] = useState(null); // rulesNeeded from last run, waiting for approval
   const [ruleApprovalChecked, setRuleApprovalChecked] = useState([]); // checkboxes in approval modal
 
@@ -1358,6 +1484,13 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
         alert("Error generating schedule: " + err.message);
       }
     }, 200);
+  };
+
+  const handleGenerateFromNuance = (overrides) => {
+    setWeeklyMaxOverrides(overrides);
+    setShowNuance(false);
+    // Small delay to let state settle
+    setTimeout(() => handleGenerate(approvedBreaks), 50);
   };
 
   const handleApproveBreaks = (approvedIds) => {
@@ -1642,7 +1775,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={() => setStep("timeoff")} style={{ padding: "10px 18px", borderRadius: 8, border: "1px solid #D1D5DB", background: "#fff", color: "#6B7280", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: font }}>{"\u2190"} Back</button>
             {Object.keys(availOverrides).length > 0 && <span style={{ fontSize: 11, color: "#22C55E", fontWeight: 600 }}>{"\u2713"} {Object.keys(availOverrides).length} availability override{Object.keys(availOverrides).length > 1 ? "s" : ""}</span>}
-            <button onClick={handleGenerate} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: "#4A3F2F", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: font }}>{"\u26a1"} Generate Schedule</button>
+            <button onClick={() => setShowNuance(true)} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: "#4A3F2F", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: font }}>{"\u26a1"} Generate Schedule</button>
           </div>
         </div>
       )}
@@ -2174,6 +2307,17 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
               </div>
             </div>
           )}
+          {showNuance && (
+            <NuanceModal
+              employees={employees}
+              weeklyMaxOverrides={weeklyMaxOverrides}
+              setWeeklyMaxOverrides={setWeeklyMaxOverrides}
+              onGenerate={handleGenerateFromNuance}
+              onClose={() => setShowNuance(false)}
+              font={font}
+            />
+          )}
+
           {editingShift && !isSaved && (
             <EditShiftModal
               slot={editingShift.slot}
