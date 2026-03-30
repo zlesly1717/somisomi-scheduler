@@ -169,7 +169,7 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    const data = loadData();
+    loadData().then(data => {
     if (data) {
       const emps = (data.employees || SEED_EMPLOYEES).map(e => {
         if (e.minHours === undefined) {
@@ -259,6 +259,7 @@ export default function App() {
       setSavedSchedules(buildMCHistorySeed());
     }
     setLoaded(true);
+    });
   }, []);
 
   useEffect(() => {
