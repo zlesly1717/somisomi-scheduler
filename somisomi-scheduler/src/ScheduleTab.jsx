@@ -1596,6 +1596,18 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
 
   return (
     <div style={{ padding: "18px 28px" }}>
+      {/* Nuance modal — always rendered at top level so it shows regardless of step */}
+      {showNuance && (
+        <NuanceModal
+          employees={employees}
+          weeklyMaxOverrides={weeklyMaxOverrides}
+          setWeeklyMaxOverrides={setWeeklyMaxOverrides}
+          onGenerate={handleGenerateFromNuance}
+          onClose={() => setShowNuance(false)}
+          font={font}
+        />
+      )}
+
       {/* Week picker */}
       <div style={{ background: "#fff", borderRadius: 12, padding: 18, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginBottom: 16 }}>
         <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
@@ -2307,17 +2319,6 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
               </div>
             </div>
           )}
-          {showNuance && (
-            <NuanceModal
-              employees={employees}
-              weeklyMaxOverrides={weeklyMaxOverrides}
-              setWeeklyMaxOverrides={setWeeklyMaxOverrides}
-              onGenerate={handleGenerateFromNuance}
-              onClose={() => setShowNuance(false)}
-              font={font}
-            />
-          )}
-
           {editingShift && !isSaved && (
             <EditShiftModal
               slot={editingShift.slot}
