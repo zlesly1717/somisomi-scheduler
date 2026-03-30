@@ -9,34 +9,45 @@ import { loadData, saveData } from "./storage";
 import { HistoryTab } from "./HistoryTab";
 
 const SEED_SCHOOL_CALENDAR = [
+  // --- Conroe ISD 2025-2026 Student Holidays ---
   {date:"2025-09-01",label:"Labor Day",type:"holiday"},
-  {date:"2025-10-13",label:"Columbus Day",type:"holiday"},
-  {date:"2025-11-03",label:"Staff Development",type:"holiday"},
+  // Oct 10-13 holiday (Oct 10 = Teacher Exchange, Oct 11-13 = Holiday)
+  {date:"2025-10-10",label:"Holiday",type:"holiday"},
+  {date:"2025-10-13",label:"Holiday",type:"holiday"},
+  // Nov 3 = Teacher Exchange, Nov 4 = Teacher Professional Learning — both no students
+  {date:"2025-11-03",label:"Holiday",type:"holiday"},
+  {date:"2025-11-04",label:"Holiday",type:"holiday"},
+  // Thanksgiving Nov 24-28
+  {date:"2025-11-24",label:"Thanksgiving Break",type:"holiday"},
   {date:"2025-11-25",label:"Thanksgiving Break",type:"holiday"},
   {date:"2025-11-26",label:"Thanksgiving Break",type:"holiday"},
   {date:"2025-11-27",label:"Thanksgiving Day",type:"holiday"},
   {date:"2025-11-28",label:"Thanksgiving Break",type:"holiday"},
+  // Winter Break Dec 22 - Jan 5
   {date:"2025-12-22",label:"Winter Break",type:"holiday"},
   {date:"2025-12-23",label:"Winter Break",type:"holiday"},
-  {date:"2025-12-24",label:"Christmas Eve",type:"holiday"},
-  {date:"2025-12-25",label:"Christmas Day",type:"holiday"},
+  {date:"2025-12-24",label:"Winter Break",type:"holiday"},
+  {date:"2025-12-25",label:"Winter Break",type:"holiday"},
   {date:"2025-12-26",label:"Winter Break",type:"holiday"},
   {date:"2025-12-29",label:"Winter Break",type:"holiday"},
   {date:"2025-12-30",label:"Winter Break",type:"holiday"},
-  {date:"2025-12-31",label:"New Year's Eve",type:"holiday"},
+  {date:"2025-12-31",label:"Winter Break",type:"holiday"},
   {date:"2026-01-01",label:"New Year's Day",type:"holiday"},
   {date:"2026-01-02",label:"Winter Break",type:"holiday"},
-  {date:"2026-01-19",label:"MLK Day",type:"holiday"},
+  {date:"2026-01-05",label:"Winter Break",type:"holiday"},
+  {date:"2026-01-19",label:"Martin Luther King Jr. Day",type:"holiday"},
+  {date:"2026-02-13",label:"Holiday",type:"holiday"},
   {date:"2026-02-16",label:"Presidents Day",type:"holiday"},
+  // Spring Break Mar 9-13
   {date:"2026-03-09",label:"Spring Break",type:"holiday"},
   {date:"2026-03-10",label:"Spring Break",type:"holiday"},
   {date:"2026-03-11",label:"Spring Break",type:"holiday"},
   {date:"2026-03-12",label:"Spring Break",type:"holiday"},
   {date:"2026-03-13",label:"Spring Break",type:"holiday"},
-  {date:"2026-04-02",label:"Staff Development",type:"holiday"},
+  // Apr 3-6 holiday (Apr 3 = Good Friday, Apr 6 = Teacher Exchange — both no students)
   {date:"2026-04-03",label:"Good Friday",type:"holiday"},
+  {date:"2026-04-06",label:"Holiday",type:"holiday"},
   {date:"2026-05-25",label:"Memorial Day",type:"holiday"},
-  {date:"2026-06-04",label:"Last Day of School",type:"holiday"},
   {date:"2026-06-05",label:"Summer Break",type:"summer"},
 ];
 
@@ -95,11 +106,11 @@ function buildMCHistorySeed() {
       breakSL: "Crystal Guel", savedAt: "2026-04-05T20:00:00Z",
     },
     { key: "2026-04-06", // Apr 6-12
-      // Thu Apr 10: Crystal SL (back from break) + helpers TBD by auto-scheduler
-      // Sun Apr 12: Chan SL (Spencer led last 2 Sundays) + helpers TBD
+      // Thu Apr 10: Crystal SL (back from break) + 2 reg helpers
+      // Sun Apr 12: Chan SL + Zoe SL helper + 2 reg helpers. Spencer on break.
       thu: { leader: "Crystal Guel", helpers: ["Sam Castillo", "Kennedy Bean"] },
-      sun: { leader: "Chan In", slHelper: null, helpers: ["Kaitlyn Trevino", "Susan Thai"] },
-      breakSL: null, savedAt: "2026-04-12T20:00:00Z",
+      sun: { leader: "Chan In", slHelper: "Zoe Rains", helpers: ["Susan Thai", "Gwen Ursua"] },
+      breakSL: "Spencer Losch", savedAt: "2026-04-12T20:00:00Z",
     },
   ];
 
@@ -231,11 +242,16 @@ export default function App() {
       if (!r.swirl) r.swirl = SEED_RULES.swirl || { minPerShift: 2, weekendOnly: true, swirlers: [] };
       setEmployees(emps);
       setRules(r);
-      setSchoolDates(data.schoolDates || SEED_SCHOOL_CALENDAR);
+      // Migrate: force school calendar to Conroe ISD if it has outdated entries
+      const savedCal = data.schoolDates || [];
+      const hasOutdated = savedCal.some(d => d.date === "2026-04-02") || !savedCal.some(d => d.date === "2026-02-13");
+      setSchoolDates(hasOutdated ? SEED_SCHOOL_CALENDAR : savedCal);
       setTimeOffs(data.timeOffs || []);
       // Migrate: pre-seed MC rotation history from past 4 weeks if not already saved
       const existing = data.savedSchedules || {};
-      if (!existing["2026-02-16"] || !existing["2026-03-23"] || !existing["2026-03-30"] || !existing["2026-04-06"]) {
+      const apr6 = existing["2026-04-06"];
+      const apr6NeedsRefresh = !apr6 || (apr6.breakSL === null && !apr6.sun?.slHelper);
+      if (!existing["2026-02-16"] || !existing["2026-03-23"] || !existing["2026-03-30"] || apr6NeedsRefresh) {
         const mcHistory = buildMCHistorySeed();
         Object.entries(mcHistory).forEach(([k, v]) => { if (!existing[k]) existing[k] = v; });
       }

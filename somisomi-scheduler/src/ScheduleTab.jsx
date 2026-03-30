@@ -723,9 +723,16 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     const isWeekendSlot = slot._isWE || (slot._isFri && tm(slot.start) >= 1020);
 
     // MC helpers: ALL regulars rotate (except mc_exempt and trainees), prefer those who haven't cleaned recently
+    // If no reg helpers available, fall back to SLs to keep 4-person MC crew (never drop below 4)
     if (slot.isMC) {
       const nonSLT = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee" && !(e.tags || []).includes("mc_exempt"));
-      if (nonSLT.length > 0) cands = nonSLT;
+      if (nonSLT.length > 0) {
+        cands = nonSLT;
+      } else {
+        // No reg helpers available — use SL fallback to keep crew at 4
+        const slFallback = cands.filter(e => e.role === "shift_lead");
+        if (slFallback.length > 0) cands = slFallback;
+      }
       // Sort by MC rotation: fewest MC times first, then longest since last MC
       // Strongly deprioritize anyone who MC'd last week (no back-to-back)
       const prevWeekKey = weekDates[0] ? (() => {
@@ -1152,6 +1159,18 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       warnings2.push({ date: "", msg: `${e.name} has ${weCount[e.id]} weekend night shifts` });
     }
   });
+
+  // Warn if more than 1 SL has no MC duty this week
+  const slsWithMC = new Set();
+  weekDates.forEach(d => {
+    schedule[d].forEach(slot => {
+      if (slot.isMC && slot.empId) slsWithMC.add(slot.empId);
+    });
+  });
+  const slsWithoutMC = active.filter(e => e.role === "shift_lead" && !slsWithMC.has(e.id));
+  if (slsWithoutMC.length > 1) {
+    warnings2.push({ date: "", msg: `⚠ ${slsWithoutMC.length} SLs have no MC this week (max 1 should be on break): ${slsWithoutMC.map(e => e.name).join(", ")}` });
+  }
 
   const shortSLs = active.filter(e => e.role === "shift_lead" && sc[e.id] < e.minShifts).map(e => e.id);
   const hasUnfilled = weekDates.some(d => schedule[d].some(s => !s.empId));
