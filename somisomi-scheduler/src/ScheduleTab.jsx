@@ -128,7 +128,7 @@ function parseTimeOffs(text, employees, weekDates) {
 }
 
 // === GENERATE ENGINE ===
-function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, dayStaffingOverrides, availOverrides, weeklyMaxOverrides, approvedBreaks, savedSchedules, priorityRanking) {
+function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, dayStaffingOverrides, availOverrides, weeklyMaxOverrides, approvedBreaks, savedSchedules, priorityRanking, importantEvenings) {
   // ─────────────────────────────────────────────────────────────────
   // ENGINE PHILOSOPHY (V4):
   // 1. SLs first — 1 per shift, 15-20h, rotate who gets fewer hours
@@ -535,15 +535,19 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         }
       }
     } else {
+      // Important evening: flag set by manager for days needing top workers
+      const isImportant = importantEvenings instanceof Set && importantEvenings.has(dateStr);
       for (let i = 0; i < (staffing.evening || 3); i++) {
         const isFriSatNight = isFri || isSat;
-        const needsSL = i === 0 || (i === 1 && isFriSatNight);
-        const slotType = i === 0 ? "evening_sl" : (i === 1 && isFriSatNight ? "evening_sl2" : "evening");
-        const slotLabel = i === 0 ? "Evening SL" : (i === 1 && isFriSatNight ? "Evening SL" : "Evening");
+        // Important evenings get a 2nd SL slot even on weekdays
+        const needsSL = i === 0 || (i === 1 && (isFriSatNight || isImportant));
+        const slotType = i === 0 ? "evening_sl" : (needsSL ? "evening_sl2" : "evening");
+        const slotLabel = i === 0 ? "Evening SL" : (needsSL ? "Evening SL" : "Evening");
         slots.push({
           type: slotType, label: slotLabel,
           start: eveS, end: eveE, hours: hrs(eveS, eveE),
-          slOnly: needsSL, noTrainee: isFriSatNight && i < 4, order: 20 + i
+          slOnly: needsSL, noTrainee: (isFriSatNight || isImportant) && i < 4,
+          isImportant, order: 20 + i
         });
       }
     }
@@ -883,6 +887,11 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       const goodWE = rules.goodWeekendPeople || [];
       const good = cands.filter(e => goodWE.includes(e.name));
       if (good.length > 0) cands = good;
+      // Important evening: prefer non-trainees, experienced regulars first
+      if (slot.isImportant) {
+        const noTrainees = cands.filter(e => !isTrainee(e));
+        if (noTrainees.length > 0) cands = noTrainees;
+      }
     }
     // Weekend day / Fri day: no trainees
     else if (isWeekendSlot || slot._isFri) {
@@ -1329,17 +1338,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 // === PRE-SCHEDULE NUANCE MODAL ===
 function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onGenerate, onClose, font, savedRanking }) {
   const active = employees.filter(e => e.status === "active");
+  const sls = active.filter(e => e.role === "shift_lead");
 
-  const SPECIAL_IDS = ["reg-7", "tr-6"]; // Grae, Cesia — fixed shift limits
-  const specials = active.filter(e => SPECIAL_IDS.includes(e.id) || e.maxShifts <= 2);
-  const specialIds = new Set(specials.map(e => e.id));
-
-  const sls = active.filter(e => e.role === "shift_lead" && !specialIds.has(e.id));
-  const mainPool = active.filter(e => e.role !== "shift_lead" && !specialIds.has(e.id));
-  // Default leftover: only Nani
-  const defaultLeftovers = active.filter(e => e.name === "Nani Hoomes" && !specialIds.has(e.id));
-
-  // Ranking state: ordered array of ids, top = highest priority (most hours), bottom = lighter week
+  // SL break rotation: bottom of list gets 3 shifts this week
   const initSlRanking = () => {
     if (savedRanking?.sl?.length) {
       const saved = savedRanking.sl.filter(id => sls.find(e => e.id === id));
@@ -1349,70 +1350,25 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
     return sls.map(e => e.id);
   };
   const [slRanking, setSlRanking] = useState(initSlRanking);
-  // Default ranking order: Abrar, Gwen, Kennedy, Susan, Yise, Marissa, Alli
-  const DEFAULT_REG_ORDER = ["reg-6","reg-4","reg-1","reg-5","tr-1","tr-3","tr-5"];
-  const initRegRanking = () => {
-    const nonLeftover = mainPool.filter(e => !defaultLeftovers.find(d => d.id === e.id));
-    if (savedRanking?.reg?.length) {
-      const saved = savedRanking.reg.filter(id => nonLeftover.find(e => e.id === id));
-      const newRegs = nonLeftover.filter(e => !saved.includes(e.id)).map(e => e.id);
-      return [...newRegs, ...saved];
-    }
-    // Use default priority order
-    const ordered = DEFAULT_REG_ORDER.filter(id => nonLeftover.find(e => e.id === id));
-    const rest = nonLeftover.filter(e => !DEFAULT_REG_ORDER.includes(e.id)).map(e => e.id);
-    return [...ordered, ...rest];
-  };
-  const [regRanking, setRegRanking] = useState(initRegRanking);
-  const [leftoverIds, setLeftoverIds] = useState(() => {
+
+  // Leftover bucket: people who might get fewer shifts (time off, low priority)
+  const mainPool = active.filter(e => e.role !== "shift_lead" && e.maxShifts > 2);
+  const initLeftovers = () => {
     if (savedRanking?.leftovers?.length) {
-      // Use explicitly saved leftover list, filtered to current active employees
       const valid = savedRanking.leftovers.filter(id => mainPool.find(e => e.id === id));
-      return new Set(valid);
+      if (valid.length > 0) return new Set(valid);
     }
-    return new Set(defaultLeftovers.map(e => e.id));
-  });
+    return new Set(["tr-4"]); // Nani default
+  };
+  const [leftoverIds, setLeftoverIds] = useState(initLeftovers);
+
   const [dragId, setDragId] = useState(null);
-  const [dragList, setDragList] = useState(null); // "sl" | "reg"
 
-  // Special case shift count overrides
-  const [localOverrides, setLocalOverrides] = useState(() => {
-    const init = {};
-    active.forEach(e => { if (weeklyMaxOverrides[e.id]) init[e.id] = { ...weeklyMaxOverrides[e.id] }; });
-    return init;
-  });
-  const getMax = (emp) => localOverrides[emp.id]?.max ?? emp.maxShifts;
-  const setMax = (emp, val) => {
-    const clamped = Math.max(0, Math.min(emp.maxShifts, val));
-    setLocalOverrides(prev => {
-      const n = { ...prev };
-      if (clamped === emp.maxShifts) delete n[emp.id];
-      else n[emp.id] = { min: clamped, max: clamped };
-      return n;
-    });
-  };
-
-  const toggleLeftover = (emp) => {
-    setLeftoverIds(prev => {
-      const n = new Set(prev);
-      if (n.has(emp.id)) {
-        n.delete(emp.id);
-        setRegRanking(r => r.includes(emp.id) ? r : [...r, emp.id]);
-      } else {
-        n.add(emp.id);
-        setRegRanking(r => r.filter(id => id !== emp.id));
-      }
-      return n;
-    });
-  };
-
-  // Drag-to-reorder
-  const handleDragStart = (id, list) => { setDragId(id); setDragList(list); };
-  const handleDragOver = (e, overId, list) => {
+  const handleDragStart = (id) => setDragId(id);
+  const handleDragOver = (e, overId) => {
     e.preventDefault();
-    if (!dragId || dragList !== list || dragId === overId) return;
-    const setter = list === "sl" ? setSlRanking : setRegRanking;
-    setter(prev => {
+    if (!dragId || dragId === overId) return;
+    setSlRanking(prev => {
       const arr = [...prev];
       const from = arr.indexOf(dragId);
       const to = arr.indexOf(overId);
@@ -1423,52 +1379,40 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
     });
   };
 
+  const toggleLeftover = (emp) => {
+    setLeftoverIds(prev => {
+      const n = new Set(prev);
+      if (n.has(emp.id)) n.delete(emp.id);
+      else n.add(emp.id);
+      return n;
+    });
+  };
+
   const handleConfirm = () => {
-    const finalOverrides = { ...localOverrides };
-    // Leftover people ALWAYS get max 1 shift — overrides any previous setting
+    const finalOverrides = {};
+    // Bottom SL gets 3 shifts
+    if (slRanking.length >= 1) {
+      const lastId = slRanking[slRanking.length - 1];
+      finalOverrides[lastId] = { min: 3, max: 3 };
+    }
+    // Leftover people get max 1 shift
     leftoverIds.forEach(id => {
       finalOverrides[id] = { min: 0, max: 1 };
     });
     setWeeklyMaxOverrides(finalOverrides);
-    onGenerate(finalOverrides, slRanking, regRanking, [...leftoverIds]);
+    onGenerate(finalOverrides, slRanking, [], [...leftoverIds]);
   };
 
   const sectionLabel = (txt, sub) => (
-    <div style={{ marginTop: 18, marginBottom: 8 }}>
+    <div style={{ marginTop: 16, marginBottom: 8 }}>
       <div style={{ fontSize: 11, fontWeight: 800, color: "#4A3F2F", textTransform: "uppercase", letterSpacing: 0.5 }}>{txt}</div>
       {sub && <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>{sub}</div>}
     </div>
   );
 
-  const RankRow = ({ empId, rank, total, list, color, bg }) => {
-    const emp = active.find(e => e.id === empId);
-    if (!emp) return null;
-    const isBottom = rank === total - 1;
-    return (
-      <div
-        draggable
-        onDragStart={() => handleDragStart(empId, list)}
-        onDragOver={e => handleDragOver(e, empId, list)}
-        onDragEnd={() => { setDragId(null); setDragList(null); }}
-        style={{
-          display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
-          borderRadius: 8, marginBottom: 4, cursor: "grab", userSelect: "none",
-          background: isBottom ? "#FFF1F2" : "#F9FAFB",
-          border: isBottom ? "1px dashed #FECACA" : "1px solid #F3F4F6",
-          opacity: dragId === empId ? 0.5 : 1,
-        }}
-      >
-        <span style={{ fontSize: 13, color: "#D1D5DB" }}>⠿</span>
-        <span style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", minWidth: 18 }}>#{rank + 1}</span>
-        <span style={{ fontSize: 12, fontWeight: 600, color, background: bg, padding: "2px 8px", borderRadius: 10, flex: 1 }}>{emp.name}</span>
-        {isBottom && list === "sl" && <span style={{ fontSize: 10, color: "#F87171", fontWeight: 700 }}>← 3 shifts this week</span>}{isBottom && list === "reg" && <span style={{ fontSize: 10, color: "#F87171", fontWeight: 700 }}>← 1 fewer if needed</span>}
-      </div>
-    );
-  };
-
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, padding: 16 }} onClick={onClose}>
-      <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 500, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 60px rgba(0,0,0,0.3)" }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto", boxShadow: "0 25px 60px rgba(0,0,0,0.3)" }} onClick={e => e.stopPropagation()}>
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
           <div>
@@ -1478,65 +1422,59 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#9CA3AF" }}>×</button>
         </div>
 
-        {/* Special Cases — shift count knobs */}
-        {specials.length > 0 && (<>
-          {sectionLabel("Special Cases", "Fixed limits — adjust shift count if needed")}
-          <div style={{ background: "#F9FAFB", borderRadius: 10, padding: "4px 8px" }}>
-            {specials.map(emp => {
-              const cur = getMax(emp);
-              const isReduced = cur < emp.maxShifts;
-              return (
-                <div key={emp.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", borderRadius: 8, background: "#F9FAFB", marginBottom: 4 }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: "#6D28D9", background: "#EDE9FE", padding: "2px 8px", borderRadius: 10 }}>{emp.name}</span>
-                  <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                    <button onClick={() => setMax(emp, cur - 1)} style={{ width: 24, height: 24, borderRadius: 4, border: "1px solid #E5E7EB", background: "#FEF2F2", color: "#DC2626", cursor: "pointer", fontSize: 14, fontWeight: 800, padding: 0 }}>−</button>
-                    <span style={{ fontSize: 13, fontWeight: 800, minWidth: 20, textAlign: "center", color: isReduced ? "#DC2626" : "#374151" }}>{cur} shifts</span>
-                    <button onClick={() => setMax(emp, cur + 1)} style={{ width: 24, height: 24, borderRadius: 4, border: "1px solid #E5E7EB", background: "#F0FDF4", color: "#16A34A", cursor: "pointer", fontSize: 14, fontWeight: 800, padding: 0 }}>+</button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </>)}
-
-        {/* Shift Leads — drag to rank */}
-        {sectionLabel("Shift Leads", "Everyone gets 4 shifts. Drag bottom person to give them 3 this week.")}
+        {/* Section 1: SL break rotation */}
+        {sectionLabel("Shift Lead Break Rotation", "Drag to bottom whoever gets 3 shifts this week (MC break)")}
         <div style={{ background: "#FFFBEB", borderRadius: 10, padding: "8px", border: "1px solid #FDE68A" }}>
-          {slRanking.map((id, i) => (
-            <RankRow key={id} empId={id} rank={i} total={slRanking.length} list="sl" color="#B45309" bg="#FEF3C7" />
-          ))}
-          <div style={{ fontSize: 10, color: "#9CA3AF", marginTop: 4, textAlign: "center" }}>drag to reorder • bottom = lighter week</div>
+          {slRanking.map((id, i) => {
+            const emp = sls.find(e => e.id === id);
+            if (!emp) return null;
+            const isBottom = i === slRanking.length - 1;
+            return (
+              <div
+                key={id}
+                draggable
+                onDragStart={() => handleDragStart(id)}
+                onDragOver={e => handleDragOver(e, id)}
+                onDragEnd={() => setDragId(null)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10, padding: "8px 10px",
+                  borderRadius: 8, marginBottom: 4, cursor: "grab", userSelect: "none",
+                  background: isBottom ? "#FEF9C3" : "#F9FAFB",
+                  border: isBottom ? "1px dashed #F59E0B" : "1px solid #F3F4F6",
+                  opacity: dragId === id ? 0.5 : 1,
+                }}
+              >
+                <span style={{ fontSize: 13, color: "#D1D5DB" }}>⠿</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", minWidth: 18 }}>#{i + 1}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#B45309", background: "#FEF3C7", padding: "2px 8px", borderRadius: 10, flex: 1 }}>{emp.name}</span>
+                {isBottom && <span style={{ fontSize: 10, color: "#F59E0B", fontWeight: 700 }}>← 3 shifts this week</span>}
+              </div>
+            );
+          })}
+          <div style={{ fontSize: 10, color: "#9CA3AF", textAlign: "center", marginTop: 4 }}>drag to reorder</div>
         </div>
 
-        {/* Regular Staff — drag to rank */}
-        {sectionLabel("Staff", "Hours split equally. Drag bottom person to give them 1 fewer shift if needed.")}
-        <div style={{ background: "#F0FDF4", borderRadius: 10, padding: "8px", border: "1px solid #BBF7D0" }}>
-          {regRanking.map((id, i) => (
-            <RankRow key={id} empId={id} rank={i} total={regRanking.length} list="reg" color="#1D4ED8" bg="#DBEAFE" />
-          ))}
-          {regRanking.length === 0 && <div style={{ fontSize: 11, color: "#9CA3AF", textAlign: "center", padding: 8 }}>All regular staff in leftover bucket</div>}
-          <div style={{ fontSize: 10, color: "#9CA3AF", marginTop: 4, textAlign: "center" }}>drag to reorder • bottom = lighter week</div>
-        </div>
-
-        {/* Leftover Bucket */}
-        {sectionLabel("Leftover Bucket", "Only get a shift if gaps remain — tap to move in/out")}
+        {/* Section 2: Leftover bucket */}
+        {sectionLabel("Fewer Shifts This Week", "Drag anyone who might get fewer shifts — time off, low priority, etc.")}
         <div style={{ background: "#FEF2F2", borderRadius: 10, padding: "10px 12px", border: "1px solid #FECACA" }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
             {mainPool.map(e => {
               const inBucket = leftoverIds.has(e.id);
+              const rc = e.role === "trainee" ? { color: "#6D28D9", bg: "#EDE9FE" } : { color: "#1D4ED8", bg: "#DBEAFE" };
               return (
                 <button key={e.id} onClick={() => toggleLeftover(e)} style={{
-                  fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 10, cursor: "pointer", border: "none",
-                  background: inBucket ? "#DC2626" : "#E5E7EB",
-                  color: inBucket ? "#fff" : "#6B7280",
+                  fontSize: 12, fontWeight: 600, padding: "4px 12px", borderRadius: 10,
+                  cursor: "pointer", border: "none",
+                  background: inBucket ? "#DC2626" : rc.bg,
+                  color: inBucket ? "#fff" : rc.color,
                 }}>
-                  {inBucket ? "✕ " : "+ "}{e.name}
+                  {inBucket ? "✕ " : ""}{e.name}
                 </button>
               );
             })}
           </div>
-          {leftoverIds.size === 0 && <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 6 }}>No one in leftover bucket — tap a name above to add</div>}
-          {leftoverIds.size > 0 && <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 6 }}>Red = in bucket (max 1 shift, only if needed)</div>}
+          {leftoverIds.size === 0 && <div style={{ fontSize: 11, color: "#9CA3AF" }}>No one — everyone gets their full 3 shifts</div>}
+          {leftoverIds.size > 0 && <div style={{ fontSize: 11, color: "#9CA3AF" }}>Red = max 1 shift this week (only if gaps remain)</div>}
         </div>
 
         <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
@@ -1629,6 +1567,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
   const [selected, setSelected] = useState(null);
   const [editingShift, setEditingShift] = useState(null);
   const [dayStaffing, setDayStaffing] = useState(null);
+  const [importantEvenings, setImportantEvenings] = useState(new Set()); // dates where evening needs top workers
   const [warningsOpen, setWarningsOpen] = useState(false);
   const [empOrder, setEmpOrder] = useState(null); // custom employee display order
   const [dragEmpId, setDragEmpId] = useState(null); // for employee row reordering
@@ -1706,7 +1645,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
     setTimeout(() => {
       try {
         const allTOs = [...(timeOffs || []), ...weeklyTOs];
-        const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs, ds, availOverrides, useMaxOverrides, useBreaks, savedSchedules, priorityRanking);
+        const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs, ds, availOverrides, useMaxOverrides, useBreaks, savedSchedules, priorityRanking, importantEvenings);
         // If there are unfilled slots that need rule breaks, surface them for approval
         if (r.rulesNeeded?.length > 0) {
           setPendingApprovals(r.rulesNeeded);
@@ -1814,7 +1753,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
     setTimeout(() => {
       const allTOs = [...(timeOffs || []), ...weeklyTOs];
       try {
-        const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs, ds, availOverrides, weeklyMaxOverrides, [], savedSchedules, priorityRanking);
+        const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs, ds, availOverrides, weeklyMaxOverrides, [], savedSchedules, priorityRanking, importantEvenings);
         if (r.rulesNeeded?.length > 0) {
           setPendingApprovals(r.rulesNeeded);
           setRuleApprovalChecked(r.rulesNeeded.map(x => x.id));
@@ -1829,7 +1768,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
   };
   const handleUnsave = () => { setSavedSchedules(prev => { const n = { ...prev }; delete n[weekKey]; return n; }); setStep("timeoff"); };
   const removeTo = (idx) => setWeeklyTOs(prev => prev.filter((_, i) => i !== idx));
-  const handleWeekChange = (val) => { setWeekStart(val); setDraft(null); setNotes([]); setWeeklyTOs([]); setToText(""); setStep("timeoff"); setDayStaffing(null); setAvailOverrides({}); setWeeklyMaxOverrides({}); setApprovedBreaks([]); setPendingApprovals(null); };
+  const handleWeekChange = (val) => { setWeekStart(val); setDraft(null); setNotes([]); setWeeklyTOs([]); setToText(""); setStep("timeoff"); setDayStaffing(null); setAvailOverrides({}); setWeeklyMaxOverrides({}); setApprovedBreaks([]); setPendingApprovals(null); setImportantEvenings(new Set()); };
 
   const getRows = () => {
     if (!result) return [];
@@ -1996,6 +1935,27 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                   </tbody>
                 </table>
                 <div style={{ fontSize: 10, color: "#9CA3AF", marginTop: 6 }}>* Sunday Eve = total evening including MC crew (4 fixed). Min 5 = 4 MC + 1 floor SL.</div>
+
+                {/* Important Evening flags */}
+                <div style={{ marginTop: 12, borderTop: "1px solid #F3F4F6", paddingTop: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#4A3F2F", marginBottom: 6 }}>⭐ Important Evenings <span style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 400 }}>— mark days needing top workers / extra SL</span></div>
+                  <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                    {weekDates.map((d, i) => {
+                      const dt = new Date(d + "T12:00:00");
+                      const isMarked = importantEvenings.has(d);
+                      const dayType = getDayType(d, schoolDates);
+                      const isH = dayType.includes("Holiday") || dayType.includes("holiday");
+                      return (
+                        <button key={d} onClick={() => setImportantEvenings(prev => { const n = new Set(prev); if (n.has(d)) n.delete(d); else n.add(d); return n; })}
+                          style={{ padding: "4px 10px", borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: "pointer", border: isMarked ? "2px solid #F59E0B" : "1px solid #E5E7EB", background: isMarked ? "#FEF3C7" : "#F9FAFB", color: isMarked ? "#B45309" : "#6B7280", fontFamily: font }}>
+                          {["M","Tu","W","Th","F","Sa","Su"][dt.getDay() === 0 ? 6 : dt.getDay() - 1]} {dt.getDate()}{isH ? " 🎉" : ""}
+                          {isMarked ? " ⭐" : ""}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {importantEvenings.size > 0 && <div style={{ fontSize: 10, color: "#B45309", marginTop: 6 }}>⭐ = scheduler will prioritize experienced workers + add 2nd SL on these evenings</div>}
+                </div>
               </div>
 
               {/* Evening shift start times */}
@@ -2488,7 +2448,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
               <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                 <button onClick={handleAccept} style={{ padding: "8px 24px", borderRadius: 8, border: "none", background: "#22C55E", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: font }}>{"\u2713"} Save</button>
                 <button onClick={handleReject} style={{ padding: "8px 20px", borderRadius: 8, border: "none", background: "#4A3F2F", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: font }}>{"\ud83d\udd04"} Regenerate</button>
-                <button onClick={() => { setDraft(null); setStep("timeoff"); setNotes([]); setWeeklyMaxOverrides({}); setDayStaffing(null); }} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #D1D5DB", background: "#fff", color: "#6B7280", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: font }}>{"\u2715"} Start Over</button>
+                <button onClick={() => { setDraft(null); setStep("timeoff"); setNotes([]); setWeeklyMaxOverrides({}); setDayStaffing(null); setImportantEvenings(new Set()); }} style={{ padding: "8px 16px", borderRadius: 8, border: "1px solid #D1D5DB", background: "#fff", color: "#6B7280", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: font }}>{"\u2715"} Start Over</button>
                 <div style={{ flex: 1 }} />
                 {Object.keys(availOverrides).length > 0 && (
                   <span style={{ fontSize: 10, color: "#16A34A", fontWeight: 600, padding: "4px 8px", background: "#F0FDF4", borderRadius: 6 }}>{"\u2713"} {Object.keys(availOverrides).length} override{Object.keys(availOverrides).length > 1 ? "s" : ""}</span>

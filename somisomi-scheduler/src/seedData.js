@@ -57,7 +57,7 @@ export const SEED_EMPLOYEES = [
   },
   {
     id:"reg-1",name:"Kennedy Bean",role:"regular",status:"active",
-    maxShifts:4,minShifts:3,maxHours:20,minHours:12,
+    maxShifts:3,minShifts:3,maxHours:20,minHours:12,
     tags:["can_swirl","good_weekend","can_mc"],
     unavailability:{
       mon:{allDay:false,start:"09:00",end:"15:00"},
@@ -72,7 +72,7 @@ export const SEED_EMPLOYEES = [
   },
   {
     id:"reg-2",name:"Sam Castillo",role:"regular",status:"active",
-    maxShifts:4,minShifts:3,maxHours:20,minHours:12,
+    maxShifts:3,minShifts:3,maxHours:20,minHours:12,
     tags:["can_swirl","fourth_shift_priority","can_mc"],
     unavailability:{
       mon:{allDay:true,start:"",end:""},
@@ -87,7 +87,7 @@ export const SEED_EMPLOYEES = [
   },
   {
     id:"reg-3",name:"Lena Maslak",role:"regular",status:"inactive",
-    maxShifts:4,minShifts:3,maxHours:20,minHours:12,
+    maxShifts:3,minShifts:3,maxHours:20,minHours:12,
     tags:["can_swirl","fourth_shift_priority","second_day_priority","can_mc"],
     unavailability:{
       mon:{allDay:false,start:"11:00",end:"13:00"},
@@ -102,7 +102,7 @@ export const SEED_EMPLOYEES = [
   },
   {
     id:"reg-4",name:"Gwen Ursua",role:"regular",status:"active",
-    maxShifts:4,minShifts:3,maxHours:20,minHours:12,
+    maxShifts:3,minShifts:3,maxHours:20,minHours:12,
     tags:["can_swirl","good_weekend","can_mc"],
     unavailability:{
       ...newUnavail(),
@@ -112,7 +112,7 @@ export const SEED_EMPLOYEES = [
   },
   {
     id:"reg-5",name:"Susan Thai",role:"regular",status:"active",
-    maxShifts:4,minShifts:3,maxHours:20,minHours:12,
+    maxShifts:3,minShifts:3,maxHours:20,minHours:12,
     tags:["can_swirl","fourth_shift_priority","can_mc"],
     unavailability:{
       mon:{allDay:false,start:"",end:""},
@@ -127,7 +127,7 @@ export const SEED_EMPLOYEES = [
   },
   {
     id:"reg-6",name:"Abrar Uddin",role:"regular",status:"active",
-    maxShifts:4,minShifts:3,maxHours:20,minHours:12,
+    maxShifts:3,minShifts:3,maxHours:20,minHours:12,
     tags:["can_swirl","fourth_shift_priority","second_day_priority","good_weekend","no_weekday_nights"],
     unavailability:{
       mon:{allDay:false,start:"",end:""},
@@ -157,7 +157,7 @@ export const SEED_EMPLOYEES = [
   },
   {
     id:"reg-8",name:"Christina Mullins",role:"regular",status:"off",
-    maxShifts:4,minShifts:3,maxHours:20,minHours:12,
+    maxShifts:3,minShifts:3,maxHours:20,minHours:12,
     tags:["can_mc"],
     unavailability:{
       mon:{allDay:false,start:"09:00",end:"15:00"},
@@ -172,7 +172,7 @@ export const SEED_EMPLOYEES = [
   },
   {
     id:"tr-1",name:"Yise Moya",role:"regular",status:"active",
-    maxShifts:4,minShifts:3,maxHours:20,minHours:12,
+    maxShifts:3,minShifts:3,maxHours:20,minHours:12,
     tags:["can_swirl","can_mc"],unavailability:newUnavail(),
     notes:"Graduated from trainee. Fully available.",traineeCumulative:55.25,guaranteedDays:[],
   },

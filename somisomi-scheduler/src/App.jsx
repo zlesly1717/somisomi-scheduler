@@ -178,6 +178,8 @@ export default function App() {
           else e.minHours = 0;
         }
         if (!e.guaranteedDays) e.guaranteedDays = [];
+        // Migrate: regulars max 3 shifts (not 4)
+        if (e.role === "regular" && e.maxShifts === 4) { e.maxShifts = 3; e.minShifts = 3; }
         // Auto-migrate: force specific employees inactive/promoted
         if ((e.name === "Christina Mullins" || e.id === "reg-8") && e.status !== "inactive") e.status = "inactive";
         if ((e.name === "Tiernan Hollister" || e.id === "tr-2") && e.status !== "inactive") e.status = "inactive";
