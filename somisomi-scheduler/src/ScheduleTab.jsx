@@ -468,40 +468,45 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     }
     if (staffing.mid > 0) { for (let i = 0; i < staffing.mid; i++) { slots.push({ type: "mid", label: "Mid Shift", start: midS, end: midE, hours: hrs(midS, midE), slOnly: false, order: 10 + i }); } }
     if (isMC) {
+      // MC slots for the cleaning crew
       // Thu MC: 1 SL leader + 2 reg helpers = 3 total (owner helps in person)
       // Sun MC: 1 SL leader + 1 SL helper + 2 reg helpers = 4 total (no outside help)
       slots.push({ type: "mc_leader", label: "MC Leader (Eve SL)", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: true, isMC: true, order: 20 });
       if (isSun) {
-        // Sunday needs a 2nd SL on the MC crew
         slots.push({ type: "mc_sl_helper", label: "MC Helper (SL)", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: true, isMC: true, order: 21 });
       }
-      // Both Thu and Sun get 2 regular helpers
       for (let i = 0; i < 2; i++) { slots.push({ type: "mc_helper", label: "MC Helper", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: false, isMC: true, order: 22 + i }); }
-      // Extra evening workers (non-MC): if staffing.evening > base, add evening slots
-      // These can be trainees or regulars working the floor alongside the MC crew
-      const baseEvening = isSun ? 4 : 3; // Sun=4 (mc_leader+sl_helper+2helpers), Thu=3 (mc_leader+2helpers)
-      const extraEvening = (staffing.evening || baseEvening) - baseEvening;
-      for (let i = 0; i < extraEvening; i++) {
-        slots.push({ type: "evening", label: "Evening", start: eveS, end: eveE, hours: hrs(eveS, eveE), slOnly: false, isMC: false, isTraineeSlot: i === 0, order: 30 + i });
+
+      // Floor evening slots (non-MC crew working the register/serving)
+      // Thu: SL already covered by MC leader (Crystal). Extra floor slots = evening count - 3 MC slots.
+      // Sun: 2 SL evening slots + regular evening slots for floor workers.
+      if (isSun) {
+        // Sunday needs 2 SLs on the floor too (separate from MC crew)
+        const eveningTotal = staffing.evening || 5;
+        for (let i = 0; i < eveningTotal; i++) {
+          const needsSL = i === 0 || i === 1;
+          const slotType = i === 0 ? "evening_sl" : i === 1 ? "evening_sl2" : "evening";
+          const slotLabel = i === 0 ? "Evening SL" : i === 1 ? "Evening SL 2" : "Evening";
+          slots.push({ type: slotType, label: slotLabel, start: eveS, end: eveE, hours: hrs(eveS, eveE), slOnly: needsSL, noTrainee: i < 4, isMC: false, order: 30 + i });
+        }
+      } else {
+        // Thu: extra floor evening slots beyond MC crew
+        const baseEvening = 3; // mc_leader + 2 mc_helpers = 3 on MC
+        const extraEvening = (staffing.evening || baseEvening) - baseEvening;
+        for (let i = 0; i < extraEvening; i++) {
+          slots.push({ type: "evening", label: "Evening", start: eveS, end: eveE, hours: hrs(eveS, eveE), slOnly: false, isMC: false, isTraineeSlot: i === 0, order: 30 + i });
+        }
       }
-      // Thu MC crew: Crystal (MC leader) + 2 regular helpers = 3 people total
-      // No separate floor SL — Crystal covers the SL presence
     } else {
       for (let i = 0; i < (staffing.evening || 3); i++) {
-        // Slot 0 = always SL-only (1 SL required every evening)
-        // Fri/Sat slot 1 = also SL-only (2 SLs required on weekend nights)
-        // Trainees only on slot 5+ on Fri/Sat nights
-        const isFriSatSunNight = isFri || isSat || isSun;
-        const needsSL = i === 0 || (i === 1 && isFriSatSunNight);
-        const slotType = i === 0 ? "evening_sl" : (i === 1 && isFriSatSunNight ? "evening_sl2" : "evening");
-        const slotLabel = i === 0 ? "Evening SL" : (i === 1 && isFriSatSunNight ? "Evening SL 2" : "Evening");
+        const isFriSatNight = isFri || isSat;
+        const needsSL = i === 0 || (i === 1 && isFriSatNight);
+        const slotType = i === 0 ? "evening_sl" : (i === 1 && isFriSatNight ? "evening_sl2" : "evening");
+        const slotLabel = i === 0 ? "Evening SL" : (i === 1 && isFriSatNight ? "Evening SL 2" : "Evening");
         slots.push({
-          type: slotType,
-          label: slotLabel,
+          type: slotType, label: slotLabel,
           start: eveS, end: eveE, hours: hrs(eveS, eveE),
-          slOnly: needsSL,
-          noTrainee: isFriSatSunNight && i < 4,
-          order: 20 + i
+          slOnly: needsSL, noTrainee: isFriSatNight && i < 4, order: 20 + i
         });
       }
     }
