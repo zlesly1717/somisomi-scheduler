@@ -203,26 +203,31 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     e._budget = Math.min(availCount, e._effMaxShifts);
   });
 
-  // ── Priority ranking: bottom-ranked person gets 1 fewer shift ──────
-  // slRanking and regRanking are ordered arrays (top = most hours, bottom = lighter week)
+  // ── Priority ranking: everyone gets equal shifts by default ──────────
+  // Only the BOTTOM person gets a lighter week:
+  // - Bottom SL: capped at 3 shifts (instead of 4)
+  // - Bottom reg: capped at their max - 1
+  // Everyone else gets their full normal max. Ranking only matters when
+  // there's a genuine shortage of shifts to go around.
   if (priorityRanking) {
-    // Bottom-ranked SL gets 1 fewer shift (light week rotation)
     const slList = priorityRanking.sl || [];
-    if (slList.length >= 2) {
+    if (slList.length >= 1) {
       const lastId = slList[slList.length - 1];
       const emp = active.find(e => e.id === lastId);
+      // Only apply if not already manually overridden via weeklyMaxOverrides
       if (emp && !weeklyMaxOverrides?.[lastId]) {
-        emp._effMaxShifts = Math.max(0, emp._effMaxShifts - 1);
-        emp._budget = Math.min(emp._budget, emp._effMaxShifts);
+        // SL light week = 3 shifts instead of 4
+        emp._effMaxShifts = 3;
+        emp._budget = Math.min(emp._budget, 3);
       }
     }
-    // Bottom-ranked reg gets 1 fewer shift too
+    // For regs: bottom person gets max-1, but only if ranking has 2+ people
     const regList = priorityRanking.reg || [];
     if (regList.length >= 2) {
       const lastId = regList[regList.length - 1];
       const emp = active.find(e => e.id === lastId);
       if (emp && !weeklyMaxOverrides?.[lastId]) {
-        emp._effMaxShifts = Math.max(0, emp._effMaxShifts - 1);
+        emp._effMaxShifts = Math.max(1, emp._effMaxShifts - 1);
         emp._budget = Math.min(emp._budget, emp._effMaxShifts);
       }
     }
@@ -1456,7 +1461,7 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
         <span style={{ fontSize: 13, color: "#D1D5DB" }}>⠿</span>
         <span style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", minWidth: 18 }}>#{rank + 1}</span>
         <span style={{ fontSize: 12, fontWeight: 600, color, background: bg, padding: "2px 8px", borderRadius: 10, flex: 1 }}>{emp.name}</span>
-        {isBottom && <span style={{ fontSize: 10, color: "#F87171", fontWeight: 700 }}>← lighter week</span>}
+        {isBottom && list === "sl" && <span style={{ fontSize: 10, color: "#F87171", fontWeight: 700 }}>← 3 shifts this week</span>}{isBottom && list === "reg" && <span style={{ fontSize: 10, color: "#F87171", fontWeight: 700 }}>← 1 fewer if needed</span>}
       </div>
     );
   };
@@ -1495,7 +1500,7 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
         </>)}
 
         {/* Shift Leads — drag to rank */}
-        {sectionLabel("Shift Leads", "Drag to rank — bottom person gets the lighter week this week")}
+        {sectionLabel("Shift Leads", "Everyone gets 4 shifts. Drag bottom person to give them 3 this week.")}
         <div style={{ background: "#FFFBEB", borderRadius: 10, padding: "8px", border: "1px solid #FDE68A" }}>
           {slRanking.map((id, i) => (
             <RankRow key={id} empId={id} rank={i} total={slRanking.length} list="sl" color="#B45309" bg="#FEF3C7" />
@@ -1504,7 +1509,7 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
         </div>
 
         {/* Regular Staff — drag to rank */}
-        {sectionLabel("Staff", "Drag to rank — bottom person gets fewer hours this week")}
+        {sectionLabel("Staff", "Hours split equally. Drag bottom person to give them 1 fewer shift if needed.")}
         <div style={{ background: "#F0FDF4", borderRadius: 10, padding: "8px", border: "1px solid #BBF7D0" }}>
           {regRanking.map((id, i) => (
             <RankRow key={id} empId={id} rank={i} total={regRanking.length} list="reg" color="#1D4ED8" bg="#DBEAFE" />
@@ -1738,8 +1743,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
     setWeeklyMaxOverrides(overrides);
     savePriorityRanking({ sl: slRanking || [], reg: regRanking || [], leftovers: leftoverIds || [] });
     setShowNuance(false);
-    // Reset dayStaffing so it reinitializes from rules defaults fresh
-    setDayStaffing(null);
+    // Do NOT reset dayStaffing here — preserve any staffing adjustments the manager made
     // Pass overrides directly — React state update is async so weeklyMaxOverrides would be stale
     setTimeout(() => handleGenerate(approvedBreaks, overrides), 50);
   };
