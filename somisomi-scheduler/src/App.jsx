@@ -243,8 +243,10 @@ export default function App() {
       setTimeOffs(data.timeOffs || []);
       // Migrate: pre-seed MC rotation history from past 4 weeks if not already saved
       const existing = data.savedSchedules || {};
-      // Remove test week if it was accidentally saved
-      if (existing["2026-04-06"]) delete existing["2026-04-06"];
+      // Remove Apr 6 test week ONLY if it has no real schedule data (just seeded MC history)
+      if (existing["2026-04-06"] && existing["2026-04-06"]._source === "homebase-import") {
+        delete existing["2026-04-06"];
+      }
       if (!existing["2026-02-16"] || !existing["2026-03-23"] || !existing["2026-03-30"]) {
         const mcHistory = buildMCHistorySeed();
         Object.entries(mcHistory).forEach(([k, v]) => { if (!existing[k]) existing[k] = v; });
