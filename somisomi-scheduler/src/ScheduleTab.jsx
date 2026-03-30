@@ -499,13 +499,14 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       // Thu: SL already covered by MC leader (Crystal). Extra floor slots = evening count - 3 MC slots.
       // Sun: 2 SL evening slots + regular evening slots for floor workers.
       if (isSun) {
-        // Sunday needs 2 SLs on the floor too (separate from MC crew)
-        const eveningTotal = staffing.evening || 5;
-        for (let i = 0; i < eveningTotal; i++) {
-          const needsSL = i === 0 || i === 1;
-          const slotType = i === 0 ? "evening_sl" : i === 1 ? "evening_sl2" : "evening";
-          const slotLabel = i === 0 ? "Evening SL" : i === 1 ? "Evening SL 2" : "Evening";
-          slots.push({ type: slotType, label: slotLabel, start: eveS, end: eveE, hours: hrs(eveS, eveE), slOnly: needsSL, noTrainee: i < 4, isMC: false, order: 30 + i });
+        // Sunday floor slots: total evening staffing minus the 2 SLs already on MC crew
+        // e.g. staffing.evening=5 means 5 total evening people, 2 are on MC, so 3 floor slots
+        const mcSLsOnCrew = 2; // mc_leader + mc_sl_helper
+        const floorTotal = Math.max(0, (staffing.evening || 5) - mcSLsOnCrew);
+        for (let i = 0; i < floorTotal; i++) {
+          const slotType = i === 0 ? "evening_sl" : "evening";
+          const slotLabel = i === 0 ? "Evening SL" : "Evening";
+          slots.push({ type: slotType, label: slotLabel, start: eveS, end: eveE, hours: hrs(eveS, eveE), slOnly: i === 0, noTrainee: i < 3, isMC: false, order: 30 + i });
         }
       } else {
         // Thu: extra floor evening slots beyond MC crew
@@ -1239,7 +1240,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 }
 
 // === PRE-SCHEDULE NUANCE MODAL ===
-function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onGenerate, onClose, font }) {
+function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onGenerate, onClose, font, savedRanking }) {
   const active = employees.filter(e => e.status === "active");
 
   const SPECIAL_IDS = ["reg-7", "tr-6"]; // Grae, Cesia — fixed shift limits
@@ -1251,8 +1252,24 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
   const defaultLeftovers = active.filter(e => e.role === "trainee" && !specialIds.has(e.id));
 
   // Ranking state: ordered array of ids, top = highest priority (most hours), bottom = lighter week
-  const [slRanking, setSlRanking] = useState(() => sls.map(e => e.id));
-  const [regRanking, setRegRanking] = useState(() => mainPool.filter(e => !defaultLeftovers.find(d => d.id === e.id)).map(e => e.id));
+  const [slRanking, setSlRanking] = useState(() => {
+    if (savedRanking?.sl?.length) {
+      // Use saved order but add any new SLs at the top
+      const saved = savedRanking.sl.filter(id => sls.find(e => e.id === id));
+      const newSLs = sls.filter(e => !saved.includes(e.id)).map(e => e.id);
+      return [...newSLs, ...saved];
+    }
+    return sls.map(e => e.id);
+  });
+  const [regRanking, setRegRanking] = useState(() => {
+    const nonLeftover = mainPool.filter(e => !defaultLeftovers.find(d => d.id === e.id));
+    if (savedRanking?.reg?.length) {
+      const saved = savedRanking.reg.filter(id => nonLeftover.find(e => e.id === id));
+      const newRegs = nonLeftover.filter(e => !saved.includes(e.id)).map(e => e.id);
+      return [...newRegs, ...saved];
+    }
+    return nonLeftover.map(e => e.id);
+  });
   const [leftoverIds, setLeftoverIds] = useState(() => new Set(defaultLeftovers.map(e => e.id)));
   const [dragId, setDragId] = useState(null);
   const [dragList, setDragList] = useState(null); // "sl" | "reg"
@@ -1603,11 +1620,22 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
     }, 200);
   };
 
-  const [priorityRanking, setPriorityRanking] = useState({ sl: [], reg: [] });
+  const [priorityRanking, setPriorityRanking] = useState(() => {
+    try {
+      const saved = localStorage.getItem("somisomi-priority-ranking");
+      if (saved) return JSON.parse(saved);
+    } catch(e) {}
+    return { sl: [], reg: [] };
+  });
+
+  const savePriorityRanking = (ranking) => {
+    setPriorityRanking(ranking);
+    try { localStorage.setItem("somisomi-priority-ranking", JSON.stringify(ranking)); } catch(e) {}
+  };
 
   const handleGenerateFromNuance = (overrides, slRanking, regRanking) => {
     setWeeklyMaxOverrides(overrides);
-    setPriorityRanking({ sl: slRanking || [], reg: regRanking || [] });
+    savePriorityRanking({ sl: slRanking || [], reg: regRanking || [] });
     setShowNuance(false);
     setTimeout(() => handleGenerate(approvedBreaks), 50);
   };
@@ -1724,6 +1752,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
           onGenerate={handleGenerateFromNuance}
           onClose={() => setShowNuance(false)}
           font={font}
+          savedRanking={priorityRanking}
         />
       )}
 
@@ -1757,7 +1786,12 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
               {Object.keys(savedSchedules).sort().map(key => {
                 const dt = new Date(key + "T12:00:00");
                 const isA = key === weekKey;
-                return <button key={key} onClick={() => handleWeekChange(key)} style={{ padding: "3px 10px", borderRadius: 8, fontSize: 10, fontWeight: 600, cursor: "pointer", border: isA ? "2px solid #22C55E" : "1px solid #D1D5DB", background: isA ? "#F0FDF4" : "#fff", color: isA ? "#16A34A" : "#6B7280", fontFamily: font }}>{dt.getMonth() + 1}/{dt.getDate()}</button>;
+                return (
+                  <div key={key} style={{ display: "inline-flex", alignItems: "center", gap: 0 }}>
+                    <button onClick={() => handleWeekChange(key)} style={{ padding: "3px 10px", borderRadius: isA ? "8px 0 0 8px" : 8, fontSize: 10, fontWeight: 600, cursor: "pointer", border: isA ? "2px solid #22C55E" : "1px solid #D1D5DB", borderRight: isA ? "1px solid #22C55E" : "1px solid #D1D5DB", background: isA ? "#F0FDF4" : "#fff", color: isA ? "#16A34A" : "#6B7280", fontFamily: font }}>{dt.getMonth() + 1}/{dt.getDate()}</button>
+                    {isA && <button onClick={() => { if (window.confirm("Delete saved week " + (dt.getMonth()+1) + "/" + dt.getDate() + "?")) { setSavedSchedules(prev => { const n = {...prev}; delete n[key]; return n; }); } }} style={{ padding: "3px 6px", borderRadius: "0 8px 8px 0", fontSize: 10, fontWeight: 700, cursor: "pointer", border: "2px solid #DC2626", borderLeft: "none", background: "#FEF2F2", color: "#DC2626", fontFamily: font }}>✕</button>}
+                  </div>
+                );
               })}
             </div>
           </div>
