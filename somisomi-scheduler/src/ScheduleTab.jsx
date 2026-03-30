@@ -203,35 +203,27 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     e._budget = Math.min(availCount, e._effMaxShifts);
   });
 
-  // ── Priority ranking: everyone gets equal shifts by default ──────────
-  // Only the BOTTOM person gets a lighter week:
-  // - Bottom SL: capped at 3 shifts (instead of 4)
-  // - Bottom reg: capped at their max - 1
-  // Everyone else gets their full normal max. Ranking only matters when
-  // there's a genuine shortage of shifts to go around.
+  // ── Priority ranking & leftover bucket ───────────────────────────
+  // Bottom SL gets 3 shifts (MC break week), everyone else gets 4
+  // Leftover bucket people get scheduled LAST — they fill gaps after everyone else
   if (priorityRanking) {
     const slList = priorityRanking.sl || [];
     if (slList.length >= 1) {
       const lastId = slList[slList.length - 1];
       const emp = active.find(e => e.id === lastId);
-      // Only apply if not already manually overridden via weeklyMaxOverrides
       if (emp && !weeklyMaxOverrides?.[lastId]) {
-        // SL light week = 3 shifts instead of 4
         emp._effMaxShifts = 3;
         emp._budget = Math.min(emp._budget, 3);
       }
     }
-    // For regs: bottom person gets max-1, but only if ranking has 2+ people
-    const regList = priorityRanking.reg || [];
-    if (regList.length >= 2) {
-      const lastId = regList[regList.length - 1];
-      const emp = active.find(e => e.id === lastId);
-      if (emp && !weeklyMaxOverrides?.[lastId]) {
-        emp._effMaxShifts = Math.max(1, emp._effMaxShifts - 1);
-        emp._budget = Math.min(emp._budget, emp._effMaxShifts);
-      }
-    }
   }
+  // Leftover bucket: identified by isLeftover flag in weeklyMaxOverrides
+  // They keep their full max shifts but get scheduled after everyone else
+  const leftoverEmpIds = new Set(
+    Object.entries(weeklyMaxOverrides || {})
+      .filter(([, v]) => v?.isLeftover)
+      .map(([k]) => k)
+  );
 
   // GRAE RULE: max 1 weekend shift, prefer to use her other shift on a weekday
   // (unless weekday is unavailable, then allow 2 weekends)
@@ -439,7 +431,12 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     });
 
     if (extraFilter) {
-      const filtered = extraFilter(cands);
+      // Deprioritize leftover bucket — move them to end so they fill last
+      const filtered = extraFilter(cands).sort((a, b) => {
+        const aL = leftoverEmpIds.has(a.id) ? 1 : 0;
+        const bL = leftoverEmpIds.has(b.id) ? 1 : 0;
+        return aL - bL;
+      });
       if (filtered.length > 0) cands = filtered;
     }
     return cands;
@@ -1338,9 +1335,26 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 // === PRE-SCHEDULE NUANCE MODAL ===
 function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onGenerate, onClose, font, savedRanking }) {
   const active = employees.filter(e => e.status === "active");
+
+  // Section 1: Special cases — Grae, Cesia (low shift caps)
+  const SPECIAL_IDS = ["reg-7", "tr-6"];
+  const specials = active.filter(e => SPECIAL_IDS.includes(e.id));
+
+  // Section 2: Shift Leads — drag to set who gets 3 shifts (MC break)
   const sls = active.filter(e => e.role === "shift_lead");
 
-  // SL break rotation: bottom of list gets 3 shifts this week
+  // Section 3: Regular staff — all get 3 shifts, no knobs
+  const regs = active.filter(e =>
+    e.role !== "shift_lead" &&
+    !SPECIAL_IDS.includes(e.id) &&
+    e.name !== "Nani Hoomes" &&
+    e.id !== "tr-4"
+  );
+
+  // Section 4: Leftover bucket — Nani by default, gets gaps only
+  const leftoverDefaults = active.filter(e => e.name === "Nani Hoomes" || e.id === "tr-4");
+
+  // SL ranking state
   const initSlRanking = () => {
     if (savedRanking?.sl?.length) {
       const saved = savedRanking.sl.filter(id => sls.find(e => e.id === id));
@@ -1351,16 +1365,23 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
   };
   const [slRanking, setSlRanking] = useState(initSlRanking);
 
-  // Leftover bucket: people who might get fewer shifts (time off, low priority)
-  const mainPool = active.filter(e => e.role !== "shift_lead" && e.maxShifts > 2);
-  const initLeftovers = () => {
+  // Special case overrides
+  const [specialOverrides, setSpecialOverrides] = useState(() => {
+    const init = {};
+    specials.forEach(e => {
+      init[e.id] = weeklyMaxOverrides[e.id]?.max ?? e.maxShifts;
+    });
+    return init;
+  });
+
+  // Leftover bucket — who's in it
+  const [leftoverIds, setLeftoverIds] = useState(() => {
     if (savedRanking?.leftovers?.length) {
-      const valid = savedRanking.leftovers.filter(id => mainPool.find(e => e.id === id));
+      const valid = savedRanking.leftovers.filter(id => active.find(e => e.id === id));
       if (valid.length > 0) return new Set(valid);
     }
-    return new Set(["tr-4"]); // Nani default
-  };
-  const [leftoverIds, setLeftoverIds] = useState(initLeftovers);
+    return new Set(leftoverDefaults.map(e => e.id));
+  });
 
   const [dragId, setDragId] = useState(null);
 
@@ -1390,21 +1411,27 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
 
   const handleConfirm = () => {
     const finalOverrides = {};
-    // Bottom SL gets 3 shifts
+    // Special cases: use their adjusted limit
+    specials.forEach(e => {
+      const val = specialOverrides[e.id] ?? e.maxShifts;
+      if (val !== e.maxShifts) finalOverrides[e.id] = { min: val, max: val };
+    });
+    // Bottom SL gets 3 shifts (MC break week)
     if (slRanking.length >= 1) {
       const lastId = slRanking[slRanking.length - 1];
       finalOverrides[lastId] = { min: 3, max: 3 };
     }
-    // Leftover people get max 1 shift
+    // Leftover bucket: no hard cap — scheduler fills them with whatever is left
+    // We mark them so scheduler knows to fill them last
     leftoverIds.forEach(id => {
-      finalOverrides[id] = { min: 0, max: 1 };
+      if (!finalOverrides[id]) finalOverrides[id] = { min: 0, max: 3, isLeftover: true };
     });
     setWeeklyMaxOverrides(finalOverrides);
     onGenerate(finalOverrides, slRanking, [], [...leftoverIds]);
   };
 
   const sectionLabel = (txt, sub) => (
-    <div style={{ marginTop: 16, marginBottom: 8 }}>
+    <div style={{ marginTop: 18, marginBottom: 8 }}>
       <div style={{ fontSize: 11, fontWeight: 800, color: "#4A3F2F", textTransform: "uppercase", letterSpacing: 0.5 }}>{txt}</div>
       {sub && <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>{sub}</div>}
     </div>
@@ -1412,7 +1439,7 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, padding: 16 }} onClick={onClose}>
-      <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto", boxShadow: "0 25px 60px rgba(0,0,0,0.3)" }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 480, maxHeight: "90vh", overflowY: "auto", boxShadow: "0 25px 60px rgba(0,0,0,0.3)" }} onClick={e => e.stopPropagation()}>
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
           <div>
@@ -1422,8 +1449,29 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#9CA3AF" }}>×</button>
         </div>
 
-        {/* Section 1: SL break rotation */}
-        {sectionLabel("Shift Lead Break Rotation", "Drag to bottom whoever gets 3 shifts this week (MC break)")}
+        {/* 1. Special Cases */}
+        {sectionLabel("High Schoolers", "Adjust shifts if needed this week")}
+        <div style={{ background: "#F9FAFB", borderRadius: 10, padding: "8px 12px", border: "1px solid #E5E7EB" }}>
+          {specials.map(emp => {
+            const cur = specialOverrides[emp.id] ?? emp.maxShifts;
+            return (
+              <div key={emp.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #F3F4F6" }}>
+                <div>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: "#6D28D9", background: "#EDE9FE", padding: "2px 8px", borderRadius: 10 }}>{emp.name}</span>
+                  <span style={{ fontSize: 10, color: "#9CA3AF", marginLeft: 8 }}>normally {emp.maxShifts} shifts</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <button onClick={() => setSpecialOverrides(p => ({ ...p, [emp.id]: Math.max(0, cur - 1) }))} style={{ width: 24, height: 24, borderRadius: 4, border: "1px solid #E5E7EB", background: "#FEF2F2", color: "#DC2626", cursor: "pointer", fontSize: 14, fontWeight: 800, padding: 0 }}>−</button>
+                  <span style={{ fontSize: 13, fontWeight: 800, minWidth: 20, textAlign: "center", color: cur < emp.maxShifts ? "#DC2626" : "#374151" }}>{cur}</span>
+                  <button onClick={() => setSpecialOverrides(p => ({ ...p, [emp.id]: Math.min(emp.maxShifts, cur + 1) }))} style={{ width: 24, height: 24, borderRadius: 4, border: "1px solid #E5E7EB", background: "#F0FDF4", color: "#16A34A", cursor: "pointer", fontSize: 14, fontWeight: 800, padding: 0 }}>+</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* 2. Shift Leads */}
+        {sectionLabel("Shift Leads", "Everyone gets 4 shifts. Drag bottom person — they get 3 (MC break week).")}
         <div style={{ background: "#FFFBEB", borderRadius: 10, padding: "8px", border: "1px solid #FDE68A" }}>
           {slRanking.map((id, i) => {
             const emp = sls.find(e => e.id === id);
@@ -1447,18 +1495,33 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
                 <span style={{ fontSize: 13, color: "#D1D5DB" }}>⠿</span>
                 <span style={{ fontSize: 11, fontWeight: 700, color: "#9CA3AF", minWidth: 18 }}>#{i + 1}</span>
                 <span style={{ fontSize: 12, fontWeight: 600, color: "#B45309", background: "#FEF3C7", padding: "2px 8px", borderRadius: 10, flex: 1 }}>{emp.name}</span>
-                {isBottom && <span style={{ fontSize: 10, color: "#F59E0B", fontWeight: 700 }}>← 3 shifts this week</span>}
+                {isBottom
+                  ? <span style={{ fontSize: 10, color: "#F59E0B", fontWeight: 700 }}>← 3 shifts · no MC</span>
+                  : <span style={{ fontSize: 10, color: "#9CA3AF" }}>4 shifts</span>
+                }
               </div>
             );
           })}
           <div style={{ fontSize: 10, color: "#9CA3AF", textAlign: "center", marginTop: 4 }}>drag to reorder</div>
         </div>
 
-        {/* Section 2: Leftover bucket */}
-        {sectionLabel("Fewer Shifts This Week", "Drag anyone who might get fewer shifts — time off, low priority, etc.")}
+        {/* 3. Regular Staff */}
+        {sectionLabel("Regular Staff", "All get 3 shifts equally — no changes needed")}
+        <div style={{ background: "#F0FDF4", borderRadius: 10, padding: "10px 12px", border: "1px solid #BBF7D0" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {regs.map(e => (
+              <span key={e.id} style={{ fontSize: 12, fontWeight: 600, color: "#166534", background: "#DCFCE7", padding: "3px 10px", borderRadius: 10 }}>{e.name}</span>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: "#16A34A", marginTop: 6 }}>✓ 3 shifts each this week</div>
+        </div>
+
+        {/* 4. Leftover Bucket */}
+        {sectionLabel("Leftover Bucket", "Gets whatever shifts remain — could be 3, 2, or 1")}
         <div style={{ background: "#FEF2F2", borderRadius: 10, padding: "10px 12px", border: "1px solid #FECACA" }}>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
-            {mainPool.map(e => {
+          <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 8 }}>Tap to add/remove anyone from this bucket. They'll fill gaps after everyone else is scheduled.</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {active.filter(e => !SPECIAL_IDS.includes(e.id) && e.role !== "shift_lead").map(e => {
               const inBucket = leftoverIds.has(e.id);
               const rc = e.role === "trainee" ? { color: "#6D28D9", bg: "#EDE9FE" } : { color: "#1D4ED8", bg: "#DBEAFE" };
               return (
@@ -1473,8 +1536,7 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
               );
             })}
           </div>
-          {leftoverIds.size === 0 && <div style={{ fontSize: 11, color: "#9CA3AF" }}>No one — everyone gets their full 3 shifts</div>}
-          {leftoverIds.size > 0 && <div style={{ fontSize: 11, color: "#9CA3AF" }}>Red = max 1 shift this week (only if gaps remain)</div>}
+          {leftoverIds.size > 0 && <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 6 }}>Red = leftover bucket (fills gaps, no guaranteed shifts)</div>}
         </div>
 
         <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
