@@ -1218,64 +1218,85 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 // === PRE-SCHEDULE NUANCE MODAL ===
 function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onGenerate, onClose, font }) {
   const active = employees.filter(e => e.status === "active");
-  const sls = active.filter(e => e.role === "shift_lead");
-  const regs = active.filter(e => e.role === "regular");
-  const trainees = active.filter(e => e.role === "trainee");
 
-  // Local copy so changes only apply when confirmed
+  // Special cases: employees with non-standard shift caps (low maxShifts)
+  const SPECIAL_IDS = ["reg-7", "tr-6"]; // Grae, Cesia
+  const specials = active.filter(e => SPECIAL_IDS.includes(e.id) || e.maxShifts <= 2);
+  const specialIds = new Set(specials.map(e => e.id));
+
+  const sls = active.filter(e => e.role === "shift_lead");
+  // Regular staff = regulars/trainees not in specials — these get equal hours, no knobs
+  const mainPool = active.filter(e => e.role !== "shift_lead" && !specialIds.has(e.id));
+  // Leftover bucket: trainees who are lowest priority (get shifts only if needed)
+  // Default leftover candidates: trainees with fewer cumulative hours
+  const defaultLeftovers = active.filter(e => e.role === "trainee" && !specialIds.has(e.id));
+  const [leftoverIds, setLeftoverIds] = useState(() => new Set(defaultLeftovers.map(e => e.id)));
+
+  // Local shift overrides
   const [localOverrides, setLocalOverrides] = useState(() => {
     const init = {};
     active.forEach(e => {
-      if (weeklyMaxOverrides[e.id]) {
-        init[e.id] = { ...weeklyMaxOverrides[e.id] };
-      }
+      if (weeklyMaxOverrides[e.id]) init[e.id] = { ...weeklyMaxOverrides[e.id] };
     });
     return init;
   });
 
-  const getMax = (emp) => {
-    return localOverrides[emp.id]?.max ?? emp.maxShifts;
-  };
-
+  const getMax = (emp) => localOverrides[emp.id]?.max ?? emp.maxShifts;
   const setMax = (emp, val) => {
     const clamped = Math.max(0, Math.min(emp.maxShifts, val));
     setLocalOverrides(prev => {
       const n = { ...prev };
-      if (clamped === emp.maxShifts) {
-        delete n[emp.id]; // back to default, remove override
-      } else {
-        n[emp.id] = { min: clamped, max: clamped };
-      }
+      if (clamped === emp.maxShifts) delete n[emp.id];
+      else n[emp.id] = { min: clamped, max: clamped };
+      return n;
+    });
+  };
+
+  const toggleLeftover = (emp) => {
+    setLeftoverIds(prev => {
+      const n = new Set(prev);
+      if (n.has(emp.id)) n.delete(emp.id);
+      else n.add(emp.id);
       return n;
     });
   };
 
   const handleConfirm = () => {
-    setWeeklyMaxOverrides(localOverrides);
-    onGenerate(localOverrides);
+    // Leftover people get max 1 shift unless manager bumped them
+    const finalOverrides = { ...localOverrides };
+    leftoverIds.forEach(id => {
+      const emp = active.find(e => e.id === id);
+      if (!emp) return;
+      const cur = finalOverrides[id]?.max ?? emp.maxShifts;
+      // Only cap if not already manually set higher by manager
+      if (!localOverrides[id]) finalOverrides[id] = { min: 1, max: 1 };
+    });
+    setWeeklyMaxOverrides(finalOverrides);
+    onGenerate(finalOverrides);
   };
 
-  const si2 = { fontSize: 11, fontFamily: font };
-  const sectionLabel = (txt) => (
-    <div style={{ fontSize: 10, fontWeight: 800, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6, marginTop: 14 }}>{txt}</div>
+  const sectionLabel = (txt, sub) => (
+    <div style={{ marginTop: 18, marginBottom: 8 }}>
+      <div style={{ fontSize: 11, fontWeight: 800, color: "#4A3F2F", textTransform: "uppercase", letterSpacing: 0.5 }}>{txt}</div>
+      {sub && <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>{sub}</div>}
+    </div>
   );
 
-  const EmpRow = ({ emp }) => {
+  const ShiftRow = ({ emp, showRole }) => {
     const cur = getMax(emp);
     const isReduced = cur < emp.maxShifts;
     const rc = { shift_lead: { color: "#B45309", bg: "#FEF3C7" }, regular: { color: "#1D4ED8", bg: "#DBEAFE" }, trainee: { color: "#6D28D9", bg: "#EDE9FE" } }[emp.role];
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 0", borderBottom: "1px solid #F3F4F6" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", borderRadius: 8, background: "#F9FAFB", marginBottom: 4 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: rc.color, background: rc.bg, padding: "1px 7px", borderRadius: 10 }}>{emp.name}</span>
-          <span style={{ fontSize: 10, color: "#9CA3AF" }}>max {emp.maxShifts} shifts normally</span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: rc.color, background: rc.bg, padding: "2px 8px", borderRadius: 10 }}>{emp.name}</span>
+          {showRole && <span style={{ fontSize: 10, color: "#9CA3AF" }}>{emp.role === "shift_lead" ? "SL" : emp.role === "trainee" ? "Trainee" : "Reg"}</span>}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ fontSize: 10, color: "#9CA3AF" }}>this week:</span>
-          <button onClick={() => setMax(emp, cur - 1)} style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid #E5E7EB", background: "#FEF2F2", color: "#DC2626", cursor: "pointer", fontSize: 13, fontWeight: 800, padding: 0 }}>−</button>
-          <span style={{ fontSize: 13, fontWeight: 800, minWidth: 18, textAlign: "center", color: isReduced ? "#DC2626" : "#374151" }}>{cur}</span>
-          <button onClick={() => setMax(emp, cur + 1)} style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid #E5E7EB", background: "#F0FDF4", color: "#16A34A", cursor: "pointer", fontSize: 13, fontWeight: 800, padding: 0 }}>+</button>
-          {isReduced && <span style={{ fontSize: 10, color: "#DC2626", fontWeight: 700 }}>↓ light week</span>}
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <button onClick={() => setMax(emp, cur - 1)} style={{ width: 24, height: 24, borderRadius: 4, border: "1px solid #E5E7EB", background: "#FEF2F2", color: "#DC2626", cursor: "pointer", fontSize: 14, fontWeight: 800, padding: 0 }}>−</button>
+          <span style={{ fontSize: 13, fontWeight: 800, minWidth: 20, textAlign: "center", color: isReduced ? "#DC2626" : "#374151" }}>{cur}</span>
+          <button onClick={() => setMax(emp, cur + 1)} style={{ width: 24, height: 24, borderRadius: 4, border: "1px solid #E5E7EB", background: "#F0FDF4", color: "#16A34A", cursor: "pointer", fontSize: 14, fontWeight: 800, padding: 0 }}>+</button>
+          {isReduced && <span style={{ fontSize: 10, color: "#DC2626", fontWeight: 700 }}>↓ light</span>}
         </div>
       </div>
     );
@@ -1283,27 +1304,81 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, padding: 16 }} onClick={onClose}>
-      <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 520, maxHeight: "85vh", overflowY: "auto", boxShadow: "0 25px 60px rgba(0,0,0,0.3)" }} onClick={e => e.stopPropagation()}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+      <div style={{ background: "#fff", borderRadius: 16, padding: 24, width: "100%", maxWidth: 500, maxHeight: "88vh", overflowY: "auto", boxShadow: "0 25px 60px rgba(0,0,0,0.3)" }} onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
           <div>
             <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#4A3F2F" }}>⚙️ Before You Generate</h3>
-            <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 3 }}>Adjust who gets fewer shifts this week. Everyone else gets their normal max.</div>
+            <div style={{ fontSize: 12, color: "#9CA3AF", marginTop: 3 }}>Any nuances for this week?</div>
           </div>
           <button onClick={onClose} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#9CA3AF" }}>×</button>
         </div>
 
-        <div style={{ background: "#FFF7ED", borderRadius: 8, padding: "10px 14px", marginTop: 12, fontSize: 12, color: "#92400E", borderLeft: "3px solid #F59E0B" }}>
-          💡 Use this to set light weeks — e.g. if Nani is lowest priority this week, reduce her to 1 shift. The scheduler will fill gaps with higher-priority people first.
+        {/* Section 1: Special cases */}
+        {specials.length > 0 && (<>
+          {sectionLabel("Special Cases", "Fixed limits — adjust if needed this week")}
+          <div style={{ background: "#F9FAFB", borderRadius: 10, padding: "4px 8px" }}>
+            {specials.map(e => <ShiftRow key={e.id} emp={e} />)}
+          </div>
+        </>)}
+
+        {/* Section 2: Shift Leads */}
+        {sectionLabel("Shift Leads", "Give someone a lighter week if needed")}
+        <div style={{ background: "#FFFBEB", borderRadius: 10, padding: "4px 8px", border: "1px solid #FDE68A" }}>
+          {sls.map(e => <ShiftRow key={e.id} emp={e} />)}
         </div>
 
-        {sectionLabel("Shift Leads")}
-        {sls.map(e => <EmpRow key={e.id} emp={e} />)}
+        {/* Section 3: Main pool — equal hours, no knobs */}
+        {mainPool.filter(e => !leftoverIds.has(e.id)).length > 0 && (<>
+          {sectionLabel("Regular Staff", "Hours divided equally among these people")}
+          <div style={{ background: "#F0FDF4", borderRadius: 10, padding: "10px 12px", border: "1px solid #BBF7D0" }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {mainPool.filter(e => !leftoverIds.has(e.id)).map(e => (
+                <span key={e.id} style={{ fontSize: 12, fontWeight: 600, color: "#166534", background: "#DCFCE7", padding: "3px 10px", borderRadius: 10 }}>{e.name}</span>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, color: "#16A34A", marginTop: 6 }}>✓ These people get their full normal shifts</div>
+          </div>
+        </>)}
 
-        {sectionLabel("Regular Staff")}
-        {regs.map(e => <EmpRow key={e.id} emp={e} />)}
-
-        {sectionLabel("Trainees")}
-        {trainees.map(e => <EmpRow key={e.id} emp={e} />)}
+        {/* Section 4: Leftover bucket */}
+        {sectionLabel("Leftover Bucket", "Only get shifts if there are gaps — toggle who's in here")}
+        <div style={{ background: "#FEF2F2", borderRadius: 10, padding: "8px 12px", border: "1px solid #FECACA" }}>
+          <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 8 }}>Tap a name to move them in/out of the leftover bucket. People in here get max 1 shift unless you adjust.</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+            {mainPool.map(e => {
+              const inBucket = leftoverIds.has(e.id);
+              return (
+                <button key={e.id} onClick={() => toggleLeftover(e)} style={{
+                  fontSize: 12, fontWeight: 600, padding: "3px 10px", borderRadius: 10, cursor: "pointer", border: "none",
+                  background: inBucket ? "#DC2626" : "#E5E7EB",
+                  color: inBucket ? "#fff" : "#6B7280",
+                  textDecoration: inBucket ? "none" : "none",
+                }}>
+                  {inBucket ? "✕ " : ""}{e.name}
+                </button>
+              );
+            })}
+          </div>
+          {/* Leftover people: show their cap with adjust */}
+          {[...leftoverIds].map(id => {
+            const emp = active.find(e => e.id === id);
+            if (!emp) return null;
+            const cur = localOverrides[id]?.max ?? 1;
+            return (
+              <div key={id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 0", borderTop: "1px solid #FECACA" }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#DC2626" }}>{emp.name}</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <span style={{ fontSize: 10, color: "#9CA3AF" }}>max shifts:</span>
+                  <button onClick={() => setMax(emp, Math.max(0, cur - 1))} style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid #FECACA", background: "#FEF2F2", color: "#DC2626", cursor: "pointer", fontSize: 13, fontWeight: 800, padding: 0 }}>−</button>
+                  <span style={{ fontSize: 13, fontWeight: 800, minWidth: 18, textAlign: "center", color: "#DC2626" }}>{cur}</span>
+                  <button onClick={() => setMax(emp, Math.min(emp.maxShifts, cur + 1))} style={{ width: 22, height: 22, borderRadius: 4, border: "1px solid #FECACA", background: "#FEF2F2", color: "#16A34A", cursor: "pointer", fontSize: 13, fontWeight: 800, padding: 0 }}>+</button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
 
         <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
           <button onClick={onClose} style={{ flex: 1, padding: "10px 0", borderRadius: 8, border: "1px solid #D1D5DB", background: "#fff", color: "#6B7280", cursor: "pointer", fontSize: 13, fontWeight: 600, fontFamily: font }}>Cancel</button>
