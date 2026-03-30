@@ -386,7 +386,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (sd[emp.id].has(dateStr)) return false; // no doubles
       if (!slCheck(slot, emp)) return false; // SL-only slots need SL
       if (slot.noTrainee && isTrainee(emp)) return false; // no trainees on first 4 weekend night slots
-      if (slot.isImportant && isTrainee(emp)) return false; // no trainees on important evenings
+      if (slot.isImportant && emp.role === "trainee") return false; // block ALL trainees (incl. recently graduated) on important evenings
       if (slot.isMC && isTrainee(emp)) return false; // no trainees on MC
       if (slot.isMC && (emp.tags || []).includes("mc_exempt")) return false; // mc_exempt employees never MC
       if (con("no_mc_twice") && slot.isMC && mcCount[emp.id] >= 1) return false; // no MC twice
@@ -718,7 +718,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     // Check if trainee already placed this day
     const traineeAlreadyToday = schedule[dateStr].some(s => s.empId && isTrainee(active.find(e => e.id === s.empId)));
     if (traineeAlreadyToday) return;
-    // No trainees on important evenings
+    // No trainees (including recently graduated) on important evenings
     if (importantEvenings instanceof Set && importantEvenings.has(dateStr)) return;
 
     // Find mid shift slot first
@@ -1153,71 +1153,59 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     if (!swapped) break;
   }
 
-  // ── Gap fill: any remaining empty slots ───────────────────────────
-  // First pass: respect all rules. Second pass: relax max-shifts (F6) to fill gaps.
-  const gapFillPass = (relaxMaxShifts) => {
-    if (relaxMaxShifts) approved.add("F6");
+  // ── Gap fill cascade: 5 passes, each more relaxed than the last ─────
+  // Every slot MUST be filled. We try progressively relaxing rules until filled.
+
+  const fillEmptySlots = (filterFn) => {
     weekDates.forEach(dateStr => {
       schedule[dateStr].forEach((slot, idx) => {
         if (slot.empId) return;
-        const cands = getCandidates(slot);
-        // Prefer people with fewest hours who are still under maxHours
-        cands.sort((a, b) => {
-          const aUnder = sh[a.id] < (a.maxHours || 20) ? 1 : 0;
-          const bUnder = sh[b.id] < (b.maxHours || 20) ? 1 : 0;
-          if (bUnder !== aUnder) return bUnder - aUnder;
-          return sh[a.id] - sh[b.id] || Math.random() - 0.5;
-        });
+        let cands = filterFn(active, dateStr, slot);
+        cands.sort((a, b) => sc[a.id] - sc[b.id] || sh[a.id] - sh[b.id]);
         if (cands[0]) assign(dateStr, idx, cands[0], slot);
       });
     });
-    if (relaxMaxShifts) approved.delete("F6");
   };
-  gapFillPass(false); // first pass: respect max shifts
-  gapFillPass(true);  // second pass: relax max shifts to fill any remaining gaps
 
-  // ── Nuclear gap fill: relax ALL soft rules to guarantee no unfilled slots ──
-  // This is a last resort — every slot MUST be filled.
+  // Pass 1: Normal rules, respect all caps
   const SOFT_RULES = ["F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11",
     "no_fri_sat_night","no_sat_sun_night","no_fri_sat_sun","max_consecutive_3",
     "min_swirlers_weekend","sat_night_sl_neq_sun_sl"];
-  SOFT_RULES.forEach(r => approved.add(r));
-  weekDates.forEach(dateStr => {
-    schedule[dateStr].forEach((slot, idx) => {
-      if (slot.empId) return;
-      // Try all active employees — anyone available for this shift
-      let cands = active.filter(emp => {
-        if (sc[emp.id] >= emp._effMaxShifts) return false; // ALWAYS respect max shifts cap
-        if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
-        if (sd[emp.id].has(dateStr)) return false; // no doubles
-        if (slot.slOnly && emp.role !== "shift_lead") return false;
-        if (slot.isMC && isTrainee(emp)) return false;
-        return true;
-      });
-      cands.sort((a, b) => sh[a.id] - sh[b.id]);
-      if (cands[0]) assign(dateStr, idx, cands[0], slot);
-    });
-  });
-  SOFT_RULES.forEach(r => { if (!approved.has(r)) return; approved.delete(r); });
+  fillEmptySlots((emps, dateStr, slot) => getCandidates(slot));
 
-  // ── Absolute last resort: if any slot still unfilled, ignore shift caps too ──
-  // We MUST fill every slot. Better to give someone an extra shift than leave it empty.
+  // Pass 2: Relax shift caps (F6)
+  approved.add("F6");
+  fillEmptySlots((emps, dateStr, slot) => getCandidates(slot));
+  approved.delete("F6");
+
+  // Pass 3: Relax ALL soft rules
   SOFT_RULES.forEach(r => approved.add(r));
-  weekDates.forEach(dateStr => {
-    schedule[dateStr].forEach((slot, idx) => {
-      if (slot.empId) return;
-      let cands = active.filter(emp => {
-        if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
-        if (sd[emp.id].has(dateStr)) return false; // still no doubles
-        if (slot.slOnly && emp.role !== "shift_lead") return false;
-        if (slot.isMC && isTrainee(emp)) return false;
-        return true;
-      });
-      cands.sort((a, b) => sc[a.id] - sc[b.id]); // fewest shifts first
-      if (cands[0]) assign(dateStr, idx, cands[0], slot);
-    });
-  });
-  SOFT_RULES.forEach(r => { if (!approved.has(r)) return; approved.delete(r); });
+  fillEmptySlots((emps, dateStr, slot) => getCandidates(slot));
+  SOFT_RULES.forEach(r => approved.delete(r));
+
+  // Pass 4: Relax everything including shift caps — only keep no-doubles + availability
+  SOFT_RULES.forEach(r => approved.add(r));
+  fillEmptySlots((emps, dateStr, slot) =>
+    emps.filter(emp => {
+      if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
+      if (sd[emp.id].has(dateStr)) return false; // no doubles
+      if (slot.slOnly && emp.role !== "shift_lead") return false;
+      if (slot.isMC && isTrainee(emp)) return false;
+      return true;
+    })
+  );
+  SOFT_RULES.forEach(r => approved.delete(r));
+
+  // Pass 5: TRUE last resort — only keep slOnly and availability, allow doubles
+  // A slot being empty is never acceptable
+  fillEmptySlots((emps, dateStr, slot) =>
+    emps.filter(emp => {
+      if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
+      if (slot.slOnly && emp.role !== "shift_lead") return false;
+      if (slot.isMC && isTrainee(emp)) return false;
+      return true;
+    })
+  );
 
   // ── Flexible rule detection ───────────────────────────────────────
   const FLEXIBLE_RULES = [
