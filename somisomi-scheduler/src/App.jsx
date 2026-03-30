@@ -180,6 +180,11 @@ export default function App() {
         if (!e.guaranteedDays) e.guaranteedDays = [];
         // Migrate: regulars max 3 shifts (not 4)
         if (e.role === "regular" && e.maxShifts === 4) { e.maxShifts = 3; e.minShifts = 3; }
+        // Migrate: Nani unavailable Monday
+        if ((e.name === "Nani Hoomes" || e.id === "tr-4") && !e.unavailability?.mon?.allDay) {
+          if (!e.unavailability) e.unavailability = {};
+          e.unavailability.mon = { allDay: true, start: "", end: "" };
+        }
         // Auto-migrate: force specific employees inactive/promoted
         if ((e.name === "Christina Mullins" || e.id === "reg-8") && e.status !== "inactive") e.status = "inactive";
         if ((e.name === "Tiernan Hollister" || e.id === "tr-2") && e.status !== "inactive") e.status = "inactive";

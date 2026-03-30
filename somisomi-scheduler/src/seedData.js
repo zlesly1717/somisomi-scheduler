@@ -191,7 +191,7 @@ export const SEED_EMPLOYEES = [
   {
     id:"tr-4",name:"Nani Hoomes",role:"trainee",status:"active",
     maxShifts:3,minShifts:1,maxHours:15,minHours:0,
-    tags:[],unavailability:newUnavail(),
+    tags:[],unavailability:{...newUnavail(),mon:{allDay:true,start:"",end:""}},
     notes:"Trainee. 20h completed.",traineeCumulative:20.0,guaranteedDays:[],
   },
   {

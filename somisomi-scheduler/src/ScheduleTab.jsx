@@ -361,6 +361,12 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     if (sc[emp.id] >= emp._effMaxShifts) return;
     // ABSOLUTE: never assign someone to two shifts on the same day
     if (sd[emp.id].has(dateStr)) return;
+    // HARD RULE: never assign same person to both Sat night AND Sun night — too exhausting
+    const slotDow = new Date(dateStr + "T12:00:00").getDay();
+    const isSatNight = slotDow === 6 && tm(slot.start || "18:00") >= 1020;
+    const isSunNight = slotDow === 0 && tm(slot.start || "18:00") >= 1020;
+    if (isSatNight && nightMap[weekDates[6]]?.has(emp.id)) return; // already has Sun night
+    if (isSunNight && nightMap[weekDates[5]]?.has(emp.id)) return; // already has Sat night
     schedule[dateStr][slotIndex] = { ...slot, empId: emp.id, empName: emp.name, empRole: emp.role };
     sc[emp.id]++; sh[emp.id] += slot.hours; sd[emp.id].add(dateStr);
     if (slot.isMC) mcCount[emp.id]++;
@@ -1158,7 +1164,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   // Every slot MUST be filled. We try progressively relaxing rules until filled.
 
   const SOFT_RULES = ["F1","F2","F3","F4","F5","F6","F7","F8","F9","F10","F11",
-    "no_fri_sat_night","no_sat_sun_night","no_fri_sat_sun","max_consecutive_3",
+    "no_fri_sat_night","no_fri_sat_sun","max_consecutive_3",
     "min_swirlers_weekend","sat_night_sl_neq_sun_sl"];
 
   // Helper: sort candidates — fewest shifts first, then fewest hours
