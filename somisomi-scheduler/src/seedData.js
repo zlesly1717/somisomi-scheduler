@@ -251,7 +251,7 @@ export const SEED_RULES = {
     friday:{day:2,evening:4,total:6},
     fridayHoliday:{day:3,evening:4,total:7},
     saturday:{day:3,mid:1,evening:4,total:8},
-    sunday:{day:3,mid:1,evening:4,total:8},
+    sunday:{day:3,mid:1,evening:5,total:9},
   },
   shiftTimes: {
     weekdayDay:{start:"12:00",end:"18:00"},

@@ -105,13 +105,7 @@ function buildMCHistorySeed() {
       sun: { leader: "Spencer Losch", slHelper: null, helpers: ["Chan In", "Gwen Ursua", "Alli Campos"] },
       breakSL: "Crystal Guel", savedAt: "2026-04-05T20:00:00Z",
     },
-    { key: "2026-04-06", // Apr 6-12
-      // Thu Apr 10: Crystal SL + 2 reg helpers
-      // Sun Apr 12: 3 SLs (Chan leader + Zoe + Kaitlyn) + 1 reg helper. Spencer on break.
-      thu: { leader: "Crystal Guel", helpers: ["Sam Castillo", "Kennedy Bean"] },
-      sun: { leader: "Chan In", slHelper: "Zoe Rains", helpers: ["Kaitlyn Trevino", "Susan Thai"] },
-      breakSL: "Spencer Losch", savedAt: "2026-04-12T20:00:00Z",
-    },
+
   ];
 
   const result = {};
@@ -249,9 +243,9 @@ export default function App() {
       setTimeOffs(data.timeOffs || []);
       // Migrate: pre-seed MC rotation history from past 4 weeks if not already saved
       const existing = data.savedSchedules || {};
-      const apr6 = existing["2026-04-06"];
-      const apr6NeedsRefresh = !apr6 || (apr6.breakSL === null && !apr6.sun?.slHelper);
-      if (!existing["2026-02-16"] || !existing["2026-03-23"] || !existing["2026-03-30"] || apr6NeedsRefresh) {
+      // Remove test week if it was accidentally saved
+      if (existing["2026-04-06"]) delete existing["2026-04-06"];
+      if (!existing["2026-02-16"] || !existing["2026-03-23"] || !existing["2026-03-30"]) {
         const mcHistory = buildMCHistorySeed();
         Object.entries(mcHistory).forEach(([k, v]) => { if (!existing[k]) existing[k] = v; });
       }

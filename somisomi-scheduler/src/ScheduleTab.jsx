@@ -506,14 +506,14 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       // Thu: SL already covered by MC leader (Crystal). Extra floor slots = evening count - 3 MC slots.
       // Sun: 2 SL evening slots + regular evening slots for floor workers.
       if (isSun) {
-        // Sunday: MC crew is FIXED at 4 (mc_leader + mc_sl_helper + 2 mc_helpers)
-        // staffing.evening controls FLOOR workers ONLY (separate from MC crew)
-        // Default floor = 1 SL + regular evening slots
-        const floorTotal = staffing.evening || 1;
+        // Sunday: MC crew is 4 people (mc_leader + mc_sl_helper + 2 mc_helpers)
+        // staffing.evening = TOTAL evening people including MC crew
+        // So floor workers = staffing.evening - 4 MC crew members
+        const MC_CREW_SIZE = 4;
+        const floorTotal = Math.max(0, (staffing.evening || 5) - MC_CREW_SIZE);
         for (let i = 0; i < floorTotal; i++) {
           const slotType = i === 0 ? "evening_sl" : "evening";
           const slotLabel = i === 0 ? "Evening SL" : "Evening";
-          // No trainees on Sunday floor unless 5th+ person
           slots.push({ type: slotType, label: slotLabel, start: eveS, end: eveE, hours: hrs(eveS, eveE), slOnly: i === 0, noTrainee: i < 4, isMC: false, order: 30 + i });
         }
       } else {
@@ -1267,7 +1267,8 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
 
   const sls = active.filter(e => e.role === "shift_lead" && !specialIds.has(e.id));
   const mainPool = active.filter(e => e.role !== "shift_lead" && !specialIds.has(e.id));
-  const defaultLeftovers = active.filter(e => e.role === "trainee" && !specialIds.has(e.id));
+  // Default leftover: only Nani
+  const defaultLeftovers = active.filter(e => e.name === "Nani Hoomes" && !specialIds.has(e.id));
 
   // Ranking state: ordered array of ids, top = highest priority (most hours), bottom = lighter week
   const initSlRanking = () => {
@@ -1279,14 +1280,19 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
     return sls.map(e => e.id);
   };
   const [slRanking, setSlRanking] = useState(initSlRanking);
+  // Default ranking order: Abrar, Gwen, Kennedy, Susan, Yise, Marissa, Alli
+  const DEFAULT_REG_ORDER = ["reg-6","reg-4","reg-1","reg-5","tr-1","tr-3","tr-5"];
   const initRegRanking = () => {
     const nonLeftover = mainPool.filter(e => !defaultLeftovers.find(d => d.id === e.id));
     if (savedRanking?.reg?.length) {
-      const saved = savedRanking.reg.filter(id => nonLeftover.find(e => e.id === id) || mainPool.find(e => e.id === id));
+      const saved = savedRanking.reg.filter(id => nonLeftover.find(e => e.id === id));
       const newRegs = nonLeftover.filter(e => !saved.includes(e.id)).map(e => e.id);
-      return [...newRegs, ...saved.filter(id => nonLeftover.find(e => e.id === id))];
+      return [...newRegs, ...saved];
     }
-    return nonLeftover.map(e => e.id);
+    // Use default priority order
+    const ordered = DEFAULT_REG_ORDER.filter(id => nonLeftover.find(e => e.id === id));
+    const rest = nonLeftover.filter(e => !DEFAULT_REG_ORDER.includes(e.id)).map(e => e.id);
+    return [...ordered, ...rest];
   };
   const [regRanking, setRegRanking] = useState(initRegRanking);
   const [leftoverIds, setLeftoverIds] = useState(() => {
@@ -1435,7 +1441,7 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
         </div>
 
         {/* Regular Staff — drag to rank */}
-        {sectionLabel("Regular Staff", "Drag to rank — hours split equally, bottom person gets less if needed")}
+        {sectionLabel("Staff", "Drag to rank — bottom person gets fewer hours this week")}
         <div style={{ background: "#F0FDF4", borderRadius: 10, padding: "8px", border: "1px solid #BBF7D0" }}>
           {regRanking.map((id, i) => (
             <RankRow key={id} empId={id} rank={i} total={regRanking.length} list="reg" color="#1D4ED8" bg="#DBEAFE" />
