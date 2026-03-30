@@ -509,12 +509,17 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         // Sunday: MC crew is 4 people (mc_leader + mc_sl_helper + 2 mc_helpers)
         // staffing.evening = TOTAL evening people including MC crew
         // So floor workers = staffing.evening - 4 MC crew members
+        // MC crew = 4 fixed (mc_leader + mc_sl_helper + 2 mc_helpers)
+        // staffing.evening = total evening people on Sunday including MC crew
+        // Floor slots = total - 4. First floor slot is SL, rest are regular.
         const MC_CREW_SIZE = 4;
         const floorTotal = Math.max(0, (staffing.evening || 5) - MC_CREW_SIZE);
         for (let i = 0; i < floorTotal; i++) {
+          // Only 1 SL slot on floor (i=0). All others are regular evening slots.
           const slotType = i === 0 ? "evening_sl" : "evening";
           const slotLabel = i === 0 ? "Evening SL" : "Evening";
-          slots.push({ type: slotType, label: slotLabel, start: eveS, end: eveE, hours: hrs(eveS, eveE), slOnly: i === 0, noTrainee: i < 4, isMC: false, order: 30 + i });
+          const slOnly = i === 0; // only first floor slot is SL-required
+          slots.push({ type: slotType, label: slotLabel, start: eveS, end: eveE, hours: hrs(eveS, eveE), slOnly, noTrainee: true, isMC: false, order: 30 + i });
         }
       } else {
         // Thu: extra floor evening slots beyond MC crew
@@ -1128,7 +1133,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (slot.empId) return;
       // Try all active employees — anyone available for this shift
       let cands = active.filter(emp => {
-        if (emp._effMaxShifts === 0) return false;
+        if (sc[emp.id] >= emp._effMaxShifts) return false; // ALWAYS respect max shifts cap
         if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
         if (sd[emp.id].has(dateStr)) return false; // no doubles
         if (slot.slOnly && emp.role !== "shift_lead") return false;
@@ -1136,6 +1141,25 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         return true;
       });
       cands.sort((a, b) => sh[a.id] - sh[b.id]);
+      if (cands[0]) assign(dateStr, idx, cands[0], slot);
+    });
+  });
+  SOFT_RULES.forEach(r => { if (!approved.has(r)) return; approved.delete(r); });
+
+  // ── Absolute last resort: if any slot still unfilled, ignore shift caps too ──
+  // We MUST fill every slot. Better to give someone an extra shift than leave it empty.
+  SOFT_RULES.forEach(r => approved.add(r));
+  weekDates.forEach(dateStr => {
+    schedule[dateStr].forEach((slot, idx) => {
+      if (slot.empId) return;
+      let cands = active.filter(emp => {
+        if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
+        if (sd[emp.id].has(dateStr)) return false; // still no doubles
+        if (slot.slOnly && emp.role !== "shift_lead") return false;
+        if (slot.isMC && isTrainee(emp)) return false;
+        return true;
+      });
+      cands.sort((a, b) => sc[a.id] - sc[b.id]); // fewest shifts first
       if (cands[0]) assign(dateStr, idx, cands[0], slot);
     });
   });
