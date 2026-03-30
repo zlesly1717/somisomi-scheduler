@@ -321,6 +321,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   };
 
   // For rule checking: graduated trainees behave like regulars
+  const isEffectivelyGraduated = (e) => e.role === "trainee" && (e.traineeCumulative || 0) >= (rules.trainee?.graduationHours || 30);
   const isTrainee = (emp) => emp.role === "trainee" && !isEffectivelyGraduated(emp);
 
   // CANNOT BREAK: Crystal off Sundays (unless explicit availability override)
@@ -373,7 +374,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (!crystalSundayOK(emp, dateStr)) return false; // Crystal off Sundays
       // SLs can only be on Mon-Wed evening via the slOnly evening_sl slot
       // Regular "evening" type slots on Mon-Wed are for regulars only
-      if (emp.role === "shift_lead" && slot.type === "evening" && !isWE && !isFri && dow >= 1 && dow <= 4) return false;
+      // Thu: SLs allowed on evening slots ONLY if they're not already doing MC that night
+      if (emp.role === "shift_lead" && slot.type === "evening" && !isWE && !isFri && dow >= 1 && dow <= 3) return false;
+      if (emp.role === "shift_lead" && slot.type === "evening" && dow === 4 && mcCount[emp.id] >= 1) return false;
       // CANNOT BREAK: Only 1 SL on day shifts (the Day Lead slot)
       // The "day" type (2nd day slot) should never have an SL — regulars only
       if (emp.role === "shift_lead" && slot.type === "day") return false;
@@ -463,18 +466,18 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     }
     if (staffing.mid > 0) { for (let i = 0; i < staffing.mid; i++) { slots.push({ type: "mid", label: "Mid Shift", start: midS, end: midE, hours: hrs(midS, midE), slOnly: false, order: 10 + i }); } }
     if (isMC) {
-      // Thu MC: 1 SL leader + 2 reg helpers (3 total)
-      // Sun MC: 1 SL leader + 1 SL helper + 2 reg helpers (4 total)
+      // Thu MC: 1 SL leader + 2 reg helpers = 3 total (owner helps in person)
+      // Sun MC: 1 SL leader + 1 SL helper + 2 reg helpers = 4 total (no outside help)
       slots.push({ type: "mc_leader", label: "MC Leader (Eve SL)", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: true, isMC: true, order: 20 });
       if (isSun) {
+        // Sunday needs a 2nd SL on the MC crew
         slots.push({ type: "mc_sl_helper", label: "MC Helper (SL)", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: true, isMC: true, order: 21 });
       }
-      // MC helpers: always 2 for Thu, 2 for Sun
-      const regHelpers = isSun ? 2 : 2;
-      for (let i = 0; i < regHelpers; i++) { slots.push({ type: "mc_helper", label: "MC Helper", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: false, isMC: true, order: 22 + i }); }
+      // Both Thu and Sun get 2 regular helpers
+      for (let i = 0; i < 2; i++) { slots.push({ type: "mc_helper", label: "MC Helper", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: false, isMC: true, order: 22 + i }); }
       // Extra evening workers (non-MC): if staffing.evening > base, add evening slots
       // These can be trainees or regulars working the floor alongside the MC crew
-      const baseEvening = isSun ? 4 : 3; // Sun default=4 (mc_leader+mc_sl_helper+2helpers), Thu default=3
+      const baseEvening = isSun ? 4 : 3; // Sun=4 (mc_leader+sl_helper+2helpers), Thu=3 (mc_leader+2helpers)
       const extraEvening = (staffing.evening || baseEvening) - baseEvening;
       for (let i = 0; i < extraEvening; i++) {
         slots.push({ type: "evening", label: "Evening", start: eveS, end: eveE, hours: hrs(eveS, eveE), slOnly: false, isMC: false, isTraineeSlot: i === 0, order: 30 + i });
@@ -527,8 +530,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   // ══════════════════════════════════════════════════════════════════
 
   const gradHours = rules.trainee?.graduationHours || 30;
-  // Treat graduated trainees as regulars for scheduling (even if role not updated yet)
-  const isEffectivelyGraduated = e => e.role === "trainee" && (e.traineeCumulative || 0) >= gradHours;
+  // isEffectivelyGraduated and isTrainee defined earlier in helpers section
   const sls = active.filter(e => e.role === "shift_lead");
   const regs = active.filter(e => e.role === "regular" || isEffectivelyGraduated(e));
   const traineeEmps = active.filter(e => e.role === "trainee" && !isEffectivelyGraduated(e));
@@ -571,15 +573,23 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 
     // Sun MC SLs: pick SL who hasn't led MC longest (rotation fairness)
     if (slot.isMC && slot._dow === 0) {
+      const prevWeekKeyMC = weekDates[0] ? (() => {
+        const d = new Date(weekDates[0] + "T12:00:00"); d.setDate(d.getDate() - 7);
+        return d.toISOString().split("T")[0];
+      })() : "";
       const mcSortFn = (a, b) => {
+        const aLastMC = mcHistoryLast[a.name] || "";
+        const bLastMC = mcHistoryLast[b.name] || "";
+        // Penalize SLs who led MC last week
+        const aRecent = aLastMC >= prevWeekKeyMC ? 1 : 0;
+        const bRecent = bLastMC >= prevWeekKeyMC ? 1 : 0;
+        if (aRecent !== bRecent) return aRecent - bRecent;
         const aCount = mcHistoryCount[a.name] || 0;
         const bCount = mcHistoryCount[b.name] || 0;
         if (aCount !== bCount) return aCount - bCount;
-        const aLast = mcHistoryLast[a.name] || "";
-        const bLast = mcHistoryLast[b.name] || "";
-        if (!aLast && bLast) return -1;
-        if (aLast && !bLast) return 1;
-        if (aLast !== bLast) return aLast.localeCompare(bLast);
+        if (!aLastMC && bLastMC) return -1;
+        if (aLastMC && !bLastMC) return 1;
+        if (aLastMC !== bLastMC) return aLastMC.localeCompare(bLastMC);
         return sh[a.id] - sh[b.id];
       };
       let cands = getCandidates(slot, c => c.filter(e => e.role === "shift_lead"));
@@ -612,7 +622,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     let cands = getCandidates(slot, c => c.filter(e => e.role === "shift_lead"));
     cands.sort(slSortFn);
     // For SL-required evening slots: if no candidate due to night rules, relax F7/F8
-    if (cands.length === 0 && (slot.type === "evening_sl" || slot.type === "evening_sl2" || slot.type === "mc_sl_helper")) {
+    if (cands.length === 0 && (slot.type === "evening_sl" || slot.type === "evening_sl2")) {
       approved.add("F7"); approved.add("F8");
       cands = getCandidates(slot, c => c.filter(e => e.role === "shift_lead"));
       approved.delete("F7"); approved.delete("F8");
@@ -717,15 +727,24 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       const nonSLT = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee" && !(e.tags || []).includes("mc_exempt"));
       if (nonSLT.length > 0) cands = nonSLT;
       // Sort by MC rotation: fewest MC times first, then longest since last MC
+      // Strongly deprioritize anyone who MC'd last week (no back-to-back)
+      const prevWeekKey = weekDates[0] ? (() => {
+        const d = new Date(weekDates[0] + "T12:00:00"); d.setDate(d.getDate() - 7);
+        return d.toISOString().split("T")[0];
+      })() : "";
       cands.sort((a, b) => {
+        const aLastMC = mcHistoryLast[a.name] || "";
+        const bLastMC = mcHistoryLast[b.name] || "";
+        // Penalize anyone who MCd last week
+        const aRecent = aLastMC >= prevWeekKey ? 1 : 0;
+        const bRecent = bLastMC >= prevWeekKey ? 1 : 0;
+        if (aRecent !== bRecent) return aRecent - bRecent;
         const aCount = mcHistoryCount[a.name] || 0;
         const bCount = mcHistoryCount[b.name] || 0;
         if (aCount !== bCount) return aCount - bCount;
-        const aLast = mcHistoryLast[a.name] || "";
-        const bLast = mcHistoryLast[b.name] || "";
-        if (!aLast && bLast) return -1;
-        if (aLast && !bLast) return 1;
-        return aLast.localeCompare(bLast); // earlier = longer ago = pick first
+        if (!aLastMC && bLastMC) return -1;
+        if (aLastMC && !bLastMC) return 1;
+        return aLastMC.localeCompare(bLastMC); // earlier = longer ago = pick first
       });
     }
     // Weekend/Fri evening: slots 1+2 are slOnly (handled in Step 2 by evening_sl/evening_sl2)
@@ -817,7 +836,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     const openSlots = [];
     weekDates.forEach(dateStr => {
       const dow = new Date(dateStr + "T12:00:00").getDay();
-      const isWeekend = dow === 0 || dow === 5 || dow === 6; // Fri/Sat/Sun only
+      const isWeekend = dow === 0 || dow === 4 || dow === 5 || dow === 6; // Thu/Fri/Sat/Sun
       if (!isWeekend) return;
 
       schedule[dateStr].forEach((slot, idx) => {
@@ -834,8 +853,10 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (slot.isMC && mcCount[sl.id] >= 1) return;
         // Fri/Sat/Sun nights: SL overflow should not take regular evening slots
         // (2 SL slots are slOnly, remaining evening slots go to regulars)
+        // Thu evenings: SLs allowed as overflow if not on MC
         const slDow = new Date(dateStr + "T12:00:00").getDay();
         if ((slDow === 5 || slDow === 6 || slDow === 0) && slot.type === "evening") return;
+        if (slDow === 4 && slot.type === "evening" && mcCount[sl.id] >= 1) return;
         openSlots.push({ dateStr, idx, slot });
       });
     });
@@ -908,7 +929,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     pool.sort((a, b) => sh[b.id] - sh[a.id]);
     const maxH = sh[pool[0].id];
     const minH = sh[pool[pool.length - 1].id];
-    if (maxH - minH <= 3) break; // SLs within 3h of each other — close enough
+    if (maxH - minH <= 1.5) break; // SLs within 1.5h of each other — close enough
 
     const overP = pool.filter(e => sh[e.id] >= maxH - 1);
     const underP = pool.filter(e => sh[e.id] <= minH + 1);
@@ -932,7 +953,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
             if (sh[under.id] + slot.hours > (under._effMaxHours || 24)) continue;
             if (!consecOK(under, weekDates.indexOf(dateStr))) continue;
             // Don't steal SL-required slots from SLs
-            if (over.role === "shift_lead" && (slot.type === "evening_sl" || slot.type === "evening_sl2" || slot.type === "day_lead" || slot.type === "mc_leader" || slot.type === "mc_sl_helper")) continue;
+            if (over.role === "shift_lead" && (slot.type === "evening_sl" || slot.type === "evening_sl2" || slot.type === "day_lead" || slot.type === "mc_leader")) continue;
             // Don't put SLs on Mon-Wed evening via swap
             const sDow = new Date(dateStr + "T12:00:00").getDay();
             if (under.role === "shift_lead" && slot.type === "evening" && sDow >= 1 && sDow <= 3) continue;
@@ -968,7 +989,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     pool.sort((a, b) => sh[b.id] - sh[a.id]);
     const maxH = sh[pool[0].id];
     const minH = sh[pool[pool.length - 1].id];
-    if (maxH - minH <= 4) break;
+    if (maxH - minH <= 2) break;
 
     const overP = pool.filter(e => sh[e.id] >= maxH - 1);
     const underP = pool.filter(e => sh[e.id] <= minH + 1);

@@ -127,7 +127,7 @@ function EditEmpModal({ emp, onSave, onClose }) {
 
 function EmpCard({ emp, onEdit, onAction }) {
   const rc = ROLE_CONFIG[emp.role];
-  const off = emp.status === "inactive";
+  const off = emp.status === "inactive" || emp.status === "off";
   return (
     <div style={{ background: off ? "#F9FAFB" : "#fff", borderRadius: 12, padding: "14px 16px", borderLeft: `4px solid ${off ? "#D1D5DB" : rc.accent}`, boxShadow: "0 1px 3px rgba(0,0,0,0.04)", opacity: off ? 0.6 : 1, display: "flex", flexDirection: "column", gap: 8 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -219,8 +219,8 @@ export function EmployeesTab({ employees, setEmployees }) {
   const delEmp = id => { setEmployees(p => p.filter(e => e.id !== id)); setConfirmId(null); };
 
   const filtered = employees.filter(e => {
-    if (filter === "inactive") return e.status === "inactive";
-    if (e.status === "inactive") return false;
+    if (filter === "inactive") return e.status === "inactive" || e.status === "off";
+    if (e.status === "inactive" || e.status === "off") return false;
     if (filter !== "all" && e.role !== filter) return false;
     if (search && !e.name.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
@@ -302,7 +302,7 @@ export function EmployeesTab({ employees, setEmployees }) {
               <div style={{ fontSize: 12, color: "#9CA3AF", marginBottom: 16 }}>Deactivating keeps their data. Deleting removes permanently.</div>
               <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
                 <button onClick={() => setConfirmId(null)} style={{ padding: "7px 16px", borderRadius: 8, border: "1px solid #D1D5DB", background: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: font }}>Cancel</button>
-                <button onClick={() => { togStatus(confirmId); setConfirmId(null); }} style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: "#4A3F2F", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: font }}>{emp.status === "inactive" ? "Reactivate" : "Deactivate"}</button>
+                <button onClick={() => { togStatus(confirmId); setConfirmId(null); }} style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: "#4A3F2F", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: font }}>{emp.status === "inactive" || emp.status === "off" ? "Reactivate" : "Deactivate"}</button>
                 <button onClick={() => delEmp(confirmId)} style={{ padding: "7px 16px", borderRadius: 8, border: "none", background: "#DC2626", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: font }}>Delete</button>
               </div>
             </div>

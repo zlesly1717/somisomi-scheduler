@@ -208,6 +208,20 @@ export const SEED_EMPLOYEES = [
     },
     notes:"Trainee. 15h completed. Tue/Thu 6am-4:30pm, Wed 6am-1:30pm unavail.",traineeCumulative:15.0,guaranteedDays:[],
   },
+  {
+    id:"tr-6",name:"Cesia Garcia",role:"trainee",status:"active",
+    maxShifts:2,minShifts:1,maxHours:10,minHours:0,
+    tags:[],unavailability:{
+      mon:{allDay:false,start:"06:00",end:"15:00"},
+      tue:{allDay:false,start:"06:00",end:"15:00"},
+      wed:{allDay:false,start:"06:00",end:"15:00"},
+      thu:{allDay:false,start:"06:00",end:"15:00"},
+      fri:{allDay:false,start:"06:00",end:"15:00"},
+      sat:{allDay:false,start:"",end:""},
+      sun:{allDay:false,start:"",end:""},
+    },
+    notes:"High schooler. Max 1-2 shifts per week, evenings/weekends preferred.",traineeCumulative:4.0,guaranteedDays:[],
+  },
 ];
 
 export const SEED_RULES = {

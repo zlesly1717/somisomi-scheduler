@@ -94,6 +94,13 @@ function buildMCHistorySeed() {
       sun: { leader: "Spencer Losch", slHelper: null, helpers: ["Chan In", "Gwen Ursua", "Alli Campos"] },
       breakSL: "Crystal Guel", savedAt: "2026-04-05T20:00:00Z",
     },
+    { key: "2026-04-06", // Apr 6-12
+      // Thu Apr 10: Crystal SL (back from break) + helpers TBD by auto-scheduler
+      // Sun Apr 12: Chan SL (Spencer led last 2 Sundays) + helpers TBD
+      thu: { leader: "Crystal Guel", helpers: ["Sam Castillo", "Kennedy Bean"] },
+      sun: { leader: "Chan In", slHelper: null, helpers: ["Kaitlyn Trevino", "Susan Thai"] },
+      breakSL: null, savedAt: "2026-04-12T20:00:00Z",
+    },
   ];
 
   const result = {};
@@ -182,6 +189,24 @@ export default function App() {
         }
         return e;
       });
+      // Migrate: add Cesia Garcia if not already present
+      if (!emps.find(e => e.name === "Cesia Garcia" || e.id === "tr-6")) {
+        emps.push({
+          id:"tr-6", name:"Cesia Garcia", role:"trainee", status:"active",
+          maxShifts:2, minShifts:1, maxHours:10, minHours:0,
+          tags:[], guaranteedDays:[], traineeCumulative:4.0,
+          notes:"High schooler. Max 1-2 shifts per week, evenings/weekends preferred.",
+          unavailability:{
+            mon:{allDay:false,start:"06:00",end:"15:00"},
+            tue:{allDay:false,start:"06:00",end:"15:00"},
+            wed:{allDay:false,start:"06:00",end:"15:00"},
+            thu:{allDay:false,start:"06:00",end:"15:00"},
+            fri:{allDay:false,start:"06:00",end:"15:00"},
+            sat:{allDay:false,start:"",end:""},
+            sun:{allDay:false,start:"",end:""},
+          },
+        });
+      }
       const r = data.rules || SEED_RULES;
       if (!r.mcRotation) r.mcRotation = SEED_RULES.mcRotation;
       if (r.mcRotation && !r.mcRotation.shiftLeadPool) {
@@ -210,7 +235,7 @@ export default function App() {
       setTimeOffs(data.timeOffs || []);
       // Migrate: pre-seed MC rotation history from past 4 weeks if not already saved
       const existing = data.savedSchedules || {};
-      if (!existing["2026-02-16"] || !existing["2026-03-23"] || !existing["2026-03-30"]) {
+      if (!existing["2026-02-16"] || !existing["2026-03-23"] || !existing["2026-03-30"] || !existing["2026-04-06"]) {
         const mcHistory = buildMCHistorySeed();
         Object.entries(mcHistory).forEach(([k, v]) => { if (!existing[k]) existing[k] = v; });
       }
