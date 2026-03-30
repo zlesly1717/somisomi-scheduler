@@ -206,19 +206,26 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   // ── Priority ranking: bottom-ranked person gets 1 fewer shift ──────
   // slRanking and regRanking are ordered arrays (top = most hours, bottom = lighter week)
   if (priorityRanking) {
-    const applyRanking = (rankList) => {
-      if (!rankList || rankList.length < 2) return;
-      const lastId = rankList[rankList.length - 1];
+    // Bottom-ranked SL gets 1 fewer shift (light week rotation)
+    const slList = priorityRanking.sl || [];
+    if (slList.length >= 2) {
+      const lastId = slList[slList.length - 1];
       const emp = active.find(e => e.id === lastId);
-      if (!emp) return;
-      // Only reduce if not already overridden by weeklyMaxOverrides
-      if (!weeklyMaxOverrides?.[lastId]) {
+      if (emp && !weeklyMaxOverrides?.[lastId]) {
         emp._effMaxShifts = Math.max(0, emp._effMaxShifts - 1);
         emp._budget = Math.min(emp._budget, emp._effMaxShifts);
       }
-    };
-    applyRanking(priorityRanking.sl);
-    applyRanking(priorityRanking.reg);
+    }
+    // Bottom-ranked reg gets 1 fewer shift too
+    const regList = priorityRanking.reg || [];
+    if (regList.length >= 2) {
+      const lastId = regList[regList.length - 1];
+      const emp = active.find(e => e.id === lastId);
+      if (emp && !weeklyMaxOverrides?.[lastId]) {
+        emp._effMaxShifts = Math.max(0, emp._effMaxShifts - 1);
+        emp._budget = Math.min(emp._budget, emp._effMaxShifts);
+      }
+    }
   }
 
   // GRAE RULE: max 1 weekend shift, prefer to use her other shift on a weekday
@@ -499,14 +506,15 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       // Thu: SL already covered by MC leader (Crystal). Extra floor slots = evening count - 3 MC slots.
       // Sun: 2 SL evening slots + regular evening slots for floor workers.
       if (isSun) {
-        // Sunday floor slots: total evening staffing minus the 2 SLs already on MC crew
-        // e.g. staffing.evening=5 means 5 total evening people, 2 are on MC, so 3 floor slots
-        const mcSLsOnCrew = 2; // mc_leader + mc_sl_helper
-        const floorTotal = Math.max(0, (staffing.evening || 5) - mcSLsOnCrew);
+        // Sunday: MC crew is FIXED at 4 (mc_leader + mc_sl_helper + 2 mc_helpers)
+        // staffing.evening controls FLOOR workers ONLY (separate from MC crew)
+        // Default floor = 1 SL + regular evening slots
+        const floorTotal = staffing.evening || 1;
         for (let i = 0; i < floorTotal; i++) {
           const slotType = i === 0 ? "evening_sl" : "evening";
           const slotLabel = i === 0 ? "Evening SL" : "Evening";
-          slots.push({ type: slotType, label: slotLabel, start: eveS, end: eveE, hours: hrs(eveS, eveE), slOnly: i === 0, noTrainee: i < 3, isMC: false, order: 30 + i });
+          // No trainees on Sunday floor unless 5th+ person
+          slots.push({ type: slotType, label: slotLabel, start: eveS, end: eveE, hours: hrs(eveS, eveE), slOnly: i === 0, noTrainee: i < 4, isMC: false, order: 30 + i });
         }
       } else {
         // Thu: extra floor evening slots beyond MC crew
@@ -792,28 +800,31 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       });
     }
     // Weekend/Fri evening: slots 1+2 are slOnly (handled in Step 2 by evening_sl/evening_sl2)
-    // Remaining evening slots (3rd, 4th): prefer regulars, no SLs, no trainees unless 5th slot
-    // Trainees only on slot order >= 24 (5th person, index 4) if near graduation (20h+)
+    // Trainees on weekends: max 1 per shift, only as 5th+ person (slot order >= 24)
     else if (isWeekendSlot && tm(slot.start) >= 1020) {
       const dow3 = new Date(dateStr + "T12:00:00").getDay();
-      const isWeekendNight = dow3 === 5 || dow3 === 6; // Sun nights are MC slots, handled separately
-      const nearGradHours = rules.trainee?.graduationHours ? rules.trainee.graduationHours * 0.67 : 20;
-      const nearGrad = e => isTrainee(e) && (e.traineeCumulative || 0) >= nearGradHours;
-      // Weekend nights: no SLs on regular evening slots (SLs belong on slOnly slots)
+      const isWeekendNight = dow3 === 5 || dow3 === 6;
+      // Count trainees already assigned this day for the evening period
+      const traineesThisEvening = schedule[dateStr].filter(s =>
+        s.empId && isTrainee(active.find(e => e.id === s.empId)) && tm(s.start) >= 1020
+      ).length;
+      const alreadyHasTrainee = traineesThisEvening > 0;
+      // Trainees only allowed as 5th+ person AND only if no trainee already on this shift
+      const isFifthSlot = slot.order >= 24;
+      const traineeAllowed = isFifthSlot && !alreadyHasTrainee;
+
       if (isWeekendNight && slot.type === "evening") {
+        // No SLs on regular evening slots
         const noSL = cands.filter(e => e.role !== "shift_lead");
         if (noSL.length > 0) cands = noSL;
-        // Trainees only as 5th person (slot order 24+) and only near-grads
-        const isFifthSlot = slot.order >= 24;
-        if (!isFifthSlot) {
-          cands = cands.filter(e => !isTrainee(e));
-        } else {
-          const noEarlyT = cands.filter(e => !isTrainee(e) || nearGrad(e));
-          if (noEarlyT.length > 0) cands = noEarlyT;
+        // Block trainees unless 5th slot and no trainee already scheduled
+        if (!traineeAllowed) {
+          const noT = cands.filter(e => !isTrainee(e));
+          if (noT.length > 0) cands = noT;
         }
       } else {
-        // Non-weekend-night weekend slots: no trainees
-        const noT = cands.filter(e => e.role !== "trainee");
+        // Weekend day slots: no trainees at all
+        const noT = cands.filter(e => !isTrainee(e));
         if (noT.length > 0) cands = noT;
       }
       if (cands.length === 0) cands = getCandidates(slot); // fallback
@@ -936,10 +947,17 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         // OR any unfilled weekday evening slot (Mon-Thu)
         const dow = new Date(dateStr + "T12:00:00").getDay();
         const isWeekday = dow >= 1 && dow <= 4; // Mon-Thu
+        const isWeekend = dow === 0 || dow === 5 || dow === 6;
         const canTraineeFill = samePeriod.length >= 4 || (isWeekday && isEve);
 
         if (!canTraineeFill) return;
         if (slot.slOnly || slot.isMC) return;
+
+        // On weekends: max 1 trainee per shift — skip if one already assigned this evening
+        if (isWeekend && isEve) {
+          const traineeAlreadyHere = samePeriod.some(s => isTrainee(active.find(e => e.id === s.empId)));
+          if (traineeAlreadyHere) return;
+        }
 
         // Find a trainee
         for (const trainee of traineesStillAvail.sort((a, b) => sh[a.id] - sh[b.id])) {
@@ -1252,25 +1270,33 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
   const defaultLeftovers = active.filter(e => e.role === "trainee" && !specialIds.has(e.id));
 
   // Ranking state: ordered array of ids, top = highest priority (most hours), bottom = lighter week
-  const [slRanking, setSlRanking] = useState(() => {
+  const initSlRanking = () => {
     if (savedRanking?.sl?.length) {
-      // Use saved order but add any new SLs at the top
       const saved = savedRanking.sl.filter(id => sls.find(e => e.id === id));
       const newSLs = sls.filter(e => !saved.includes(e.id)).map(e => e.id);
       return [...newSLs, ...saved];
     }
     return sls.map(e => e.id);
-  });
-  const [regRanking, setRegRanking] = useState(() => {
+  };
+  const [slRanking, setSlRanking] = useState(initSlRanking);
+  const initRegRanking = () => {
     const nonLeftover = mainPool.filter(e => !defaultLeftovers.find(d => d.id === e.id));
     if (savedRanking?.reg?.length) {
-      const saved = savedRanking.reg.filter(id => nonLeftover.find(e => e.id === id));
+      const saved = savedRanking.reg.filter(id => nonLeftover.find(e => e.id === id) || mainPool.find(e => e.id === id));
       const newRegs = nonLeftover.filter(e => !saved.includes(e.id)).map(e => e.id);
-      return [...newRegs, ...saved];
+      return [...newRegs, ...saved.filter(id => nonLeftover.find(e => e.id === id))];
     }
     return nonLeftover.map(e => e.id);
+  };
+  const [regRanking, setRegRanking] = useState(initRegRanking);
+  const [leftoverIds, setLeftoverIds] = useState(() => {
+    if (savedRanking?.leftovers?.length) {
+      // Use explicitly saved leftover list, filtered to current active employees
+      const valid = savedRanking.leftovers.filter(id => mainPool.find(e => e.id === id));
+      return new Set(valid);
+    }
+    return new Set(defaultLeftovers.map(e => e.id));
   });
-  const [leftoverIds, setLeftoverIds] = useState(() => new Set(defaultLeftovers.map(e => e.id)));
   const [dragId, setDragId] = useState(null);
   const [dragList, setDragList] = useState(null); // "sl" | "reg"
 
@@ -1330,7 +1356,7 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
     });
     // Pass ranking info so scheduler knows priority order
     setWeeklyMaxOverrides(finalOverrides);
-    onGenerate(finalOverrides, slRanking, [...regRanking, ...[...leftoverIds]]);
+    onGenerate(finalOverrides, slRanking, regRanking, [...leftoverIds]);
   };
 
   const sectionLabel = (txt, sub) => (
@@ -1633,9 +1659,9 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
     try { localStorage.setItem("somisomi-priority-ranking", JSON.stringify(ranking)); } catch(e) {}
   };
 
-  const handleGenerateFromNuance = (overrides, slRanking, regRanking) => {
+  const handleGenerateFromNuance = (overrides, slRanking, regRanking, leftoverIds) => {
     setWeeklyMaxOverrides(overrides);
-    savePriorityRanking({ sl: slRanking || [], reg: regRanking || [] });
+    savePriorityRanking({ sl: slRanking || [], reg: regRanking || [], leftovers: leftoverIds || [] });
     setShowNuance(false);
     setTimeout(() => handleGenerate(approvedBreaks), 50);
   };
@@ -1787,9 +1813,9 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                 const dt = new Date(key + "T12:00:00");
                 const isA = key === weekKey;
                 return (
-                  <div key={key} style={{ display: "inline-flex", alignItems: "center", gap: 0 }}>
-                    <button onClick={() => handleWeekChange(key)} style={{ padding: "3px 10px", borderRadius: isA ? "8px 0 0 8px" : 8, fontSize: 10, fontWeight: 600, cursor: "pointer", border: isA ? "2px solid #22C55E" : "1px solid #D1D5DB", borderRight: isA ? "1px solid #22C55E" : "1px solid #D1D5DB", background: isA ? "#F0FDF4" : "#fff", color: isA ? "#16A34A" : "#6B7280", fontFamily: font }}>{dt.getMonth() + 1}/{dt.getDate()}</button>
-                    {isA && <button onClick={() => { if (window.confirm("Delete saved week " + (dt.getMonth()+1) + "/" + dt.getDate() + "?")) { setSavedSchedules(prev => { const n = {...prev}; delete n[key]; return n; }); } }} style={{ padding: "3px 6px", borderRadius: "0 8px 8px 0", fontSize: 10, fontWeight: 700, cursor: "pointer", border: "2px solid #DC2626", borderLeft: "none", background: "#FEF2F2", color: "#DC2626", fontFamily: font }}>✕</button>}
+                  <div key={key} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+                    <button onClick={() => handleWeekChange(key)} style={{ padding: "3px 10px", borderRadius: 8, fontSize: 10, fontWeight: 600, cursor: "pointer", border: isA ? "2px solid #22C55E" : "1px solid #D1D5DB", background: isA ? "#F0FDF4" : "#fff", color: isA ? "#16A34A" : "#6B7280", fontFamily: font }}>{dt.getMonth() + 1}/{dt.getDate()}</button>
+                    {isA && <button onClick={() => { if (window.confirm("Delete saved week " + (dt.getMonth()+1) + "/" + dt.getDate() + "?")) { setSavedSchedules(prev => { const n = {...prev}; delete n[key]; return n; }); } }} title="Delete this week" style={{ width: 16, height: 16, borderRadius: "50%", fontSize: 9, fontWeight: 800, cursor: "pointer", border: "none", background: "#FEF2F2", color: "#DC2626", padding: 0, lineHeight: "16px", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: font }}>✕</button>}
                   </div>
                 );
               })}
