@@ -2976,11 +2976,19 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
             const fmtLast = (key) => {
               if (!key) return "never";
               try {
-                const d = new Date(key + "T12:00:00");
+                const weekStart = new Date(key + "T12:00:00");
+                const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
                 const now = new Date();
-                const daysAgo = Math.round((now - d) / (24 * 60 * 60 * 1000));
+                // Is today within this week (Mon-Sun)?
+                if (now >= weekStart && now <= weekEnd) return "this week";
+                // Is it next week?
+                const nextWeekStart = new Date(now);
+                nextWeekStart.setDate(now.getDate() + (1 - now.getDay() + 7) % 7 || 7);
+                if (weekStart >= nextWeekStart && weekStart < new Date(nextWeekStart.getTime() + 7 * 24 * 60 * 60 * 1000)) return "next week";
+                // Past weeks
+                const daysAgo = Math.round((now - weekEnd) / (24 * 60 * 60 * 1000));
+                if (daysAgo < 0) return `in ${Math.round(-daysAgo / 7)} weeks`; // further future
                 if (daysAgo === 0) return "today";
-                if (daysAgo === 1) return "yesterday";
                 if (daysAgo < 7) return `${daysAgo} days ago`;
                 if (daysAgo < 14) return "1 week ago";
                 return `${Math.round(daysAgo / 7)} weeks ago`;
