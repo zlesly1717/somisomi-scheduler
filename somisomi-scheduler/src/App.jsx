@@ -57,59 +57,59 @@ const font = "'DM Sans',sans-serif";
 function buildMCHistorySeed() {
   const mcWeeks = [
     { key: "2026-02-16", // Feb 16-22
-      // Thu Feb 19: Chan SL + Spencer + Crystal
-      // Sun Feb 22: Zoe SL + Kaitlyn + Abrar + Susan
+      // Thu Feb 19: Chan MC Lead + Spencer + Crystal
+      // Sun Feb 22: Zoe MC Lead + Kaitlyn + Abrar + Susan | Break: Spencer
       thu: { leader: "Chan In", helpers: ["Spencer Losch", "Crystal Guel"] },
       sun: { leader: "Zoe Rains", slHelper: null, helpers: ["Kaitlyn Trevino", "Abrar Uddin", "Susan Thai"] },
-      breakSL: null, savedAt: "2026-02-22T20:00:00Z",
+      breakSL: "Spencer Losch", savedAt: "2026-02-22T20:00:00Z",
     },
-    { key: "2026-02-23", // Feb 23-Mar 1
-      // Thu Feb 26: Kaitlyn SL + Crystal + Kennedy
-      // Sun Mar 1: Chan SL + Zoe + Spencer + Kennedy
-      thu: { leader: "Kaitlyn Trevino", helpers: ["Crystal Guel", "Kennedy Bean"] },
+    { key: "2026-02-23", // Feb 23 - Mar 1
+      // Thu Feb 26: Crystal MC Lead + Kennedy
+      // Sun Mar 1: Chan MC Lead + Zoe + Spencer + Kennedy
+      thu: { leader: "Crystal Guel", helpers: ["Kennedy Bean"] },
       sun: { leader: "Chan In", slHelper: null, helpers: ["Zoe Rains", "Spencer Losch", "Kennedy Bean"] },
       breakSL: null, savedAt: "2026-03-01T20:00:00Z",
     },
     { key: "2026-03-02", // Mar 2-8
-      // Thu Mar 5: Zoe SL + Crystal + Sam
-      // Sun Mar 8: Kaitlyn SL + Spencer + Chan + Lena
-      thu: { leader: "Zoe Rains", helpers: ["Crystal Guel", "Sam Castillo"] },
-      sun: { leader: "Kaitlyn Trevino", slHelper: null, helpers: ["Spencer Losch", "Chan In", "Lena Maslak"] },
+      // Thu Mar 5: Crystal MC Lead + Zoe + Susan
+      // Sun Mar 8: Kaitlyn MC Lead + Spencer + Chan + Gwen
+      thu: { leader: "Crystal Guel", helpers: ["Zoe Rains", "Susan Thai"] },
+      sun: { leader: "Kaitlyn Trevino", slHelper: "Spencer Losch", helpers: ["Chan In", "Gwen Ursua"] },
       breakSL: null, savedAt: "2026-03-08T20:00:00Z",
     },
     { key: "2026-03-09", // Mar 9-15
-      // Thu Mar 12: Zoe SL + Spencer + Crystal + Susan
-      // Sun Mar 15: Chan SL + Gwen
-      thu: { leader: "Zoe Rains", helpers: ["Spencer Losch", "Crystal Guel", "Susan Thai"] },
+      // Thu Mar 12: Crystal MC Lead + Zoe + Spencer + Susan | Break: Kaitlyn (time off all week)
+      // Sun Mar 15: Chan MC Lead + Gwen
+      thu: { leader: "Crystal Guel", helpers: ["Zoe Rains", "Spencer Losch", "Susan Thai"] },
       sun: { leader: "Chan In", slHelper: null, helpers: ["Gwen Ursua"] },
       breakSL: "Kaitlyn Trevino", savedAt: "2026-03-15T20:00:00Z",
     },
     { key: "2026-03-16", // Mar 16-22
-      // Thu Mar 19: Spencer SL + Zoe + Yise
-      // Sun Mar 22: Kaitlyn SL + Crystal + Abrar + Sam
+      // Thu Mar 19: Spencer MC Lead + Zoe + Yise | Break: Chan
+      // Sun Mar 22: Kaitlyn MC Lead + Crystal + Abrar
       thu: { leader: "Spencer Losch", helpers: ["Zoe Rains", "Yise Moya"] },
-      sun: { leader: "Kaitlyn Trevino", slHelper: null, helpers: ["Crystal Guel", "Abrar Uddin", "Sam Castillo"] },
+      sun: { leader: "Kaitlyn Trevino", slHelper: null, helpers: ["Crystal Guel", "Abrar Uddin"] },
       breakSL: "Chan In", savedAt: "2026-03-22T20:00:00Z",
     },
     { key: "2026-03-23", // Mar 23-29
-      // Thu Mar 26: Crystal SL + Chan + Marissa (trainee)
-      // Sun Mar 29: Spencer SL + Kaitlyn + Kennedy + Susan
-      thu: { leader: "Crystal Guel", helpers: ["Chan In", "Marissa Shelton"] },
-      sun: { leader: "Spencer Losch", slHelper: "Kaitlyn Trevino", helpers: ["Kennedy Bean", "Susan Thai"] },
+      // Thu Mar 26: Crystal MC Lead + Kennedy
+      // Sun Mar 29: Spencer MC Lead + Kaitlyn + Kennedy + Zoe
+      thu: { leader: "Crystal Guel", helpers: ["Kennedy Bean"] },
+      sun: { leader: "Spencer Losch", slHelper: "Kaitlyn Trevino", helpers: ["Kennedy Bean", "Zoe Rains"] },
       breakSL: null, savedAt: "2026-03-29T20:00:00Z",
     },
     { key: "2026-03-30", // Mar 30 - Apr 5
-      // Thu Apr 2: Kaitlyn SL + Zoe + Nani (trainee) — Crystal's break week
-      // Sun Apr 5: Spencer SL + Chan + Gwen + Alli (trainee)
+      // Thu Apr 2: Kaitlyn MC Lead + Zoe + Nani | Break: Crystal
+      // Sun Apr 5: Chan MC Lead + Spencer + Zoe + Alli
       thu: { leader: "Kaitlyn Trevino", helpers: ["Zoe Rains", "Nani Hoomes"] },
-      sun: { leader: "Spencer Losch", slHelper: null, helpers: ["Chan In", "Gwen Ursua", "Alli Campos"] },
+      sun: { leader: "Chan In", slHelper: null, helpers: ["Spencer Losch", "Zoe Rains", "Alli Campos"] },
       breakSL: "Crystal Guel", savedAt: "2026-04-05T20:00:00Z",
     },
     { key: "2026-04-06", // Apr 6-12
-      // Thu Apr 9: Crystal MC Lead + Yise + Sam — Spencer break week
-      // Sun Apr 12: Chan MC Lead + Zoe + Abrar (3 SLs on MC)
+      // Thu Apr 9: Crystal MC Lead + Yise + Sam | Break: Spencer
+      // Sun Apr 12: Chan MC Lead + Zoe (SL helper) + Abrar + Kaitlyn
       thu: { leader: "Crystal Guel", helpers: ["Yise Moya", "Sam Castillo"] },
-      sun: { leader: "Chan In", slHelper: "Zoe Rains", helpers: ["Abrar Uddin", "Gwen Ursua"] },
+      sun: { leader: "Chan In", slHelper: "Zoe Rains", helpers: ["Abrar Uddin", "Kaitlyn Trevino"] },
       breakSL: "Spencer Losch", savedAt: "2026-04-12T20:00:00Z",
     },
   ];
@@ -153,6 +153,7 @@ function buildMCHistorySeed() {
       notes: [],
       weeklyTOs: [],
       _source: "homebase-import",
+      _mcVersion: 2,
     };
   });
   return result;
@@ -184,6 +185,7 @@ function buildApr6Schedule() {
              empId: e.id, empName: name, empRole: e.role };
   };
   return {
+    // MONDAY 4/6 (Holiday): Crystal day lead, Abrar+Susan day, Zoe+Kaitlyn eve SL, Gwen+Alli eve
     "2026-04-06": [
       s("Crystal Guel",    "day_lead",    "Day Lead (SL)", "12:00","18:00", 6,    {slOnly:true, order:0}),
       s("Abrar Uddin",     "day",         "Day / 2nd Day", "12:00","18:00", 6,    {order:1}),
@@ -192,57 +194,49 @@ function buildApr6Schedule() {
       s("Kaitlyn Trevino", "evening_sl2", "Evening SL",    "18:30","22:30", 4,    {slOnly:true, order:21}),
       s("Gwen Ursua",      "evening",     "Evening",       "18:00","22:30", 4.5,  {order:22}),
       s("Alli Campos",     "evening",     "Evening",       "18:15","22:30", 4.25, {order:23}),
-      s("Cesia Garcia",    "evening",     "Evening",       "18:00","22:30", 4.5,  {order:24}),
     ],
+    // TUESDAY 4/7: Kaitlyn day lead, Sam+Gwen day, Chan eve SL, Marissa+Alli+Grae eve
     "2026-04-07": [
       s("Kaitlyn Trevino", "day_lead",    "Day Lead (SL)", "12:00","18:00", 6,    {slOnly:true, order:0}),
-      s("Spencer Losch",   "day_lead",    "Day Lead (SL)", "12:00","18:00", 6,    {slOnly:true, order:1}),
-      s("Sam Castillo",    "day",         "Day / 2nd Day", "12:00","18:00", 6,    {order:2}),
-      s("Gwen Ursua",      "day",         "Day / 2nd Day", "12:00","18:00", 6,    {order:3}),
+      s("Sam Castillo",    "day",         "Day / 2nd Day", "12:00","18:00", 6,    {order:1}),
       s("Chan In",         "evening_sl",  "Evening SL",    "18:00","22:30", 4.5,  {slOnly:true, order:20}),
-      s("Yise Moya",       "evening",     "Evening",       "18:00","22:30", 4.5,  {order:21}),
-      s("Marissa Shelton", "evening",     "Evening",       "18:00","22:30", 4.5,  {order:22}),
-      s("Alli Campos",     "evening",     "Evening",       "18:15","22:30", 4.25, {order:23}),
-      s("Grae McKown",     "evening",     "Evening",       "18:30","22:30", 4,    {order:24}),
-      s("Cesia Garcia",    "evening",     "Evening",       "18:00","22:30", 4.5,  {order:25}),
+      s("Marissa Shelton", "evening",     "Evening",       "18:00","22:30", 4.5,  {order:21}),
+      s("Alli Campos",     "evening",     "Evening",       "18:15","22:30", 4.25, {order:22}),
+      s("Grae McKown",     "evening",     "Evening",       "18:30","22:30", 4,    {order:23}),
     ],
+    // WEDNESDAY 4/8: Spencer day lead, Gwen day, Crystal eve SL, Yise+Susan+Cesia eve
     "2026-04-08": [
       s("Spencer Losch",   "day_lead",    "Day Lead (SL)", "12:00","18:00", 6,    {slOnly:true, order:0}),
       s("Gwen Ursua",      "day",         "Day / 2nd Day", "12:00","18:00", 6,    {order:1}),
       s("Crystal Guel",    "evening_sl",  "Evening SL",    "18:00","22:30", 4.5,  {slOnly:true, order:20}),
       s("Yise Moya",       "evening",     "Evening",       "18:00","22:30", 4.5,  {order:21}),
       s("Susan Thai",      "evening",     "Evening",       "18:15","22:30", 4.25, {order:22}),
-      s("Nani Hoomes",     "evening",     "Evening",       "18:00","22:30", 4.5,  {order:23}),
-      s("Grae McKown",     "evening",     "Evening",       "18:30","22:30", 4,    {order:24}),
+      s("Cesia Garcia",    "evening",     "Evening",       "18:30","22:30", 4,    {order:23, isTraineeSlot:true}),
     ],
+    // THURSDAY 4/9 (MC): Chan day lead, Kennedy day, Crystal MC lead, Yise+Sam MC helpers, Nani floor
     "2026-04-09": [
       s("Chan In",         "day_lead",    "Day Lead (SL)", "12:00","18:00", 6,    {slOnly:true, order:0}),
       s("Kennedy Bean",    "day",         "Day / 2nd Day", "12:00","18:00", 6,    {order:1}),
       s("Crystal Guel",    "mc_leader",   "MC Lead",       "18:00","23:45", 5.75, {slOnly:true, isMC:true, order:20}),
-      s("Yise Moya",       "mc_helper",   "MC Helper",     "18:30","23:45", 5.25, {isMC:true, order:22}),
-      s("Sam Castillo",    "mc_helper",   "MC Helper",     "18:15","23:45", 5.5,  {isMC:true, order:23}),
+      s("Yise Moya",       "mc_helper",   "MC Helper",     "18:30","23:45", 5.25, {isMC:true, order:21}),
+      s("Sam Castillo",    "mc_helper",   "MC Helper",     "18:15","23:45", 5.5,  {isMC:true, order:22}),
       s("Nani Hoomes",     "evening",     "Evening",       "18:00","22:30", 4.5,  {order:30}),
-      s("Cesia Garcia",    "evening",     "Evening",       "18:30","22:30", 4,    {order:31}),
-      s("Kaitlyn Trevino", "evening",     "Evening",       "18:00","22:30", 4.5,  {order:32}),
     ],
+    // FRIDAY 4/10: Zoe day lead, Marissa day, Kaitlyn+Chan eve SL, Kennedy+Gwen+Nani eve
     "2026-04-10": [
       s("Zoe Rains",       "day_lead",    "Day Lead (SL)", "11:30","18:00", 6.5,  {slOnly:true, order:0}),
       s("Marissa Shelton", "day",         "Day / 2nd Day", "11:30","18:00", 6.5,  {order:1}),
-      s("Abrar Uddin",     "day",         "Day / 2nd Day", "11:30","18:00", 6.5,  {order:2}),
-      s("Susan Thai",      "day",         "Day / 2nd Day", "11:30","18:00", 6.5,  {order:3}),
-      s("Spencer Losch",   "evening_sl",  "Evening SL",    "18:00","23:30", 5.5,  {slOnly:true, order:20}),
-      s("Kaitlyn Trevino", "evening_sl2", "Evening SL",    "18:00","23:30", 5.5,  {slOnly:true, order:21}),
-      s("Chan In",         "evening",     "Evening",       "19:00","23:30", 4.5,  {order:22}),
-      s("Kennedy Bean",    "evening",     "Evening",       "18:30","23:30", 5,    {order:23}),
-      s("Yise Moya",       "evening",     "Evening",       "19:00","23:30", 4.5,  {order:24}),
-      s("Gwen Ursua",      "evening",     "Evening",       "18:00","23:30", 5.5,  {order:25}),
-      s("Nani Hoomes",     "evening",     "Evening",       "18:15","23:30", 5.25, {order:26}),
+      s("Kaitlyn Trevino", "evening_sl",  "Evening SL",    "18:00","23:30", 5.5,  {slOnly:true, order:20}),
+      s("Chan In",         "evening_sl2", "Evening SL",    "19:00","23:30", 4.5,  {slOnly:true, order:21}),
+      s("Kennedy Bean",    "evening",     "Evening",       "18:30","23:30", 5,    {order:22}),
+      s("Gwen Ursua",      "evening",     "Evening",       "18:00","23:30", 5.5,  {order:23}),
+      s("Nani Hoomes",     "evening",     "Evening",       "18:15","23:30", 5.25, {order:24}),
     ],
+    // SATURDAY 4/11: Zoe day lead, Abrar+Susan day, Cesia mid, Spencer+Kaitlyn eve SL, Crystal+Sam+Yise+Marissa eve
     "2026-04-11": [
       s("Zoe Rains",       "day_lead",    "Day Lead (SL)", "11:30","18:00", 6.5,  {slOnly:true, order:0}),
       s("Abrar Uddin",     "day",         "Day / 2nd Day", "11:30","18:00", 6.5,  {order:1}),
       s("Susan Thai",      "day",         "Day / 2nd Day", "11:30","18:00", 6.5,  {order:2}),
-      s("Nani Hoomes",     "day",         "Day / 2nd Day", "11:30","18:00", 6.5,  {order:3}),
       s("Cesia Garcia",    "mid",         "Mid Shift",     "15:00","19:00", 4,    {traineeSlot:true, order:10}),
       s("Spencer Losch",   "evening_sl",  "Evening SL",    "18:00","23:30", 5.5,  {slOnly:true, order:20}),
       s("Kaitlyn Trevino", "evening_sl2", "Evening SL",    "18:00","23:30", 5.5,  {slOnly:true, order:21}),
@@ -251,13 +245,12 @@ function buildApr6Schedule() {
       s("Yise Moya",       "evening",     "Evening",       "19:00","23:30", 4.5,  {order:24}),
       s("Marissa Shelton", "evening",     "Evening",       "18:00","23:30", 5.5,  {order:25}),
     ],
+    // SUNDAY 4/12 (MC): Spencer+Kaitlyn day lead, Yise+Nani day, Kennedy mid, Chan MC lead, Zoe MC SL, Abrar MC helper, Alli floor eve
     "2026-04-12": [
-      s("Kaitlyn Trevino", "day_lead",    "Day Lead (SL)", "11:30","18:00", 6.5,  {slOnly:true, order:0}),
-      s("Spencer Losch",   "day_lead",    "Day Lead (SL)", "11:30","18:00", 6.5,  {slOnly:true, order:1}),
-      s("Yise Moya",       "day",         "Day / 2nd Day", "11:30","18:00", 6.5,  {order:2}),
-      s("Nani Hoomes",     "day",         "Day / 2nd Day", "11:30","18:00", 6.5,  {order:3}),
-      s("Sam Castillo",    "mid",         "Mid Shift",     "15:00","19:00", 4,    {order:10}),
-      s("Kennedy Bean",    "mid",         "Mid Shift",     "15:00","19:00", 4,    {order:11}),
+      s("Spencer Losch",   "day_lead",    "Day Lead (SL)", "11:30","18:00", 6.5,  {slOnly:true, order:0}),
+      s("Yise Moya",       "day",         "Day / 2nd Day", "11:30","18:00", 6.5,  {order:1}),
+      s("Nani Hoomes",     "day",         "Day / 2nd Day", "11:30","18:00", 6.5,  {order:2}),
+      s("Kennedy Bean",    "mid",         "Mid Shift",     "15:00","19:00", 4,    {order:10}),
       s("Chan In",         "mc_leader",   "MC Lead",       "18:00","23:45", 5.75, {slOnly:true, isMC:true, order:20}),
       s("Zoe Rains",       "mc_sl_helper","MC Crew (SL)",  "19:00","23:45", 4.75, {slOnly:true, isMC:true, order:21}),
       s("Abrar Uddin",     "mc_helper",   "MC Helper",     "18:15","23:45", 5.5,  {isMC:true, order:22}),
@@ -369,7 +362,7 @@ export default function App() {
       if (existing["2026-04-06"] && existing["2026-04-06"]._source === "homebase-import") {
         delete existing["2026-04-06"];
       }
-      if (!existing["2026-02-16"] || !existing["2026-03-23"] || !existing["2026-03-30"] || !existing["2026-04-06"]) {
+      if (!existing["2026-02-16"] || !existing["2026-03-23"] || !existing["2026-03-30"] || !existing["2026-04-06"] || existing["2026-02-16"]?._mcVersion !== 2) {
         const mcHistory = buildMCHistorySeed();
         Object.entries(mcHistory).forEach(([k, v]) => { if (!existing[k]) existing[k] = v; });
       }
