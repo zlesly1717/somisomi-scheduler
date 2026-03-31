@@ -2906,7 +2906,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                     <tr key={key} style={{ borderBottom: "1px solid #F3F4F6" }}>
                       <td style={{ padding: "8px 12px", fontWeight: 600, color: "#374151", whiteSpace: "nowrap" }}>
                         {fmtWeek.label}
-                        {fmtWeek.badge && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: fmtWeek.badge === "this week" ? "#DCFCE7" : "#DBEAFE", color: fmtWeek.badge === "this week" ? "#16A34A" : "#2563EB" }}>{fmtWeek.badge}</span>}
+                        {fmtWeek.badge && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 10, background: fmtWeek.badge === "this week" ? "#DCFCE7" : "#DBEAFE", color: fmtWeek.badge === "this week" ? "#16A34A" : "#2563EB", border: fmtWeek.badge === "this week" ? "1px solid #86EFAC" : "1px solid #93C5FD" }}>{fmtWeek.badge}</span>}
                       </td>
                       <td style={{ padding: "8px 12px" }}>
                         {thuMC.leader ? (
@@ -2948,11 +2948,13 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
             const regLastMC = {};
             const slLastMC = {};
             const regScheduledWeek = {}; // "this week" or "next week" if already assigned
-            const slScheduledWeek = {};
+            const slScheduledWeek = {};  // for SLs: tracks break week assignments
+            const slLastBreak = {};      // last week an SL had a break
+            const slBreakCount = {};     // how many breaks each SL has had
             const activeRegs = employees.filter(e => e.status === "active" && e.role === "regular" && !(e.tags || []).includes("mc_exempt")).map(e => e.name);
             const activeSLs = employees.filter(e => e.status === "active" && e.role === "shift_lead").map(e => e.name);
             activeRegs.forEach(n => { regMCCount[n] = 0; regLastMC[n] = null; });
-            activeSLs.forEach(n => { slMCCount[n] = 0; slLastMC[n] = null; });
+            activeSLs.forEach(n => { slMCCount[n] = 0; slLastMC[n] = null; slLastBreak[n] = null; slBreakCount[n] = 0; });
 
             const now = new Date();
             // Find start of current week (Monday)
@@ -2976,17 +2978,32 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                   const name = slot.empName || "?";
 
                   if (isThisWeek || isNextWeek) {
-                    // Track upcoming MC assignments — push to bottom
                     const label = isThisWeek ? "this week" : "next week";
                     if (activeRegs.includes(name)) regScheduledWeek[name] = label;
-                    if (activeSLs.includes(name)) slScheduledWeek[name] = label;
+                    if (activeSLs.includes(name)) slMCCount[name]++; // still count for reference
                   } else if (!isFuture) {
-                    // Only count past weeks toward rotation history
                     if (activeRegs.includes(name)) { regMCCount[name]++; regLastMC[name] = key; }
                     if (activeSLs.includes(name)) { slMCCount[name]++; slLastMC[name] = key; }
                   }
                 });
               });
+
+              // Track SL break weeks: SLs who did NOT MC this week had a break
+              if (!isFuture) {
+                const mcNames = new Set();
+                Object.values(schedule).forEach(slots => {
+                  if (!Array.isArray(slots)) return;
+                  slots.forEach(slot => { if (slot.isMC && slot.empName) mcNames.add(slot.empName); });
+                });
+                activeSLs.forEach(n => {
+                  if (!mcNames.has(n)) {
+                    // This SL had a break this week
+                    if (isThisWeek) slScheduledWeek[n] = "this week";
+                    else if (isNextWeek) slScheduledWeek[n] = "next week";
+                    else { slBreakCount[n]++; slLastBreak[n] = key; }
+                  }
+                });
+              }
             });
 
             // Sort: scheduled this/next week go to bottom, then sort by fewest MC + oldest last date
@@ -3009,7 +3026,23 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
             };
 
             const regSorted = [...activeRegs].sort(sortFn(regMCCount, regLastMC, regScheduledWeek));
-            const slSorted = [...activeSLs].sort(sortFn(slMCCount, slLastMC, slScheduledWeek));
+            // SL sort: fewest breaks first, then oldest last break — those at bottom already have break this/next week
+            const slSorted = [...activeSLs].sort((a, b) => {
+              const aOff = !!slScheduledWeek[a];
+              const bOff = !!slScheduledWeek[b];
+              if (aOff && !bOff) return 1;
+              if (!aOff && bOff) return -1;
+              if (aOff && bOff) {
+                const order = { "this week": 0, "next week": 1 };
+                return (order[slScheduledWeek[a]] || 0) - (order[slScheduledWeek[b]] || 0);
+              }
+              // Neither has break scheduled — sort by fewest breaks, then oldest last break
+              if (slBreakCount[a] !== slBreakCount[b]) return slBreakCount[a] - slBreakCount[b];
+              if (!slLastBreak[a] && slLastBreak[b]) return -1;
+              if (slLastBreak[a] && !slLastBreak[b]) return 1;
+              if (slLastBreak[a] && slLastBreak[b]) return slLastBreak[a].localeCompare(slLastBreak[b]);
+              return 0;
+            });
 
             const fmtLast = (key) => {
               if (!key) return "never";
@@ -3040,14 +3073,14 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                   ))}
                 </div>
                 <div style={{ padding: 14, background: "#FEF3C7", borderRadius: 10, border: "1px solid #FDE68A" }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#92400E", marginBottom: 4 }}>Next Up — SL MC Leaders</div>
-                  <div style={{ fontSize: 10, color: "#9CA3AF", marginBottom: 10 }}>Top = most overdue, should lead next</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#92400E", marginBottom: 4 }}>Next Up — SL Break Week</div>
+                  <div style={{ fontSize: 10, color: "#9CA3AF", marginBottom: 10 }}>Top = hasn't had a break recently, next in line</div>
                   {slSorted.map((name, i) => (
                     <div key={name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: i < slSorted.length - 1 ? "1px solid #FDE68A" : "none", opacity: slScheduledWeek[name] ? 0.5 : 1 }}>
                       <span style={{ fontSize: 10, fontWeight: 800, color: i === 0 && !slScheduledWeek[name] ? "#16A34A" : "#D1D5DB", width: 18 }}>#{i + 1}</span>
                       <span style={{ fontSize: 12, fontWeight: 600, color: "#374151", flex: 1 }}>{name}</span>
-                      <span style={{ fontSize: 10, color: slScheduledWeek[name] ? "#7C3AED" : slLastMC[name] ? "#9CA3AF" : "#DC2626", fontStyle: slLastMC[name] || slScheduledWeek[name] ? "normal" : "italic", fontWeight: slScheduledWeek[name] ? 700 : 400 }}>
-                        {slScheduledWeek[name] ? `✓ ${slScheduledWeek[name]}` : `last: ${fmtLast(slLastMC[name])}`}
+                      <span style={{ fontSize: 10, color: slScheduledWeek[name] ? "#7C3AED" : slLastBreak[name] ? "#9CA3AF" : "#DC2626", fontStyle: slLastBreak[name] || slScheduledWeek[name] ? "normal" : "italic", fontWeight: slScheduledWeek[name] ? 700 : 400 }}>
+                        {slScheduledWeek[name] ? `✓ off ${slScheduledWeek[name]}` : slLastBreak[name] ? `last off: ${fmtLast(slLastBreak[name])}` : "never had break"}
                       </span>
                     </div>
                   ))}
