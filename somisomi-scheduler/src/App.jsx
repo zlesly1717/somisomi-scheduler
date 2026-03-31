@@ -158,6 +158,115 @@ function buildMCHistorySeed() {
   return result;
 }
 
+function buildApr6Schedule() {
+  const EMP = {
+    "Kaitlyn Trevino": { id: "sl-3", role: "shift_lead" },
+    "Chan In":         { id: "sl-1", role: "shift_lead" },
+    "Zoe Rains":       { id: "sl-2", role: "shift_lead" },
+    "Crystal Guel":    { id: "sl-5", role: "shift_lead" },
+    "Spencer Losch":   { id: "sl-4", role: "shift_lead" },
+    "Abrar Uddin":     { id: "reg-6", role: "regular" },
+    "Yise Moya":       { id: "tr-1",  role: "regular" },
+    "Sam Castillo":    { id: "reg-2", role: "regular" },
+    "Kennedy Bean":    { id: "reg-1", role: "regular" },
+    "Susan Thai":      { id: "reg-5", role: "regular" },
+    "Marissa Shelton": { id: "tr-3",  role: "trainee" },
+    "Gwen Ursua":      { id: "reg-4", role: "regular" },
+    "Nani Hoomes":     { id: "tr-4",  role: "trainee" },
+    "Alli Campos":     { id: "tr-5",  role: "trainee" },
+    "Grae McKown":     { id: "reg-7", role: "regular" },
+    "Cesia Garcia":    { id: "tr-6",  role: "trainee" },
+  };
+  const s = (name, type, label, start, end, hours, opts = {}) => {
+    const e = EMP[name] || { id: "unknown", role: "regular" };
+    return { type, label, start, end, hours, slOnly: !!opts.slOnly, isMC: !!opts.isMC,
+             isTraineeSlot: !!opts.traineeSlot, order: opts.order || 0,
+             empId: e.id, empName: name, empRole: e.role };
+  };
+  return {
+    "2026-04-06": [
+      s("Crystal Guel",    "day_lead",    "Day Lead (SL)", "12:00","18:00", 6,    {slOnly:true, order:0}),
+      s("Abrar Uddin",     "day",         "Day / 2nd Day", "12:00","18:00", 6,    {order:1}),
+      s("Susan Thai",      "day",         "Day / 2nd Day", "12:00","18:00", 6,    {order:2}),
+      s("Zoe Rains",       "evening_sl",  "Evening SL",    "18:00","22:30", 4.5,  {slOnly:true, order:20}),
+      s("Kaitlyn Trevino", "evening_sl2", "Evening SL",    "18:30","22:30", 4,    {slOnly:true, order:21}),
+      s("Gwen Ursua",      "evening",     "Evening",       "18:00","22:30", 4.5,  {order:22}),
+      s("Alli Campos",     "evening",     "Evening",       "18:15","22:30", 4.25, {order:23}),
+      s("Cesia Garcia",    "evening",     "Evening",       "18:00","22:30", 4.5,  {order:24}),
+    ],
+    "2026-04-07": [
+      s("Kaitlyn Trevino", "day_lead",    "Day Lead (SL)", "12:00","18:00", 6,    {slOnly:true, order:0}),
+      s("Spencer Losch",   "day_lead",    "Day Lead (SL)", "12:00","18:00", 6,    {slOnly:true, order:1}),
+      s("Sam Castillo",    "day",         "Day / 2nd Day", "12:00","18:00", 6,    {order:2}),
+      s("Gwen Ursua",      "day",         "Day / 2nd Day", "12:00","18:00", 6,    {order:3}),
+      s("Chan In",         "evening_sl",  "Evening SL",    "18:00","22:30", 4.5,  {slOnly:true, order:20}),
+      s("Yise Moya",       "evening",     "Evening",       "18:00","22:30", 4.5,  {order:21}),
+      s("Marissa Shelton", "evening",     "Evening",       "18:00","22:30", 4.5,  {order:22}),
+      s("Alli Campos",     "evening",     "Evening",       "18:15","22:30", 4.25, {order:23}),
+      s("Grae McKown",     "evening",     "Evening",       "18:30","22:30", 4,    {order:24}),
+      s("Cesia Garcia",    "evening",     "Evening",       "18:00","22:30", 4.5,  {order:25}),
+    ],
+    "2026-04-08": [
+      s("Spencer Losch",   "day_lead",    "Day Lead (SL)", "12:00","18:00", 6,    {slOnly:true, order:0}),
+      s("Gwen Ursua",      "day",         "Day / 2nd Day", "12:00","18:00", 6,    {order:1}),
+      s("Crystal Guel",    "evening_sl",  "Evening SL",    "18:00","22:30", 4.5,  {slOnly:true, order:20}),
+      s("Yise Moya",       "evening",     "Evening",       "18:00","22:30", 4.5,  {order:21}),
+      s("Susan Thai",      "evening",     "Evening",       "18:15","22:30", 4.25, {order:22}),
+      s("Nani Hoomes",     "evening",     "Evening",       "18:00","22:30", 4.5,  {order:23}),
+      s("Grae McKown",     "evening",     "Evening",       "18:30","22:30", 4,    {order:24}),
+    ],
+    "2026-04-09": [
+      s("Chan In",         "day_lead",    "Day Lead (SL)", "12:00","18:00", 6,    {slOnly:true, order:0}),
+      s("Kennedy Bean",    "day",         "Day / 2nd Day", "12:00","18:00", 6,    {order:1}),
+      s("Crystal Guel",    "mc_leader",   "MC Lead",       "18:00","23:45", 5.75, {slOnly:true, isMC:true, order:20}),
+      s("Yise Moya",       "mc_helper",   "MC Helper",     "18:30","23:45", 5.25, {isMC:true, order:22}),
+      s("Sam Castillo",    "mc_helper",   "MC Helper",     "18:15","23:45", 5.5,  {isMC:true, order:23}),
+      s("Nani Hoomes",     "evening",     "Evening",       "18:00","22:30", 4.5,  {order:30}),
+      s("Cesia Garcia",    "evening",     "Evening",       "18:30","22:30", 4,    {order:31}),
+      s("Kaitlyn Trevino", "evening",     "Evening",       "18:00","22:30", 4.5,  {order:32}),
+    ],
+    "2026-04-10": [
+      s("Zoe Rains",       "day_lead",    "Day Lead (SL)", "11:30","18:00", 6.5,  {slOnly:true, order:0}),
+      s("Marissa Shelton", "day",         "Day / 2nd Day", "11:30","18:00", 6.5,  {order:1}),
+      s("Abrar Uddin",     "day",         "Day / 2nd Day", "11:30","18:00", 6.5,  {order:2}),
+      s("Susan Thai",      "day",         "Day / 2nd Day", "11:30","18:00", 6.5,  {order:3}),
+      s("Spencer Losch",   "evening_sl",  "Evening SL",    "18:00","23:30", 5.5,  {slOnly:true, order:20}),
+      s("Kaitlyn Trevino", "evening_sl2", "Evening SL",    "18:00","23:30", 5.5,  {slOnly:true, order:21}),
+      s("Chan In",         "evening",     "Evening",       "19:00","23:30", 4.5,  {order:22}),
+      s("Kennedy Bean",    "evening",     "Evening",       "18:30","23:30", 5,    {order:23}),
+      s("Yise Moya",       "evening",     "Evening",       "19:00","23:30", 4.5,  {order:24}),
+      s("Gwen Ursua",      "evening",     "Evening",       "18:00","23:30", 5.5,  {order:25}),
+      s("Nani Hoomes",     "evening",     "Evening",       "18:15","23:30", 5.25, {order:26}),
+    ],
+    "2026-04-11": [
+      s("Zoe Rains",       "day_lead",    "Day Lead (SL)", "11:30","18:00", 6.5,  {slOnly:true, order:0}),
+      s("Abrar Uddin",     "day",         "Day / 2nd Day", "11:30","18:00", 6.5,  {order:1}),
+      s("Susan Thai",      "day",         "Day / 2nd Day", "11:30","18:00", 6.5,  {order:2}),
+      s("Nani Hoomes",     "day",         "Day / 2nd Day", "11:30","18:00", 6.5,  {order:3}),
+      s("Cesia Garcia",    "mid",         "Mid Shift",     "15:00","19:00", 4,    {traineeSlot:true, order:10}),
+      s("Spencer Losch",   "evening_sl",  "Evening SL",    "18:00","23:30", 5.5,  {slOnly:true, order:20}),
+      s("Kaitlyn Trevino", "evening_sl2", "Evening SL",    "18:00","23:30", 5.5,  {slOnly:true, order:21}),
+      s("Crystal Guel",    "evening",     "Evening",       "19:00","23:30", 4.5,  {order:22}),
+      s("Sam Castillo",    "evening",     "Evening",       "18:15","23:30", 5.25, {order:23}),
+      s("Yise Moya",       "evening",     "Evening",       "19:00","23:30", 4.5,  {order:24}),
+      s("Marissa Shelton", "evening",     "Evening",       "18:00","23:30", 5.5,  {order:25}),
+    ],
+    "2026-04-12": [
+      s("Kaitlyn Trevino", "day_lead",    "Day Lead (SL)", "11:30","18:00", 6.5,  {slOnly:true, order:0}),
+      s("Spencer Losch",   "day_lead",    "Day Lead (SL)", "11:30","18:00", 6.5,  {slOnly:true, order:1}),
+      s("Yise Moya",       "day",         "Day / 2nd Day", "11:30","18:00", 6.5,  {order:2}),
+      s("Nani Hoomes",     "day",         "Day / 2nd Day", "11:30","18:00", 6.5,  {order:3}),
+      s("Sam Castillo",    "mid",         "Mid Shift",     "15:00","19:00", 4,    {order:10}),
+      s("Kennedy Bean",    "mid",         "Mid Shift",     "15:00","19:00", 4,    {order:11}),
+      s("Chan In",         "mc_leader",   "MC Lead",       "18:00","23:45", 5.75, {slOnly:true, isMC:true, order:20}),
+      s("Zoe Rains",       "mc_sl_helper","MC Crew (SL)",  "19:00","23:45", 4.75, {slOnly:true, isMC:true, order:21}),
+      s("Abrar Uddin",     "mc_helper",   "MC Helper",     "18:15","23:45", 5.5,  {isMC:true, order:22}),
+      s("Kaitlyn Trevino", "mc_helper",   "MC Helper",     "19:00","23:45", 4.75, {isMC:true, order:23}),
+      s("Alli Campos",     "evening",     "Evening",       "18:00","23:30", 5.5,  {order:30}),
+    ],
+  };
+}
+
 const tabs = [
   { id: "schedule", label: "Schedule", icon: "\ud83d\udcc5" },
   { id: "employees", label: "Employees", icon: "\ud83d\udc65" },
