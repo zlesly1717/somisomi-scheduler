@@ -2893,13 +2893,21 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                       const d = new Date(key + "T12:00:00");
                       const end = new Date(d); end.setDate(d.getDate() + 6);
                       const f = dt => dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-                      return `${f(d)} – ${f(end)}`;
-                    } catch { return key; }
+                      const now = new Date();
+                      const weekEnd = new Date(end);
+                      let badge = null;
+                      if (now >= d && now <= weekEnd) badge = "this week";
+                      else if (d > now && d < new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000)) badge = "next week";
+                      return { label: `${f(d)} – ${f(end)}`, badge };
+                    } catch { return { label: key, badge: null }; }
                   })();
 
                   return (
                     <tr key={key} style={{ borderBottom: "1px solid #F3F4F6" }}>
-                      <td style={{ padding: "8px 12px", fontWeight: 600, color: "#374151", whiteSpace: "nowrap" }}>{fmtWeek}</td>
+                      <td style={{ padding: "8px 12px", fontWeight: 600, color: "#374151", whiteSpace: "nowrap" }}>
+                        {fmtWeek.label}
+                        {fmtWeek.badge && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: fmtWeek.badge === "this week" ? "#DCFCE7" : "#DBEAFE", color: fmtWeek.badge === "this week" ? "#16A34A" : "#2563EB" }}>{fmtWeek.badge}</span>}
+                      </td>
                       <td style={{ padding: "8px 12px" }}>
                         {thuMC.leader ? (
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
