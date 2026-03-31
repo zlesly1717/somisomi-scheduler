@@ -2311,11 +2311,13 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                   const dayType = getDayType(d, schoolDates);
                   const isH = dayType.includes("Holiday");
                   const isMC = i === 3 || i === 6;
-                  return (<th key={d} style={{ padding: "10px 6px", textAlign: "center", fontWeight: 700, fontSize: 10.5, color: isH ? "#DC2626" : "#374151", background: isMC ? "#F5F3FF" : isH ? "#FEF2F2" : "transparent" }}>
-                    <div>{dayLabels[i]}</div>
-                    <div style={{ fontSize: 9, fontWeight: 500, color: "#9CA3AF" }}>{dt.getMonth() + 1}/{dt.getDate()}</div>
-                    {isH && <div style={{ fontSize: 7.5, color: "#DC2626", fontWeight: 700 }}>HOLIDAY</div>}
-                    {isMC && <div style={{ fontSize: 7.5, color: "#7C3AED", fontWeight: 700 }}>MC NIGHT</div>}
+                  const isWE = i === 5 || i === 6;
+                  const colBg = isMC ? "#F5F3FF" : isH ? "#FFF1F0" : isWE ? "#FAFAFA" : "#fff";
+                  return (<th key={d} style={{ padding: "10px 6px", textAlign: "center", fontWeight: 700, fontSize: 11, color: isH ? "#DC2626" : isMC ? "#7C3AED" : "#374151", background: colBg, minWidth: 120 }}>
+                    <div style={{ fontSize: 13, fontWeight: 800 }}>{dayLabels[i]}</div>
+                    <div style={{ fontSize: 10, fontWeight: 500, color: "#9CA3AF", marginTop: 1 }}>{dt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>
+                    {isH && <div style={{ fontSize: 9, color: "#fff", fontWeight: 700, background: "#EF4444", borderRadius: 4, padding: "1px 5px", marginTop: 3, display: "inline-block" }}>HOLIDAY</div>}
+                    {isMC && !isH && <div style={{ fontSize: 9, color: "#fff", fontWeight: 700, background: "#7C3AED", borderRadius: 4, padding: "1px 5px", marginTop: 3, display: "inline-block" }}>MC NIGHT</div>}
                   </th>);
                 })}
               </tr></thead>
@@ -2324,16 +2326,21 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                   const colors = tc[row.type] || { color: "#374151", bg: "transparent" };
                   return (<tr key={row.type + "-" + row.order} style={{ borderBottom: "1px solid #F3F4F6" }}>
                     <td style={{ padding: "7px 8px", fontWeight: 700, fontSize: 9.5, color: colors.color, background: colors.bg, whiteSpace: "nowrap", position: "sticky", left: 0, zIndex: 1 }}>{row.label}</td>
-                    {weekDates.map(d => {
+                    {weekDates.map((d, i) => {
+                      const dayType = getDayType(d, schoolDates);
+                      const isH = dayType.includes("Holiday");
+                      const isMC = i === 3 || i === 6;
+                      const isWE = i === 5 || i === 6;
+                      const colBg = isMC ? "#FAF8FF" : isH ? "#FFF8F8" : isWE ? "#FAFAFA" : "#fff";
                       const match = (result.schedule[d] || []).find(a => a.type === row.type && a.order === row.order);
-                      if (!match) return <td key={d} style={{ padding: "6px 4px", textAlign: "center", color: "#E5E7EB", fontSize: 10 }}>{"\u2014"}</td>;
+                      if (!match) return <td key={d} style={{ padding: "6px 4px", textAlign: "center", color: "#E5E7EB", fontSize: 10, background: colBg }}>{"\u2014"}</td>;
                       const un = !match.empId; const isTr = match.empRole === "trainee"; const isSL = match.empRole === "shift_lead";
                       const isSel = selected && selected.date === d && selected.type === row.type && selected.order === row.order;
                       const canClick = !isSaved && draft;
                       return (
                         <td key={d}
                           onClick={canClick ? () => setEditingShift({ date: d, type: row.type, order: row.order, slot: match }) : undefined}
-                          style={{ padding: "5px 4px", textAlign: "center", cursor: canClick ? "pointer" : "default", background: isSel ? "#DBEAFE" : "transparent", transition: "background 0.15s" }}
+                          style={{ padding: "5px 4px", textAlign: "center", cursor: canClick ? "pointer" : "default", background: isSel ? "#DBEAFE" : colBg, transition: "background 0.15s" }}
                         >
                           <div style={{
                             padding: "5px 4px", borderRadius: 6, fontSize: 11, fontWeight: 600,
@@ -2360,8 +2367,13 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                   const dt = new Date(d + "T12:00:00");
                   const dayType = getDayType(d, schoolDates);
                   const isH = dayType.includes("Holiday");
-                  return (<th key={d} style={{ padding: "7px 4px", textAlign: "center", fontWeight: 700, fontSize: 11, color: isH ? "#DC2626" : "#374151", borderBottom: "none", minWidth: 110 }}>
-                    <div>{["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][dt.getDay()]}, {dt.getDate()}</div>
+                  const isMC = i === 3 || i === 6;
+                  const isWE = i === 5 || i === 6;
+                  const colBg = isMC ? "#F5F3FF" : isH ? "#FFF1F0" : isWE ? "#FAFAFA" : "#fff";
+                  return (<th key={d} style={{ padding: "7px 4px", textAlign: "center", fontWeight: 700, fontSize: 11, color: isH ? "#DC2626" : isMC ? "#7C3AED" : "#374151", borderBottom: "none", minWidth: 110, background: colBg }}>
+                    <div style={{ fontWeight: 800 }}>{["Sun","Mon","Tue","Wed","Thu","Fri","Sat"][dt.getDay()]}, {dt.getDate()}</div>
+                    {isH && <div style={{ fontSize: 8, color: "#fff", background: "#EF4444", borderRadius: 3, padding: "0 4px", display: "inline-block", marginTop: 2 }}>HOLIDAY</div>}
+                    {isMC && !isH && <div style={{ fontSize: 8, color: "#fff", background: "#7C3AED", borderRadius: 3, padding: "0 4px", display: "inline-block", marginTop: 2 }}>MC NIGHT</div>}
                   </th>);
                 })}
               </tr></thead>
