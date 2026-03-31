@@ -1428,7 +1428,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 }
 
 // === PRE-SCHEDULE NUANCE MODAL ===
-function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onGenerate, onClose, font, savedRanking }) {
+function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onGenerate, onClose, font, savedRanking, savedSchedules, weekStart }) {
   const active = employees.filter(e => e.status === "active");
 
   // Section 1: Special cases — Grae, Cesia (low shift caps)
@@ -1449,14 +1449,47 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
   // Section 4: Leftover bucket — Nani by default, gets gaps only
   const leftoverDefaults = active.filter(e => e.name === "Nani Hoomes" || e.id === "tr-4");
 
-  // SL ranking state
+  // ── Auto-rank SLs from MC history ─────────────────────────────
+  // Compute who most deserves break (hasn't had one recently) → put them at bottom of ranking
+  const computeSLBreakRanking = () => {
+    if (!savedSchedules) return sls.map(e => e.id);
+    const now = new Date();
+    const todayDay = now.getDay();
+    const currentMon = new Date(now); currentMon.setDate(now.getDate() - (todayDay === 0 ? 6 : todayDay - 1)); currentMon.setHours(0,0,0,0);
+    const slLastBreak = {}; const slBreakCount = {};
+    sls.forEach(e => { slLastBreak[e.name] = null; slBreakCount[e.name] = 0; });
+    Object.entries(savedSchedules).forEach(([key, data]) => {
+      const weekMon = new Date(key + "T00:00:00");
+      if (weekMon >= currentMon) return; // skip current/future
+      const schedule = data.schedule || data;
+      const mcNames = new Set();
+      Object.values(schedule).forEach(slots => {
+        if (!Array.isArray(slots)) return;
+        slots.forEach(slot => { if (slot.isMC && slot.empName) mcNames.add(slot.empName); });
+      });
+      sls.forEach(e => {
+        if (!mcNames.has(e.name)) { slBreakCount[e.name]++; slLastBreak[e.name] = key; }
+      });
+    });
+    // Sort: most overdue for break → should be at bottom (gets break this week)
+    // Most overdue = fewest breaks + oldest last break
+    return [...sls].sort((a, b) => {
+      if (slBreakCount[a.name] !== slBreakCount[b.name]) return slBreakCount[b.name] - slBreakCount[a.name]; // more breaks = higher priority (goes first, NOT break this week)
+      if (!slLastBreak[a.name] && slLastBreak[b.name]) return 1; // never had break → should get one → put at bottom
+      if (slLastBreak[a.name] && !slLastBreak[b.name]) return -1;
+      if (slLastBreak[a.name] && slLastBreak[b.name]) return slLastBreak[b.name].localeCompare(slLastBreak[a.name]); // older break → put at bottom
+      return 0;
+    }).map(e => e.id);
+  };
+
+  // SL ranking state — auto-init from MC history if no saved ranking
   const initSlRanking = () => {
     if (savedRanking?.sl?.length) {
       const saved = savedRanking.sl.filter(id => sls.find(e => e.id === id));
       const newSLs = sls.filter(e => !saved.includes(e.id)).map(e => e.id);
       return [...newSLs, ...saved];
     }
-    return sls.map(e => e.id);
+    return computeSLBreakRanking(); // auto-rank from history
   };
   const [slRanking, setSlRanking] = useState(initSlRanking);
 
@@ -1568,6 +1601,18 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
         {/* 2. Shift Leads */}
         {sectionLabel("Shift Leads", "Everyone gets 4 shifts. Drag bottom person — they get 3 (MC break week).")}
         <div style={{ background: "#FFFBEB", borderRadius: 10, padding: "8px", border: "1px solid #FDE68A" }}>
+          {(() => {
+            const suggested = computeSLBreakRanking();
+            const suggestedBottomId = suggested[suggested.length - 1];
+            const currentBottomId = slRanking[slRanking.length - 1];
+            const autoMatches = suggestedBottomId === currentBottomId;
+            return (
+              <div style={{ fontSize: 10, color: autoMatches ? "#16A34A" : "#F59E0B", background: autoMatches ? "#F0FDF4" : "#FFFBEB", borderRadius: 6, padding: "4px 8px", marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span>{autoMatches ? "✓" : "💡"} Rotation suggests: <strong>{sls.find(e => e.id === suggestedBottomId)?.name}</strong> gets the break this week</span>
+                {!autoMatches && <button onClick={() => setSlRanking(suggested)} style={{ fontSize: 9, color: "#F59E0B", background: "none", border: "1px solid #FDE68A", borderRadius: 4, padding: "1px 6px", cursor: "pointer", fontFamily: font }}>Apply</button>}
+              </div>
+            );
+          })()}
           {slRanking.map((id, i) => {
             const emp = sls.find(e => e.id === id);
             if (!emp) return null;
@@ -1982,6 +2027,8 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
           onClose={() => setShowNuance(false)}
           font={font}
           savedRanking={priorityRanking}
+          savedSchedules={savedSchedules}
+          weekStart={weekStart}
         />
       )}
 
@@ -2305,7 +2352,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
           <div style={{ overflowX: "auto", background: "#fff", borderRadius: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginBottom: 16 }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 900 }}>
               <thead><tr style={{ borderBottom: "2px solid #E5E7EB" }}>
-                <th style={{ padding: "10px 10px", textAlign: "left", fontWeight: 700, color: "#6B7280", fontSize: 10, width: 110, position: "sticky", left: 0, background: "#fff", zIndex: 1 }}>SHIFT</th>
+                <th style={{ padding: "10px 8px", textAlign: "left", fontWeight: 700, color: "#9CA3AF", fontSize: 9, width: 90, position: "sticky", left: 0, background: "#fff", zIndex: 1, borderRight: "1px solid #E5E7EB" }}>SHIFT</th>
                 {weekDates.map((d, i) => {
                   const dt = new Date(d + "T12:00:00");
                   const dayType = getDayType(d, schoolDates);
@@ -2325,7 +2372,9 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                 {getRows().map(row => {
                   const colors = tc[row.type] || { color: "#374151", bg: "transparent" };
                   return (<tr key={row.type + "-" + row.order} style={{ borderBottom: "1px solid #F3F4F6" }}>
-                    <td style={{ padding: "7px 8px", fontWeight: 700, fontSize: 9.5, color: colors.color, background: colors.bg, whiteSpace: "nowrap", position: "sticky", left: 0, zIndex: 1 }}>{row.label}</td>
+                    <td style={{ padding: "5px 8px", whiteSpace: "nowrap", position: "sticky", left: 0, zIndex: 1, background: "#fff", borderRight: `3px solid ${colors.bg || "#E5E7EB"}` }}>
+                        <span style={{ fontSize: 9, fontWeight: 700, color: colors.bg || "#6B7280", letterSpacing: 0.2 }}>{row.label}</span>
+                      </td>
                     {weekDates.map((d, i) => {
                       const dayType = getDayType(d, schoolDates);
                       const isH = dayType.includes("Holiday");
@@ -2355,6 +2404,25 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                     })}
                   </tr>);
                 })}
+              </tbody>
+              <tbody>
+                <tr style={{ borderTop: "2px solid #E5E7EB", background: "#F9FAFB" }}>
+                  <td style={{ padding: "7px 8px", fontSize: 9, fontWeight: 800, color: "#6B7280", position: "sticky", left: 0, background: "#F9FAFB", zIndex: 1 }}>HRS</td>
+                  {weekDates.map((d, i) => {
+                    const daySlots = (result.schedule[d] || []);
+                    const totalHrs = daySlots.reduce((sum, s) => sum + (s.empId ? (s.hours || 0) : 0), 0);
+                    const headcount = new Set(daySlots.filter(s => s.empId).map(s => s.empId)).size;
+                    const isMC = i === 3 || i === 6;
+                    const isH = getDayType(d, schoolDates).includes("Holiday");
+                    const colBg = isMC ? "#FAF8FF" : isH ? "#FFF8F8" : "#F9FAFB";
+                    return (
+                      <td key={d} style={{ padding: "7px 4px", textAlign: "center", background: colBg }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, color: "#374151" }}>{totalHrs.toFixed(1)}h</div>
+                        <div style={{ fontSize: 9, color: "#9CA3AF" }}>{headcount} ppl</div>
+                      </td>
+                    );
+                  })}
+                </tr>
               </tbody>
             </table>
           </div>
@@ -2639,26 +2707,12 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                         })}
                       </tr>);
                     })}
-                    <tr style={{ borderTop: "2px solid #E5E7EB", background: "#F9FAFB" }}>
-                      <td style={{ padding: "6px 8px", fontWeight: 700, fontSize: 10, color: "#374151", position: "sticky", left: 0, background: "#F9FAFB", zIndex: 1, borderRight: "1px solid #E5E7EB" }}>Hours</td>
-                      {weekDates.map(d => {
-                        const dayAssignments = result.schedule[d] || [];
-                        const filled = dayAssignments.filter(a => a.empId);
-                        const totalHrs = filled.reduce((sum, a) => sum + a.hours, 0);
-                        return (<td key={d} style={{ padding: "4px 4px", textAlign: "center" }}>
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                            <span style={{ fontSize: 9, color: "#9CA3AF" }}>{filled.length} ppl</span>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>{totalHrs.toFixed(2)}</span>
-                          </div>
-                        </td>);
-                      })}
-                    </tr>
                   </>);
                 })()}
               </tbody>
             </table>
           </div>
-          )}
+          )}  
 
           {/* Action Bar */}
           {!isSaved && draft && (
@@ -2903,7 +2957,10 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                   })();
 
                   return (
-                    <tr key={key} style={{ borderBottom: "1px solid #F3F4F6" }}>
+                    <tr key={key} onClick={() => { handleWeekChange(key); window.scrollTo({ top: 0, behavior: "smooth" }); }}
+                      style={{ borderBottom: "1px solid #F3F4F6", cursor: "pointer", transition: "background 0.1s" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "#F9FAFB"}
+                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
                       <td style={{ padding: "8px 12px", fontWeight: 600, color: "#374151", whiteSpace: "nowrap" }}>
                         {fmtWeek.label}
                         {fmtWeek.badge && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 10, background: fmtWeek.badge === "this week" ? "#DCFCE7" : "#DBEAFE", color: fmtWeek.badge === "this week" ? "#16A34A" : "#2563EB", border: fmtWeek.badge === "this week" ? "1px solid #86EFAC" : "1px solid #93C5FD" }}>{fmtWeek.badge}</span>}
