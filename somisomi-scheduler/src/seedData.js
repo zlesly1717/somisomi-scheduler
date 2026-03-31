@@ -246,12 +246,12 @@ export const SEED_RULES = {
   regular: { shiftsPerWeek:{min:3,max:4} },
   trainee: { shiftsPerWeek:{min:0,max:3}, graduationHours:30, fillGapsOnly:true, doNotReplaceRegulars:true },
   staffing: {
-    weekday:{day:2,evening:3,total:5},
-    weekdayHoliday:{day:3,evening:4,total:7},
-    friday:{day:2,evening:4,total:6},
-    fridayHoliday:{day:3,evening:4,total:7},
-    saturday:{day:3,mid:1,evening:4,total:8},
-    sunday:{day:3,mid:1,evening:5,total:9},
+    weekday:{day:2,evening:3,total:5},        // 1 SL day + 1 day + 1 eve SL + 2 eve = 5
+    weekdayHoliday:{day:3,evening:4,total:7}, // 1 SL day + 2 day + 2 eve SL + 2 eve = 7 (Alli as 5th)
+    friday:{day:4,evening:5,total:7},         // 1 SL day + 3 day + 2 eve SL + 4 eve = 7+
+    fridayHoliday:{day:4,evening:5,total:9},
+    saturday:{day:3,mid:2,evening:4,total:9}, // 2 SL day + 2 day + 2 SL eve + 2 eve + 2 mid (trainees) = 9
+    sunday:{day:3,mid:2,evening:5,total:9},   // 1 SL day + 2 day + 2 mid + MC crew(4) + 2 floor eve = 9
   },
   shiftTimes: {
     weekdayDay:{start:"12:00",end:"18:00"},
