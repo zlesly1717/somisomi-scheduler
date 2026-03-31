@@ -1777,7 +1777,28 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
   const weekDates = getWeekDates(weekStart);
   const weekKey = weekDates[0];
   const saved = savedSchedules?.[weekKey] || null;
-  const result = saved || draft;
+  // Always ensure empShiftCount and empHours are computed — seeded schedules may not have them
+  const _rawResult = saved || draft;
+  const result = (() => {
+    if (!_rawResult) return null;
+    if (_rawResult.empShiftCount && Object.values(_rawResult.empShiftCount).some(v => v > 0)) return _rawResult;
+    // Recompute from schedule data
+    const sc = {}, sh = {};
+    employees.filter(e => e.status === "active").forEach(e => { sc[e.id] = 0; sh[e.id] = 0; });
+    Object.values(_rawResult.schedule || {}).forEach(daySlots => {
+      daySlots.forEach(slot => {
+        if (slot.empId && slot.empId !== "seed" && !slot.empId.startsWith("seed-")) {
+          sc[slot.empId] = (sc[slot.empId] || 0) + 1;
+          sh[slot.empId] = (sh[slot.empId] || 0) + (slot.hours || 0);
+        } else if (slot.empName) {
+          // Fallback: match by name for seeded schedules
+          const emp = employees.find(e => e.name === slot.empName);
+          if (emp) { sc[emp.id] = (sc[emp.id] || 0) + 1; sh[emp.id] = (sh[emp.id] || 0) + (slot.hours || 0); }
+        }
+      });
+    });
+    return { ..._rawResult, empShiftCount: sc, empHours: sh };
+  })();
   const isSaved = !!saved;
   const dayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -1936,11 +1957,15 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
   };
 
   const tc = {
-    day_lead: { color: "#B45309", bg: "#FEF3C7" }, day: { color: "#16A34A", bg: "#F0FDF4" },
-    mid: { color: "#0891B2", bg: "#ECFEFF" }, evening_sl: { color: "#E11D48", bg: "#FFF1F2" },
-    evening_sl2: { color: "#E11D48", bg: "#FFF1F2" },
-    evening: { color: "#2563EB", bg: "#EFF6FF" }, mc_leader: { color: "#7C3AED", bg: "#F5F3FF" },
-    mc_sl_helper: { color: "#9333EA", bg: "#FAF5FF" }, mc_helper: { color: "#8B5CF6", bg: "#EDE9FE" },
+    day_lead:     { color: "#fff",    bg: "#F97316" }, // orange — matches Homebase Day Shift Lead
+    day:          { color: "#fff",    bg: "#EAB308" }, // yellow — Weekday Day
+    mid:          { color: "#fff",    bg: "#EAB308" }, // yellow — Mid Shift (same as day)
+    evening_sl:   { color: "#fff",    bg: "#EF4444" }, // red — Shift Lead evening
+    evening_sl2:  { color: "#fff",    bg: "#EF4444" }, // red
+    evening:      { color: "#fff",    bg: "#A855F7" }, // purple — Night Shift
+    mc_leader:    { color: "#fff",    bg: "#22C55E" }, // green — MC Lead
+    mc_sl_helper: { color: "#fff",    bg: "#22C55E" }, // green — MC Crew
+    mc_helper:    { color: "#fff",    bg: "#22C55E" }, // green — MC Helper
   };
 
   const savedCount = Object.keys(savedSchedules || {}).length;
@@ -1960,59 +1985,100 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
         />
       )}
 
-      {/* Week picker */}
-      <div style={{ background: "#fff", borderRadius: 12, padding: 18, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginBottom: 16 }}>
-        <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
-          <div>
-            <label style={sl}>Week Starting (Monday)</label>
-            <input type="date" value={weekStart} onChange={e => handleWeekChange(e.target.value)} style={{ ...si, width: 170 }} />
+      {/* ── TOP ACTION BAR ─────────────────────────────────────────── */}
+      <div style={{ background: "#fff", borderRadius: 14, padding: "14px 20px", boxShadow: "0 1px 4px rgba(0,0,0,0.07)", marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
+
+        {/* Hidden date input — triggered by clicking the week label */}
+        <input type="date" id="weekDatePicker" value={weekStart} onChange={e => handleWeekChange(e.target.value)}
+          style={{ position: "absolute", opacity: 0, width: 0, height: 0, pointerEvents: "none" }} />
+
+        {/* ‹ Prev week */}
+        <button onClick={() => { const d = new Date(weekStart + "T12:00:00"); d.setDate(d.getDate() - 7); handleWeekChange(d.toISOString().split("T")[0]); }}
+          style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid #E5E7EB", background: "#F9FAFB", cursor: "pointer", fontSize: 16, color: "#6B7280", flexShrink: 0 }}>‹</button>
+
+        {/* Week label — click to open date picker */}
+        <div onClick={() => { try { document.getElementById("weekDatePicker").showPicker(); } catch(e) { document.getElementById("weekDatePicker").click(); } }}
+          style={{ textAlign: "center", minWidth: 150, cursor: "pointer", userSelect: "none" }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: "#4A3F2F" }}>
+            {new Date(weekDates[0] + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+            {" – "}
+            {new Date(weekDates[6] + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <span style={{ fontSize: 11, color: "#6B7280" }}>
-              {dayLabels[0]} {new Date(weekDates[0] + "T12:00:00").getMonth() + 1}/{new Date(weekDates[0] + "T12:00:00").getDate()}
-              {" \u2192 "}{dayLabels[6]} {new Date(weekDates[6] + "T12:00:00").getMonth() + 1}/{new Date(weekDates[6] + "T12:00:00").getDate()}
-            </span>
-            <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-              {weekDates.map((d, i) => {
-                const dt = getDayType(d, schoolDates);
-                const isH = dt.includes("Holiday");
-                return <span key={d} style={{ padding: "1px 5px", borderRadius: 4, fontSize: 8.5, fontWeight: 600, background: isH ? "#FEE2E2" : "#F0FDF4", color: isH ? "#DC2626" : "#16A34A" }}>{dayLabels[i]}: {dt}</span>;
-              })}
-            </div>
+          <div style={{ fontSize: 10, color: "#9CA3AF", marginTop: 1 }}>
+            {new Date(weekDates[0] + "T12:00:00").getFullYear()}
+            {weekDates.some(d => getDayType(d, schoolDates).includes("Holiday")) && <span style={{ marginLeft: 4, color: "#F59E0B" }}>🎉 Holiday week</span>}
           </div>
-          <div style={{ flex: 1 }} />
-          {isSaved && <span style={{ padding: "4px 12px", borderRadius: 8, fontSize: 11, fontWeight: 700, background: "#F0FDF4", color: "#16A34A", border: "1px solid #BBF7D0" }}>{"\u2713"} Saved</span>}
         </div>
-        {savedCount > 0 && (
-          <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #F3F4F6" }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: "#6B7280", marginRight: 8 }}>SAVED WEEKS:</span>
-            <div style={{ display: "inline-flex", gap: 4, flexWrap: "wrap" }}>
-              {Object.keys(savedSchedules).sort().map(key => {
-                const dt = new Date(key + "T12:00:00");
-                const isA = key === weekKey;
-                return (
-                  <div key={key} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
-                    <button onClick={() => handleWeekChange(key)} style={{ padding: "3px 10px", borderRadius: 8, fontSize: 10, fontWeight: 600, cursor: "pointer", border: isA ? "2px solid #22C55E" : "1px solid #D1D5DB", background: isA ? "#F0FDF4" : "#fff", color: isA ? "#16A34A" : "#6B7280", fontFamily: font }}>{dt.getMonth() + 1}/{dt.getDate()}</button>
-                    {isA && <button onClick={() => { if (window.confirm("Delete saved week " + (dt.getMonth()+1) + "/" + dt.getDate() + "?")) { setSavedSchedules(prev => { const n = {...prev}; delete n[key]; return n; }); } }} title="Delete this week" style={{ width: 16, height: 16, borderRadius: "50%", fontSize: 9, fontWeight: 800, cursor: "pointer", border: "none", background: "#FEF2F2", color: "#DC2626", padding: 0, lineHeight: "16px", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: font }}>✕</button>}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+
+        {/* Next week › */}
+        <button onClick={() => { const d = new Date(weekStart + "T12:00:00"); d.setDate(d.getDate() + 7); handleWeekChange(d.toISOString().split("T")[0]); }}
+          style={{ width: 32, height: 32, borderRadius: 8, border: "1px solid #E5E7EB", background: "#F9FAFB", cursor: "pointer", fontSize: 16, color: "#6B7280", flexShrink: 0 }}>›</button>
+
+        <div style={{ width: 1, height: 32, background: "#E5E7EB", flexShrink: 0 }} />
+
+        {/* Saved week chips */}
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", flex: 1, alignItems: "center", overflow: "hidden" }}>
+          {savedCount > 0 && <span style={{ fontSize: 9, fontWeight: 800, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" }}>Saved</span>}
+          {Object.keys(savedSchedules).sort().reverse().slice(0, 10).map(key => {
+            const dt = new Date(key + "T12:00:00");
+            const isA = key === weekKey;
+            return (
+              <div key={key} style={{ display: "inline-flex", alignItems: "center", gap: 1 }}>
+                <button onClick={() => handleWeekChange(key)} style={{
+                  padding: "3px 9px", borderRadius: 6, fontSize: 10, fontWeight: 600, cursor: "pointer",
+                  border: isA ? "2px solid #4A3F2F" : "1px solid #E5E7EB",
+                  background: isA ? "#4A3F2F" : "#F9FAFB",
+                  color: isA ? "#fff" : "#6B7280", fontFamily: font, whiteSpace: "nowrap",
+                }}>{dt.toLocaleDateString("en-US", { month: "short", day: "numeric" })}</button>
+                {isA && <button onClick={() => { if (window.confirm("Delete this saved week?")) { setSavedSchedules(prev => { const n = {...prev}; delete n[key]; return n; }); } }}
+                  style={{ width: 14, height: 14, borderRadius: "50%", fontSize: 8, fontWeight: 800, cursor: "pointer", border: "none", background: "#FEF2F2", color: "#DC2626", padding: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Right: status + primary actions */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          {!isSaved && !draft && (
+            <button onClick={() => { setStep("timeoff"); setShowNuance(true); }}
+              style={{ padding: "9px 22px", borderRadius: 9, border: "none", background: "#4A3F2F", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: font }}>
+              ⚡ Generate
+            </button>
+          )}
+          {!isSaved && draft && step === "result" && <>
+            <button onClick={() => setShowNuance(true)}
+              style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid #E5E7EB", background: "#fff", color: "#4A3F2F", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: font }}>
+              ↻ Regenerate
+            </button>
+            <button onClick={() => {
+              const scheduleToSave = { schedule: draft.schedule, empShiftCount: draft.empShiftCount, empHours: draft.empHours, savedAt: new Date().toISOString(), notes, weeklyTOs, weekStart };
+              setSavedSchedules(prev => ({ ...prev, [weekKey]: scheduleToSave }));
+            }} style={{ padding: "9px 22px", borderRadius: 9, border: "none", background: "#16A34A", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: font, boxShadow: "0 2px 8px rgba(22,163,74,0.25)" }}>
+              ✅ Save Schedule
+            </button>
+          </>}
+          {isSaved && <>
+            <span style={{ fontSize: 12, color: "#16A34A", fontWeight: 700 }}>✓ Saved</span>
+            <button onClick={handleUnsave}
+              style={{ padding: "7px 14px", borderRadius: 8, border: "1px solid #E5E7EB", background: "#fff", color: "#6B7280", cursor: "pointer", fontSize: 12, fontWeight: 600, fontFamily: font }}>
+              ✏️ Edit
+            </button>
+          </>}
+        </div>
       </div>
 
-      {/* STEP 1: Time-Off */}
+      {/* STEP 1: Time-Off — compact */}
       {!isSaved && step === "timeoff" && (
-        <div style={{ background: "#fff", borderRadius: 12, padding: 20, boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginBottom: 16, border: "2px solid #3B82F6" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-            <span style={{ fontSize: 22 }}>{"\ud83d\udccb"}</span>
-            <div style={{ fontSize: 15, fontWeight: 700, color: "#4A3F2F" }}>Step 1: Any time-off this week?</div>
+        <div style={{ background: "#fff", borderRadius: 12, padding: "14px 18px", boxShadow: "0 1px 3px rgba(0,0,0,0.06)", marginBottom: 16, display: "flex", gap: 14, alignItems: "flex-start" }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#4A3F2F", marginBottom: 6 }}>📋 Any time-off this week?</div>
+            <textarea value={toText} onChange={e => setToText(e.target.value)}
+              placeholder="e.g. Kennedy off Saturday, Gwen off Monday 12pm-6pm — leave blank if none"
+              style={{ ...si, minHeight: 56, resize: "vertical", fontSize: 12 }} />
           </div>
-          <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 12 }}>Check your Homebase and type any time-off requests for this week. Or skip if none.</div>
-          <textarea value={toText} onChange={e => setToText(e.target.value)} placeholder="e.g. Kennedy off Saturday all day, Gwen off Monday 12pm-6pm, Sam off Wednesday" style={{ ...si, minHeight: 80, resize: "vertical", marginBottom: 12 }} />
-          <button onClick={handleParseTimeOffs} style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: "#4A3F2F", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: font }}>
-            {toText.trim() ? "Next \u2192" : "Skip \u2014 No Time-Off \u2192"}
+          <button onClick={handleParseTimeOffs}
+            style={{ padding: "9px 20px", borderRadius: 8, border: "none", background: "#4A3F2F", color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: font, marginTop: 24, flexShrink: 0 }}>
+            {toText.trim() ? "Next →" : "Skip →"}
           </button>
         </div>
       )}
@@ -2224,28 +2290,9 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
             </div>
           )}
 
-          {(result.warnings || []).length > 0 && (
-            <div style={{ background: "#FEF3C7", borderRadius: 12, marginBottom: 16, border: "1px solid #FDE68A", overflow: "hidden" }}>
-              <div onClick={() => setWarningsOpen(!warningsOpen)} style={{ padding: "10px 14px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#92400E" }}>{"\u26a0"} Warnings ({(result.warnings || []).length})</div>
-                <span style={{ fontSize: 12, color: "#92400E", transform: warningsOpen ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>{"\u25b6"}</span>
-              </div>
-              {warningsOpen && (
-                <div style={{ padding: "0 14px 10px" }}>
-                  {(result.warnings || []).map((w, i) => (
-                    <div key={i} style={{ fontSize: 12, color: "#92400E", marginBottom: 2 }}>
-                      {w.date && <span style={{ fontWeight: 600 }}>{new Date(w.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} — </span>}
-                      {w.msg}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
             {!isSaved && draft ? (
-              <div style={{ fontSize: 11, color: "#9CA3AF" }}>{"\ud83d\udca1"} Click any cell to edit shift details</div>
+              <div style={{ fontSize: 11, color: "#9CA3AF" }}>💡 Click any cell to edit shift details</div>
             ) : <div />}
             <div style={{ display: "flex", background: "#F3F4F6", borderRadius: 8, padding: 2 }}>
               {[["shift", "Shift View"], ["employee", "Employee View"]].map(([k, l]) => (
@@ -2327,16 +2374,17 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                   const sortedEmps = empOrder ? empOrder.map(id => defaultSort.find(e => e.id === id)).filter(Boolean) : defaultSort;
                   // Add any new employees not in custom order
                   if (empOrder) { defaultSort.forEach(e => { if (!sortedEmps.find(s => s.id === e.id)) sortedEmps.push(e); }); }
+                  // Colors match Homebase exactly
                   const shiftColors = {
-                    day_lead: { bg: "#F97316", text: "#fff", label: "Day Shift Lead" },
-                    day: { bg: "#EAB308", text: "#fff", label: "Weekday Day" },
-                    mid: { bg: "#EAB308", text: "#fff", label: "Mid Shift" },
-                    evening_sl: { bg: "#EF4444", text: "#fff", label: "Shift Lead" },
-                    evening_sl2: { bg: "#EF4444", text: "#fff", label: "Shift Lead" },
-                    evening: { bg: "#A855F7", text: "#fff", label: "Night Shift" },
-                    mc_leader: { bg: "#22C55E", text: "#fff", label: "MC Lead" },
-                    mc_sl_helper: { bg: "#22C55E", text: "#fff", label: "MC Crew" },
-                    mc_helper: { bg: "#22C55E", text: "#fff", label: "MC Crew" },
+                    day_lead:     { bg: "#F97316", text: "#fff", label: "Day Shift Lead" },  // orange
+                    day:          { bg: "#EAB308", text: "#fff", label: "Weekday Day" },     // yellow
+                    mid:          { bg: "#EAB308", text: "#fff", label: "Mid Shift" },       // yellow
+                    evening_sl:   { bg: "#EF4444", text: "#fff", label: "Shift Lead" },      // red
+                    evening_sl2:  { bg: "#EF4444", text: "#fff", label: "Shift Lead" },      // red
+                    evening:      { bg: "#A855F7", text: "#fff", label: "Night Shift" },     // purple
+                    mc_leader:    { bg: "#22C55E", text: "#fff", label: "SHIFTLEAD/MACHINECLEAN" }, // green
+                    mc_sl_helper: { bg: "#22C55E", text: "#fff", label: "MACHINECLEAN" },    // green
+                    mc_helper:    { bg: "#22C55E", text: "#fff", label: "MACHINECLEAN" },    // green
                   };
                   const weekendDayColor = { bg: "#EAB308", text: "#fff", label: "Weekend Day" };
                   const roleCircle = { shift_lead: "#EF4444", regular: "#3B82F6", trainee: "#22C3E6" };
@@ -2371,7 +2419,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                             <div>
                               <div style={{ fontWeight: 700, fontSize: 11, color: below ? "#DC2626" : "#374151", lineHeight: 1.2 }}>{emp.name}</div>
                               <div style={{ fontSize: 9, color: "#9CA3AF", fontWeight: 600 }}>{totalHrs.toFixed(1)} hrs</div>
-                              {!isSaved && draft && (() => {
+                              {draft && (() => {
                                 const actualShifts = result.empShiftCount?.[emp.id] || 0;
                                 const override = weeklyMaxOverrides[emp.id];
                                 const target = (override && typeof override === "object" && typeof override.max === "number") ? override.max : null;
@@ -2379,6 +2427,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                                 const hasChange = target !== null && target !== actualShifts;
                                 
                                 const adjust = (delta) => {
+                                  if (isSaved) return; // read-only when saved
                                   const current = target !== null ? target : actualShifts;
                                   const next = Math.max(0, Math.min(7, current + delta));
                                   setWeeklyMaxOverrides(prev => {
@@ -2392,10 +2441,10 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                                 
                                 return (
                                   <div style={{ display: "flex", alignItems: "center", gap: 3, marginTop: 2 }}>
-                                    <button onClick={() => adjust(-1)} style={{ width: 15, height: 15, borderRadius: 3, border: "1px solid #E5E7EB", background: "#FEF2F2", color: "#DC2626", cursor: "pointer", fontSize: 11, fontWeight: 800, padding: 0, lineHeight: "16px" }}>{"\u2212"}</button>
-                                    <span style={{ fontSize: 11, fontWeight: 800, minWidth: 16, textAlign: "center", color: hasChange ? (target > actualShifts ? "#16A34A" : "#DC2626") : "#374151" }}>{displayNum}</span>
-                                    <button onClick={() => adjust(1)} style={{ width: 15, height: 15, borderRadius: 3, border: "1px solid #E5E7EB", background: "#F0FDF4", color: "#16A34A", cursor: "pointer", fontSize: 11, fontWeight: 800, padding: 0, lineHeight: "16px" }}>+</button>
-                                    {hasChange ? (
+                                    {!isSaved && <button onClick={() => adjust(-1)} style={{ width: 15, height: 15, borderRadius: 3, border: "1px solid #E5E7EB", background: "#FEF2F2", color: "#DC2626", cursor: "pointer", fontSize: 11, fontWeight: 800, padding: 0, lineHeight: "16px" }}>{"\u2212"}</button>}
+                                    <span style={{ fontSize: 11, fontWeight: 800, minWidth: 16, textAlign: "center", color: actualShifts < emp.minShifts ? "#DC2626" : (hasChange ? (target > actualShifts ? "#16A34A" : "#DC2626") : "#374151") }}>{actualShifts}</span>
+                                    {!isSaved && <button onClick={() => adjust(1)} style={{ width: 15, height: 15, borderRadius: 3, border: "1px solid #E5E7EB", background: "#F0FDF4", color: "#16A34A", cursor: "pointer", fontSize: 11, fontWeight: 800, padding: 0, lineHeight: "16px" }}>+</button>}
+                                    {!isSaved && hasChange ? (
                                       <>
                                         <span style={{ fontSize: 9, color: target > actualShifts ? "#16A34A" : "#DC2626", fontWeight: 700 }}>
                                           {target > actualShifts ? "\u25b2" + (target - actualShifts) : "\u25bc" + (actualShifts - target)}
@@ -2672,12 +2721,30 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
             </div>
           )}
 
-          {isSaved && (
-            <div style={{ background: "#F0FDF4", borderRadius: 12, padding: 14, marginBottom: 16, border: "1px solid #BBF7D0", display: "flex", alignItems: "center", gap: 12 }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: "#16A34A" }}>{"\u2713"} Schedule saved</span>
-              <span style={{ fontSize: 11, color: "#6B7280" }}>{saved.savedAt && "Saved " + new Date(saved.savedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
-              <div style={{ flex: 1 }} />
-              <button onClick={handleUnsave} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #FCA5A5", background: "#FEF2F2", color: "#DC2626", cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: font }}>Unsave & Edit</button>
+          {/* Saved timestamp */}
+          {isSaved && saved?.savedAt && (
+            <div style={{ fontSize: 11, color: "#9CA3AF", marginBottom: 8, paddingLeft: 2 }}>
+              ✓ Saved {new Date(saved.savedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+            </div>
+          )}
+
+          {/* Warnings — collapsed by default */}
+          {(result.warnings || []).length > 0 && (
+            <div style={{ marginBottom: 10 }}>
+              <button onClick={() => setWarningsOpen(!warningsOpen)}
+                style={{ fontSize: 11, color: "#92400E", background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 6, padding: "3px 10px", cursor: "pointer", fontFamily: font, fontWeight: 600 }}>
+                {warningsOpen ? "▾" : "▸"} {(result.warnings || []).length} warning{(result.warnings || []).length !== 1 ? "s" : ""}
+              </button>
+              {warningsOpen && (
+                <div style={{ marginTop: 6, background: "#FFFBEB", borderRadius: 8, padding: "8px 12px", border: "1px solid #FDE68A" }}>
+                  {(result.warnings || []).map((w, i) => (
+                    <div key={i} style={{ fontSize: 11, color: "#92400E", marginBottom: 2 }}>
+                      {w.date && <span style={{ fontWeight: 600 }}>{new Date(w.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} — </span>}
+                      {w.msg}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

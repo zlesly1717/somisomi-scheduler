@@ -366,8 +366,10 @@ export default function App() {
         const mcHistory = buildMCHistorySeed();
         Object.entries(mcHistory).forEach(([k, v]) => { if (!existing[k]) existing[k] = v; });
       }
-      // Seed full Apr 6-12 schedule if not already saved as a real schedule
-      if (!existing["2026-04-06"] || existing["2026-04-06"]._source === "homebase-import" || !existing["2026-04-06"].schedule?.["2026-04-06"]?.length) {
+      // Seed full Apr 6-12 schedule — force replace if version is old
+      if (!existing["2026-04-06"] || existing["2026-04-06"]._source === "homebase-import" || 
+          !existing["2026-04-06"].schedule?.["2026-04-06"]?.length ||
+          existing["2026-04-06"]._schedVersion !== 3) {
         existing["2026-04-06"] = {
           schedule: buildApr6Schedule(),
           savedAt: "2026-04-12T20:00:00Z",
@@ -376,6 +378,7 @@ export default function App() {
           weekStart: "2026-04-06",
           label: "Week of Apr 6 (Homebase)",
           _source: "homebase-full",
+          _schedVersion: 3,
         };
       }
       setSavedSchedules(existing);
