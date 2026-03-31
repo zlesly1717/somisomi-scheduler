@@ -292,7 +292,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 
   // FLEXIBLE F7: No Fri+Sat night same person
   // FLEXIBLE F8: No Sat+Sun night same person
-  const weekendNightOK = (emp, dateStr, slotStart) => {
+  const weekendNightOK = (emp, dateStr, slotStart, isMC) => {
     if (tm(slotStart) < 1020) return true;
     const dow2 = new Date(dateStr + "T12:00:00").getDay();
     if (!approved.has("F7") && con("no_fri_sat_night")) {
@@ -301,7 +301,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     }
     if (!approved.has("F8") && con("no_sat_sun_night")) {
       if (dow2 === 6 && nightMap[weekDates[6]]?.has(emp.id)) return false;
-      if (dow2 === 0 && !slot.isMC && nightMap[weekDates[5]]?.has(emp.id)) return false; // MC on Sun exempt
+      if (dow2 === 0 && !isMC && nightMap[weekDates[5]]?.has(emp.id)) return false; // MC on Sun exempt
     }
     return true;
   };
@@ -438,7 +438,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (emp._effMaxShifts === 0) return false; // CANNOT BREAK: manual 0-shift override
       if (!approved.has("F6") && sc[emp.id] >= emp._effMaxShifts) return false;
       if (sh[emp.id] + slot.hours > emp._effMaxHours * (approved.has("F6") ? 1.5 : 1)) return false;
-      if (!weekendNightOK(emp, dateStr, slot.start)) return false; // F7/F8
+      if (!weekendNightOK(emp, dateStr, slot.start, slot.isMC)) return false; // F7/F8
       if (!consecOK(emp, dayIndex)) return false; // F9
 
       // FLEXIBLE F2: Grae max 1 weekend shift
@@ -1012,7 +1012,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (!friSatSunOK(sl, dateStr, slot.slOnly)) return;
         if (!dayAfterMCOK(sl, dateStr, slot.start)) return;
         if (!crystalSundayOK(sl, dateStr)) return;
-        if (!weekendNightOK(sl, dateStr, slot.start)) return;
+        if (!weekendNightOK(sl, dateStr, slot.start, slot.isMC)) return;
         if (!consecOK(sl, weekDates.indexOf(dateStr))) return;
         if (slot.isMC && mcCount[sl.id] >= 1) return;
         // Fri/Sat/Sun nights: SL overflow should not take regular evening slots
@@ -1125,7 +1125,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
             if (slot.isTraineeSlot && under.role !== "trainee") continue;
             if (!isAvail(under, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) continue;
             if (con("no_mc_twice") && slot.isMC && mcCount[under.id] >= 1) continue;
-            if (!weekendNightOK(under, dateStr, slot.start)) continue;
+            if (!weekendNightOK(under, dateStr, slot.start, slot.isMC)) continue;
             if (sh[under.id] + slot.hours > (under._effMaxHours || 24)) continue;
             if (!consecOK(under, weekDates.indexOf(dateStr))) continue;
             // Don't steal SL-required slots from SLs
@@ -1186,7 +1186,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
             if (slot.isTraineeSlot && under.role !== "trainee") continue;
             if (!isAvail(under, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) continue;
             if (con("no_mc_twice") && slot.isMC && mcCount[under.id] >= 1) continue;
-            if (!weekendNightOK(under, dateStr, slot.start)) continue;
+            if (!weekendNightOK(under, dateStr, slot.start, slot.isMC)) continue;
             if (sh[under.id] + slot.hours > (under._effMaxHours || 24)) continue;
             if (!consecOK(under, weekDates.indexOf(dateStr))) continue;
             // Don't take Fri/Sat night slots from regulars who are SLs
