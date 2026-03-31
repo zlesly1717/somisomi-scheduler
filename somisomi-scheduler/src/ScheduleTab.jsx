@@ -361,6 +361,13 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     if (sc[emp.id] >= emp._effMaxShifts) return;
     // ABSOLUTE: never assign someone to two shifts on the same day
     if (sd[emp.id].has(dateStr)) return;
+    _doAssign(dateStr, slotIndex, emp, slot);
+  };
+  const forceAssign = (dateStr, slotIndex, emp, slot) => {
+    // No hard blocks — used only as absolute last resort to fill empty slots
+    _doAssign(dateStr, slotIndex, emp, slot);
+  };
+  const _doAssign = (dateStr, slotIndex, emp, slot) => {
     // HARD RULE: never assign same person to both Sat night AND Sun night — too exhausting
     const slotDow = new Date(dateStr + "T12:00:00").getDay();
     const isSatNight = slotDow === 6 && tm(slot.start || "18:00") >= 1020;
@@ -658,9 +665,16 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         const sunDate = slot._dateStr;
         cands = sls.filter(e => {
           if (!isAvail(e, sunDate, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
-          if (sd[e.id].has(sunDate)) return false; // truly no doubles
+          if (sd[e.id].has(sunDate)) return false;
           return true;
         });
+        cands.sort(mcSortFn);
+      }
+      // Absolute last resort: ignore no-doubles for MC — MC must be covered
+      if (cands.length === 0) {
+        const sunDate = slot._dateStr;
+        cands = sls.filter(e => isAvail(e, sunDate, slot.start, slot.end, weeklyTimeOffs, availOverrides));
+        if (cands.length === 0) cands = [...sls]; // anyone
         cands.sort(mcSortFn);
       }
       if (cands[0]) { assignSlotInSchedule(slot, cands[0]); continue; }
@@ -1227,16 +1241,22 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   });
   SOFT_RULES.forEach(r => approved.delete(r));
 
-  // Pass 6: Ignore availability entirely — no doubles enforced inside assign()
-  // Absolute last resort — a slot being empty is never acceptable
-  fillEmptySlots((emps, dateStr, slot) => {
-    if (slot.slOnly) {
-      const slCands = emps.filter(e => e.role === "shift_lead");
-      if (slCands.length > 0) return slCands;
-      return emps.filter(e => e.role !== "trainee" || isEffectivelyGraduated(e));
-    }
-    if (slot.isMC) return emps.filter(e => e.role !== "trainee" || isEffectivelyGraduated(e));
-    return emps;
+  // Pass 6: Nuclear — ignore everything, use forceAssign
+  weekDates.forEach(dateStr => {
+    schedule[dateStr].forEach((slot, idx) => {
+      if (slot.empId) return;
+      // Try to find someone with capacity first
+      let pool = active.filter(e => {
+        if (slot.slOnly && e.role !== "shift_lead") return false;
+        if (slot.isMC && e.role === "trainee") return false;
+        return true;
+      });
+      pool.sort((a, b) => sc[a.id] - sc[b.id] || sh[a.id] - sh[b.id]);
+      // Prefer someone not already on this day
+      const noDouble = pool.filter(e => !sd[e.id].has(dateStr));
+      const pick = noDouble[0] || pool[0];
+      if (pick) forceAssign(dateStr, idx, pick, slot);
+    });
   });
 
   // ── Flexible rule detection ───────────────────────────────────────
