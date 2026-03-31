@@ -1250,6 +1250,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (slot.isMC && emp.role === "trainee") return false;
       if (slot.isImportant && emp.role === "trainee") return false;
       if (sc[emp.id] >= emp.maxShifts) return false; // use real maxShifts
+      // Special cases always respect their hard caps
+      if ((emp.id === "reg-7" || emp.id === "tr-6") && sc[emp.id] >= emp.maxShifts) return false;
       return true;
     })
   );
@@ -1275,7 +1277,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   });
   SOFT_RULES.forEach(r => approved.delete(r));
 
-  // Pass 6: Nuclear — ignore everything, use forceAssign
+  // Pass 6: Nuclear — ignore everything EXCEPT time-off and hard caps for special employees
   weekDates.forEach(dateStr => {
     schedule[dateStr].forEach((slot, idx) => {
       if (slot.empId) return;
@@ -1283,12 +1285,20 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       let pool = active.filter(e => {
         if (slot.slOnly && e.role !== "shift_lead") return false;
         if (slot.isMC && e.role === "trainee") return false;
+        // Special cases (Grae, Cesia): always respect their maxShifts AND time-off
+        const isSpecial = e.id === "reg-7" || e.id === "tr-6";
+        if (isSpecial && sc[e.id] >= e.maxShifts) return false;
+        if (isSpecial && !isAvail(e, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
         return true;
       });
       pool.sort((a, b) => sc[a.id] - sc[b.id] || sh[a.id] - sh[b.id]);
-      // Prefer someone not already on this day
+      // Prefer someone not already on this day AND not on time-off
       const noDouble = pool.filter(e => !sd[e.id].has(dateStr));
-      const pick = noDouble[0] || pool[0];
+      const noDoubleNoTO = noDouble.filter(e => {
+        const hasTO = weeklyTimeOffs.some(t => t.empId === e.id && t.date === dateStr && t.allDay);
+        return !hasTO;
+      });
+      const pick = noDoubleNoTO[0] || noDouble[0] || pool[0];
       if (pick) forceAssign(dateStr, idx, pick, slot);
     });
   });
