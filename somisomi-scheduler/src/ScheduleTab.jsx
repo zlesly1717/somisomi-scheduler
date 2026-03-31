@@ -2942,47 +2942,72 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
 
           {/* Next Up for MC */}
           {(() => {
-            // Build MC frequency from saved schedules
+            // Build MC frequency from saved schedules (past + current week only)
             const regMCCount = {};
             const slMCCount = {};
             const regLastMC = {};
             const slLastMC = {};
+            const regScheduledWeek = {}; // "this week" or "next week" if already assigned
+            const slScheduledWeek = {};
             const activeRegs = employees.filter(e => e.status === "active" && e.role === "regular" && !(e.tags || []).includes("mc_exempt")).map(e => e.name);
             const activeSLs = employees.filter(e => e.status === "active" && e.role === "shift_lead").map(e => e.name);
             activeRegs.forEach(n => { regMCCount[n] = 0; regLastMC[n] = null; });
             activeSLs.forEach(n => { slMCCount[n] = 0; slLastMC[n] = null; });
 
+            const now = new Date();
             Object.entries(savedSchedules).sort((a, b) => a[0].localeCompare(b[0])).forEach(([key, data]) => {
-              // Only count weeks that have started (week Monday <= today), skip purely future weeks
               const weekMon = new Date(key + "T12:00:00");
-              if (weekMon > new Date()) return; // skip weeks that haven't started yet
+              const weekSun = new Date(weekMon); weekSun.setDate(weekMon.getDate() + 6);
+
+              // Determine if this is this week, next week, or past
+              const isThisWeek = now >= weekMon && now <= weekSun;
+              const nextMon = new Date(now); nextMon.setDate(now.getDate() + (8 - now.getDay()) % 7 || 7);
+              const nextSun = new Date(nextMon); nextSun.setDate(nextMon.getDate() + 6);
+              const isNextWeek = weekMon >= nextMon && weekMon <= nextSun;
+              const isFuture = weekMon > now && !isNextWeek;
+
               const schedule = data.schedule || data;
               Object.entries(schedule).forEach(([dateStr, slots]) => {
                 if (!Array.isArray(slots)) return;
                 slots.forEach(slot => {
                   if (!slot.isMC || !slot.empId) return;
                   const name = slot.empName || "?";
-                  if (activeRegs.includes(name)) { regMCCount[name]++; regLastMC[name] = key; }
-                  if (activeSLs.includes(name)) { slMCCount[name]++; slLastMC[name] = key; }
+
+                  if (isThisWeek || isNextWeek) {
+                    // Track upcoming MC assignments — push to bottom
+                    const label = isThisWeek ? "this week" : "next week";
+                    if (activeRegs.includes(name)) regScheduledWeek[name] = label;
+                    if (activeSLs.includes(name)) slScheduledWeek[name] = label;
+                  } else if (!isFuture) {
+                    // Only count past weeks toward rotation history
+                    if (activeRegs.includes(name)) { regMCCount[name]++; regLastMC[name] = key; }
+                    if (activeSLs.includes(name)) { slMCCount[name]++; slLastMC[name] = key; }
+                  }
                 });
               });
             });
 
-            // Sort: fewest MC times first, then longest since last MC
-            const regSorted = activeRegs.sort((a, b) => {
-              if (regMCCount[a] !== regMCCount[b]) return regMCCount[a] - regMCCount[b];
-              if (!regLastMC[a] && regLastMC[b]) return -1;
-              if (regLastMC[a] && !regLastMC[b]) return 1;
-              if (regLastMC[a] && regLastMC[b]) return regLastMC[a].localeCompare(regLastMC[b]);
+            // Sort: scheduled this/next week go to bottom, then sort by fewest MC + oldest last date
+            const sortFn = (countMap, lastMap, scheduledMap) => (a, b) => {
+              const aScheduled = !!scheduledMap[a];
+              const bScheduled = !!scheduledMap[b];
+              if (aScheduled && !bScheduled) return 1;
+              if (!aScheduled && bScheduled) return -1;
+              if (aScheduled && bScheduled) {
+                // Both scheduled: this week before next week
+                const order = { "this week": 0, "next week": 1 };
+                return (order[scheduledMap[a]] || 0) - (order[scheduledMap[b]] || 0);
+              }
+              // Neither scheduled: sort by count then last date
+              if (countMap[a] !== countMap[b]) return countMap[a] - countMap[b];
+              if (!lastMap[a] && lastMap[b]) return -1;
+              if (lastMap[a] && !lastMap[b]) return 1;
+              if (lastMap[a] && lastMap[b]) return lastMap[a].localeCompare(lastMap[b]);
               return 0;
-            });
-            const slSorted = activeSLs.sort((a, b) => {
-              if (slMCCount[a] !== slMCCount[b]) return slMCCount[a] - slMCCount[b];
-              if (!slLastMC[a] && slLastMC[b]) return -1;
-              if (slLastMC[a] && !slLastMC[b]) return 1;
-              if (slLastMC[a] && slLastMC[b]) return slLastMC[a].localeCompare(slLastMC[b]);
-              return 0;
-            });
+            };
+
+            const regSorted = [...activeRegs].sort(sortFn(regMCCount, regLastMC, regScheduledWeek));
+            const slSorted = [...activeSLs].sort(sortFn(slMCCount, slLastMC, slScheduledWeek));
 
             const fmtLast = (key) => {
               if (!key) return "never";
@@ -3012,11 +3037,11 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                   <div style={{ fontSize: 12, fontWeight: 700, color: "#C2410C", marginBottom: 4 }}>Next Up — Regular MC Helpers</div>
                   <div style={{ fontSize: 10, color: "#9CA3AF", marginBottom: 10 }}>Top = most overdue, should clean next</div>
                   {regSorted.map((name, i) => (
-                    <div key={name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: i < regSorted.length - 1 ? "1px solid #FEF3C7" : "none" }}>
-                      <span style={{ fontSize: 10, fontWeight: 800, color: i === 0 ? "#16A34A" : "#D1D5DB", width: 18 }}>#{i + 1}</span>
+                    <div key={name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: i < regSorted.length - 1 ? "1px solid #FEF3C7" : "none", opacity: regScheduledWeek[name] ? 0.5 : 1 }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: i === 0 && !regScheduledWeek[name] ? "#16A34A" : "#D1D5DB", width: 18 }}>#{i + 1}</span>
                       <span style={{ fontSize: 12, fontWeight: 600, color: "#374151", flex: 1 }}>{name}</span>
-                      <span style={{ fontSize: 10, color: regLastMC[name] ? "#9CA3AF" : "#DC2626", fontStyle: regLastMC[name] ? "normal" : "italic" }}>
-                        last: {fmtLast(regLastMC[name])}
+                      <span style={{ fontSize: 10, color: regScheduledWeek[name] ? "#7C3AED" : regLastMC[name] ? "#9CA3AF" : "#DC2626", fontStyle: regLastMC[name] || regScheduledWeek[name] ? "normal" : "italic", fontWeight: regScheduledWeek[name] ? 700 : 400 }}>
+                        {regScheduledWeek[name] ? `✓ ${regScheduledWeek[name]}` : `last: ${fmtLast(regLastMC[name])}`}
                       </span>
                     </div>
                   ))}
@@ -3025,11 +3050,11 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                   <div style={{ fontSize: 12, fontWeight: 700, color: "#92400E", marginBottom: 4 }}>Next Up — SL MC Leaders</div>
                   <div style={{ fontSize: 10, color: "#9CA3AF", marginBottom: 10 }}>Top = most overdue, should lead next</div>
                   {slSorted.map((name, i) => (
-                    <div key={name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: i < slSorted.length - 1 ? "1px solid #FDE68A" : "none" }}>
-                      <span style={{ fontSize: 10, fontWeight: 800, color: i === 0 ? "#16A34A" : "#D1D5DB", width: 18 }}>#{i + 1}</span>
+                    <div key={name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: i < slSorted.length - 1 ? "1px solid #FDE68A" : "none", opacity: slScheduledWeek[name] ? 0.5 : 1 }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: i === 0 && !slScheduledWeek[name] ? "#16A34A" : "#D1D5DB", width: 18 }}>#{i + 1}</span>
                       <span style={{ fontSize: 12, fontWeight: 600, color: "#374151", flex: 1 }}>{name}</span>
-                      <span style={{ fontSize: 10, color: slLastMC[name] ? "#9CA3AF" : "#DC2626", fontStyle: slLastMC[name] ? "normal" : "italic" }}>
-                        last: {fmtLast(slLastMC[name])}
+                      <span style={{ fontSize: 10, color: slScheduledWeek[name] ? "#7C3AED" : slLastMC[name] ? "#9CA3AF" : "#DC2626", fontStyle: slLastMC[name] || slScheduledWeek[name] ? "normal" : "italic", fontWeight: slScheduledWeek[name] ? 700 : 400 }}>
+                        {slScheduledWeek[name] ? `✓ ${slScheduledWeek[name]}` : `last: ${fmtLast(slLastMC[name])}`}
                       </span>
                     </div>
                   ))}
