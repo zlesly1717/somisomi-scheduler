@@ -301,7 +301,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     }
     if (!approved.has("F8") && con("no_sat_sun_night")) {
       if (dow2 === 6 && nightMap[weekDates[6]]?.has(emp.id)) return false;
-      if (dow2 === 0 && nightMap[weekDates[5]]?.has(emp.id)) return false;
+      if (dow2 === 0 && !slot.isMC && nightMap[weekDates[5]]?.has(emp.id)) return false; // MC on Sun exempt
     }
     return true;
   };
@@ -378,11 +378,13 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   };
   const _doAssign = (dateStr, slotIndex, emp, slot) => {
     // HARD RULE: never assign same person to both Sat night AND Sun night — too exhausting
+    // EXCEPTION: MC slots on Sunday are required — SLs must do MC even if they worked Sat night
     const slotDow = new Date(dateStr + "T12:00:00").getDay();
     const isSatNight = slotDow === 6 && tm(slot.start || "18:00") >= 1020;
     const isSunNight = slotDow === 0 && tm(slot.start || "18:00") >= 1020;
+    const isMCSlot = slot.isMC;
     if (isSatNight && nightMap[weekDates[6]]?.has(emp.id)) return; // already has Sun night
-    if (isSunNight && nightMap[weekDates[5]]?.has(emp.id)) return; // already has Sat night
+    if (isSunNight && !isMCSlot && nightMap[weekDates[5]]?.has(emp.id)) return; // already has Sat night (non-MC slots only)
     schedule[dateStr][slotIndex] = { ...slot, empId: emp.id, empName: emp.name, empRole: emp.role };
     sc[emp.id]++; sh[emp.id] += slot.hours; sd[emp.id].add(dateStr);
     if (slot.isMC) mcCount[emp.id]++;
@@ -540,7 +542,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         const MC_CREW_SIZE = 4;
         const floorTotal = Math.max(0, (staffing.evening || 5) - MC_CREW_SIZE);
         for (let i = 0; i < floorTotal; i++) {
-          slots.push({ type: "evening", label: "Evening", start: eveS, end: eveE, hours: hrs(eveS, eveE), slOnly: false, noTrainee: true, isMC: false, order: 30 + i });
+          slots.push({ type: "evening", label: "Evening", start: eveS, end: eveE, hours: hrs(eveS, eveE), slOnly: false, noTrainee: false, isMC: false, order: 30 + i });
         }
       } else {
         // Thu: MC crew = Crystal + 2 reg helpers. Floor slots = extra beyond MC crew.
@@ -800,7 +802,12 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   };
 
   // Process all days Mon-Sun in order
+  // Run weekend days TWICE to fill both mid shift slots (Sat has 2 mid slots)
   weekDates.forEach((dateStr, di) => tryPlaceTrainee(dateStr, di));
+  weekDates.forEach((dateStr, di) => {
+    const dow = new Date(dateStr + "T12:00:00").getDay();
+    if (dow === 6 || dow === 0) tryPlaceTrainee(dateStr, di); // 2nd pass for Sat/Sun mid shifts
+  });
 
   // ── STEP 4: Place regulars on all remaining slots ──────────────────
   // Process order: MC helpers → Weekend evening → Weekend day → Fri → Mid → Weekday 2nd day → Weekday evening
