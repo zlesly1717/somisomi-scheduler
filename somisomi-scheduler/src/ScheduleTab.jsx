@@ -2953,9 +2953,9 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
             activeSLs.forEach(n => { slMCCount[n] = 0; slLastMC[n] = null; });
 
             Object.entries(savedSchedules).sort((a, b) => a[0].localeCompare(b[0])).forEach(([key, data]) => {
-              // Only count weeks that have already happened (past or current week)
-              const weekSun = new Date(key + "T12:00:00"); weekSun.setDate(weekSun.getDate() + 6);
-              if (weekSun > new Date()) return; // skip future weeks
+              // Only count weeks that have started (week Monday <= today), skip purely future weeks
+              const weekMon = new Date(key + "T12:00:00");
+              if (weekMon > new Date()) return; // skip weeks that haven't started yet
               const schedule = data.schedule || data;
               Object.entries(schedule).forEach(([dateStr, slots]) => {
                 if (!Array.isArray(slots)) return;
