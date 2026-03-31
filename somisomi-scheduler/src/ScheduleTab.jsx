@@ -693,10 +693,18 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     // All other SL-only slots: pick SL with fewest hours
     // For evening SL slots, relax F7/F8 (no consecutive nights) if no SL available
     // SLs sometimes need to work Fri+Sat or Sat+Sun to cover required shifts
+    const isWeekendNightSlot = (slot._isFri || slot._isSat || slot._isSun) && tm(slot.start || "18:00") >= 1020;
     const slSortFn = (a, b) => {
       const aG = (a.guaranteedDays || []).includes(slot._dayKey) ? 1 : 0;
       const bG = (b.guaranteedDays || []).includes(slot._dayKey) ? 1 : 0;
       if (bG !== aG) return bG - aG;
+      // For weekend night slots: STRONGLY prefer SLs with fewer weekend nights
+      // This prevents stacking (Spencer getting Fri+Sat while Chan gets 0)
+      if (isWeekendNightSlot) {
+        const aWE = weCount[a.id] || 0;
+        const bWE = weCount[b.id] || 0;
+        if (aWE !== bWE) return aWE - bWE; // fewer weekend nights = higher priority
+      }
       const slMin = 18;
       const aUnder = Math.max(0, slMin - sh[a.id]);
       const bUnder = Math.max(0, slMin - sh[b.id]);
