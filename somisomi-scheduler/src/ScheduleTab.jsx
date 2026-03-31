@@ -2418,7 +2418,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                             <div style={{ width: 26, height: 26, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", background: roleCircle[emp.role] || "#9CA3AF", color: "#fff", fontSize: 9, fontWeight: 800, flexShrink: 0 }}>{initials}</div>
                             <div>
                               <div style={{ fontWeight: 700, fontSize: 11, color: below ? "#DC2626" : "#374151", lineHeight: 1.2 }}>{emp.name}</div>
-                              <div style={{ fontSize: 9, color: "#9CA3AF", fontWeight: 600 }}>{totalHrs.toFixed(1)} hrs</div>
+                              <div style={{ fontSize: 9, color: "#9CA3AF", fontWeight: 600 }}>{totalHrs.toFixed(1)} hrs · {result.empShiftCount?.[emp.id] || 0} shifts</div>
                               {draft && (() => {
                                 const actualShifts = result.empShiftCount?.[emp.id] || 0;
                                 const override = weeklyMaxOverrides[emp.id];
