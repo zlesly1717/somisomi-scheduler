@@ -2955,16 +2955,18 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
             activeSLs.forEach(n => { slMCCount[n] = 0; slLastMC[n] = null; });
 
             const now = new Date();
+            // Find start of current week (Monday)
+            const todayDay = now.getDay(); // 0=Sun,1=Mon...6=Sat
+            const currentMon = new Date(now); currentMon.setDate(now.getDate() - (todayDay === 0 ? 6 : todayDay - 1)); currentMon.setHours(0,0,0,0);
+            const nextMon = new Date(currentMon); nextMon.setDate(currentMon.getDate() + 7);
+            const nextSun = new Date(nextMon); nextSun.setDate(nextMon.getDate() + 6); nextSun.setHours(23,59,59,999);
             Object.entries(savedSchedules).sort((a, b) => a[0].localeCompare(b[0])).forEach(([key, data]) => {
-              const weekMon = new Date(key + "T12:00:00");
-              const weekSun = new Date(weekMon); weekSun.setDate(weekMon.getDate() + 6);
+              const weekMon = new Date(key + "T00:00:00");
+              const weekSun = new Date(weekMon); weekSun.setDate(weekMon.getDate() + 6); weekSun.setHours(23,59,59,999);
 
-              // Determine if this is this week, next week, or past
-              const isThisWeek = now >= weekMon && now <= weekSun;
-              const nextMon = new Date(now); nextMon.setDate(now.getDate() + (8 - now.getDay()) % 7 || 7);
-              const nextSun = new Date(nextMon); nextSun.setDate(nextMon.getDate() + 6);
+              const isThisWeek = weekMon >= currentMon && weekMon < nextMon;
               const isNextWeek = weekMon >= nextMon && weekMon <= nextSun;
-              const isFuture = weekMon > now && !isNextWeek;
+              const isFuture = weekMon > nextSun;
 
               const schedule = data.schedule || data;
               Object.entries(schedule).forEach(([dateStr, slots]) => {
@@ -3012,22 +3014,13 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
             const fmtLast = (key) => {
               if (!key) return "never";
               try {
-                const weekStart = new Date(key + "T12:00:00");
-                const weekEnd = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6);
-                const now = new Date();
-                // Is today within this week (Mon-Sun)?
-                if (now >= weekStart && now <= weekEnd) return "this week";
-                // Is it next week?
-                const nextWeekStart = new Date(now);
-                nextWeekStart.setDate(now.getDate() + (1 - now.getDay() + 7) % 7 || 7);
-                if (weekStart >= nextWeekStart && weekStart < new Date(nextWeekStart.getTime() + 7 * 24 * 60 * 60 * 1000)) return "next week";
+                const weekMon = new Date(key + "T00:00:00");
+                if (weekMon >= currentMon && weekMon < nextMon) return "this week";
+                if (weekMon >= nextMon && weekMon <= nextSun) return "next week";
                 // Past weeks
-                const daysAgo = Math.round((now - weekEnd) / (24 * 60 * 60 * 1000));
-                if (daysAgo < 0) return `in ${Math.round(-daysAgo / 7)} weeks`; // further future
-                if (daysAgo === 0) return "today";
-                if (daysAgo < 7) return `${daysAgo} days ago`;
-                if (daysAgo < 14) return "1 week ago";
-                return `${Math.round(daysAgo / 7)} weeks ago`;
+                const weeksAgo = Math.round((currentMon - weekMon) / (7 * 24 * 60 * 60 * 1000));
+                if (weeksAgo === 1) return "last week";
+                return `${weeksAgo} weeks ago`;
               } catch { return key; }
             };
 
