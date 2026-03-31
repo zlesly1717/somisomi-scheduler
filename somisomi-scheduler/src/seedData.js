@@ -251,7 +251,7 @@ export const SEED_RULES = {
     friday:{day:4,evening:5,total:7},         // 1 SL day + 3 day + 2 eve SL + 4 eve = 7+
     fridayHoliday:{day:4,evening:5,total:9},
     saturday:{day:3,mid:2,evening:4,total:9}, // 2 SL day + 2 day + 2 SL eve + 2 eve + 2 mid (trainees) = 9
-    sunday:{day:3,mid:2,evening:5,total:9},   // 1 SL day + 2 day + 2 mid + MC crew(4) + 2 floor eve = 9
+    sunday:{day:3,mid:2,evening:6,total:9},   // 1 SL day + 2 day + 2 mid + MC crew(4) + 2 floor eve = 9 (eve=6: 4 MC + 2 floor)
   },
   shiftTimes: {
     weekdayDay:{start:"12:00",end:"18:00"},

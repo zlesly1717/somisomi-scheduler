@@ -610,11 +610,11 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   slSlots.sort((a, b) => {
     const pri = (s) => {
       if (s.isMC && s._dow === 4) return 0;  // Thu MC Leader (Crystal) — must be first
-      if ((s.type === "evening_sl" || s.type === "evening_sl2") && s._isFri) return 1; // Fri Eve SLs
-      if ((s.type === "evening_sl" || s.type === "evening_sl2") && s._isSat) return 2; // Sat Eve SLs
-      if (s.type === "day_lead" && s._isSun) return 3;  // Sun Day Lead — before Sun MC
-      if (s.isMC && s._dow === 0) return 4;  // Sun MC SLs — after Sun DL is locked in
-      if (s.type === "day_lead" && s._isSat) return 5; // Sat DL
+      if (s.type === "day_lead" && s._isSun) return 1;  // Sun Day Lead — before Sun MC
+      if (s.isMC && s._dow === 0) return 2;  // Sun MC SLs — BEFORE Fri/Sat so 3 SLs available
+      if (s.type === "day_lead" && s._isSat) return 3; // Sat DL
+      if ((s.type === "evening_sl" || s.type === "evening_sl2") && s._isFri) return 4; // Fri Eve SLs
+      if ((s.type === "evening_sl" || s.type === "evening_sl2") && s._isSat) return 5; // Sat Eve SLs
       if (s.type === "day_lead") return 6;    // Weekday DL
       if (s.type === "evening_sl" && s._dow === 4) return 7; // Thu Eve SL
       if (s.type === "evening_sl") return 8;  // Mon/Tue/Wed Eve SL
@@ -820,7 +820,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if ((s.slot._isWE || s.slot._isFri) && tm(s.slot.start) >= 1020) return 1; // Weekend/Fri evening
       if (s.slot._isWE && tm(s.slot.start) < 1020) return 2; // Weekend day
       if (s.slot._isFri && tm(s.slot.start) < 1020) return 3; // Friday day
-      if (s.slot.type === "mid") return 4;
+      if (s.slot.type === "mid") return 0; // Mid shift: fill FIRST so trainees get it before regs
       if (!s.slot._isWE && !s.slot._isFri && tm(s.slot.start) < 1020) return 5; // Weekday 2nd day
       return 6; // Weekday evening (Mon-Wed remaining slots)
     };
@@ -832,6 +832,14 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 
     let cands = getCandidates(slot);
     const isWeekendSlot = slot._isWE || (slot._isFri && tm(slot.start) >= 1020);
+
+    // Mid shift: strongly prefer trainees (their dedicated slot)
+    if (slot.type === "mid" || slot.isTraineeSlot) {
+      const traineeCands = cands.filter(e => e.role === "trainee" || isTrainee(e));
+      if (traineeCands.length > 0) cands = traineeCands;
+      // Sort by cumulative hours — less experienced first
+      cands.sort((a, b) => (a.traineeCumulative || 0) - (b.traineeCumulative || 0));
+    }
 
     // MC helpers assignment
     if (slot.isMC) {
