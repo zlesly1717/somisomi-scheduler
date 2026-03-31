@@ -2974,31 +2974,42 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
             });
 
             const fmtLast = (key) => {
-              if (!key) return "Never";
-              try { const d = new Date(key + "T12:00:00"); return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }); } catch { return key; }
+              if (!key) return "never";
+              try {
+                const d = new Date(key + "T12:00:00");
+                const now = new Date("2026-04-12T12:00:00"); // use latest known week as "now"
+                const weeksAgo = Math.round((now - d) / (7 * 24 * 60 * 60 * 1000));
+                if (weeksAgo === 0) return "this week";
+                if (weeksAgo === 1) return "1 week ago";
+                return `${weeksAgo} weeks ago`;
+              } catch { return key; }
             };
 
             return (
               <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                 <div style={{ padding: 14, background: "#FFF7ED", borderRadius: 10, border: "1px solid #FED7AA" }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#C2410C", marginBottom: 8 }}>Next Up — Regular MC Helpers</div>
-                  <div style={{ fontSize: 10, color: "#9CA3AF", marginBottom: 8 }}>Sorted by who's overdue. Top = should clean next.</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#C2410C", marginBottom: 4 }}>Next Up — Regular MC Helpers</div>
+                  <div style={{ fontSize: 10, color: "#9CA3AF", marginBottom: 10 }}>Top = most overdue, should clean next</div>
                   {regSorted.map((name, i) => (
-                    <div key={name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: i < regSorted.length - 1 ? "1px solid #FDE68A" : "none" }}>
-                      <span style={{ fontSize: 11, fontWeight: 800, color: i < 4 ? "#16A34A" : "#9CA3AF", width: 18 }}>#{i + 1}</span>
+                    <div key={name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: i < regSorted.length - 1 ? "1px solid #FEF3C7" : "none" }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: i === 0 ? "#16A34A" : "#D1D5DB", width: 18 }}>#{i + 1}</span>
                       <span style={{ fontSize: 12, fontWeight: 600, color: "#374151", flex: 1 }}>{name}</span>
-                      <span style={{ fontSize: 10, color: "#9CA3AF" }}>{regMCCount[name]}× · last: {fmtLast(regLastMC[name])}</span>
+                      <span style={{ fontSize: 10, color: regLastMC[name] ? "#9CA3AF" : "#DC2626", fontStyle: regLastMC[name] ? "normal" : "italic" }}>
+                        last: {fmtLast(regLastMC[name])}
+                      </span>
                     </div>
                   ))}
                 </div>
                 <div style={{ padding: 14, background: "#FEF3C7", borderRadius: 10, border: "1px solid #FDE68A" }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#92400E", marginBottom: 8 }}>Next Up — SL MC Leaders</div>
-                  <div style={{ fontSize: 10, color: "#9CA3AF", marginBottom: 8 }}>Sorted by who's overdue. Top = should lead next.</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#92400E", marginBottom: 4 }}>Next Up — SL MC Leaders</div>
+                  <div style={{ fontSize: 10, color: "#9CA3AF", marginBottom: 10 }}>Top = most overdue, should lead next</div>
                   {slSorted.map((name, i) => (
-                    <div key={name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: i < slSorted.length - 1 ? "1px solid #FDE68A" : "none" }}>
-                      <span style={{ fontSize: 11, fontWeight: 800, color: i < 2 ? "#16A34A" : "#9CA3AF", width: 18 }}>#{i + 1}</span>
+                    <div key={name} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 0", borderBottom: i < slSorted.length - 1 ? "1px solid #FDE68A" : "none" }}>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: i === 0 ? "#16A34A" : "#D1D5DB", width: 18 }}>#{i + 1}</span>
                       <span style={{ fontSize: 12, fontWeight: 600, color: "#374151", flex: 1 }}>{name}</span>
-                      <span style={{ fontSize: 10, color: "#9CA3AF" }}>{slMCCount[name]}× · last: {fmtLast(slLastMC[name])}</span>
+                      <span style={{ fontSize: 10, color: slLastMC[name] ? "#9CA3AF" : "#DC2626", fontStyle: slLastMC[name] ? "normal" : "italic" }}>
+                        last: {fmtLast(slLastMC[name])}
+                      </span>
                     </div>
                   ))}
                 </div>

@@ -167,7 +167,7 @@ export function HistoryTab({ employees, savedSchedules, rules }) {
                           ].filter(Boolean));
                           const didntMC = employees
                             .filter(e => e.role === "shift_lead" && e.status === "active" && !mcedNames.has(e.name));
-                          if (didntMC.length === 0) return <span style={{ color: "#16A34A", fontSize: 11, fontWeight: 600 }}>All SLs cleaned</span>;
+                          if (didntMC.length === 0) return <span style={{ color: "#D1D5DB", fontSize: 11 }}>—</span>;
                           return didntMC.map(e => (
                             <span key={e.id} style={{ fontWeight: 600, color: "#DC2626", background: "#FEF2F2", padding: "2px 8px", borderRadius: 6, fontSize: 11, marginRight: 4, display: "inline-block" }}>{e.name}</span>
                           ));
@@ -197,11 +197,11 @@ export function HistoryTab({ employees, savedSchedules, rules }) {
                 border: `1px solid ${count > 2 ? "#FECACA" : "#BBF7D0"}`, fontSize: 12,
               }}>
                 <span style={{ fontWeight: 600, color: "#374151" }}>{name}</span>
-                <span style={{ marginLeft: 6, fontWeight: 800, color: count > 2 ? "#DC2626" : "#16A34A" }}>{count}×</span>
+                
               </div>
             ))}
           </div>
-          <div style={{ fontSize: 10, color: "#9CA3AF", marginTop: 6 }}>Red = done MC 3+ times. Prioritize others next.</div>
+          
         </div>
       )}
 
