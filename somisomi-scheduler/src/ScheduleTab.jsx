@@ -2977,11 +2977,13 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
               if (!key) return "never";
               try {
                 const d = new Date(key + "T12:00:00");
-                const now = new Date("2026-04-12T12:00:00"); // use latest known week as "now"
-                const weeksAgo = Math.round((now - d) / (7 * 24 * 60 * 60 * 1000));
-                if (weeksAgo === 0) return "this week";
-                if (weeksAgo === 1) return "1 week ago";
-                return `${weeksAgo} weeks ago`;
+                const now = new Date();
+                const daysAgo = Math.round((now - d) / (24 * 60 * 60 * 1000));
+                if (daysAgo === 0) return "today";
+                if (daysAgo === 1) return "yesterday";
+                if (daysAgo < 7) return `${daysAgo} days ago`;
+                if (daysAgo < 14) return "1 week ago";
+                return `${Math.round(daysAgo / 7)} weeks ago`;
               } catch { return key; }
             };
 
