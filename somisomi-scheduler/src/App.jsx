@@ -101,7 +101,7 @@ function buildMCHistorySeed() {
     { key: "2026-03-30", // Mar 30 - Apr 5
       // Thu Apr 2: Kaitlyn MC Lead + Zoe + Nani | Break: Crystal
       // Sun Apr 5: Chan MC Lead + Spencer + Zoe + Alli
-      thu: { leader: "Kaitlyn Trevino", helpers: ["Zoe Rains"] },
+      thu: { leader: "Kaitlyn Trevino", helpers: ["Zoe Rains", "Nani Hoomes"] },
       sun: { leader: "Chan In", slHelper: null, helpers: ["Spencer Losch", "Zoe Rains", "Alli Campos"] },
       breakSL: "Crystal Guel", savedAt: "2026-04-05T20:00:00Z",
     },
@@ -312,14 +312,14 @@ function buildMar30Schedule() {
       s("Yise Moya",       "evening",    "Evening",       "18:15","22:30", 4.25, {order:22}),
       s("Nani Hoomes",     "evening",    "Evening",       "18:30","22:30", 4,    {order:23}),
     ],
-    // THURSDAY 4/2 (MC): Chan day lead, Yise day, Kaitlyn MC lead, Zoe MC helper, Nani floor (leaves 10:30pm), Susan floor
+    // THURSDAY 4/2 (MC): Chan day lead, Yise day, Kaitlyn MC lead, Zoe+Nani MC helpers, Susan floor
     "2026-04-02": [
       s("Chan In",         "day_lead",   "Day Lead (SL)", "12:00","18:00", 6,    {slOnly:true, order:0}),
       s("Yise Moya",       "day",        "Day / 2nd Day", "12:00","18:00", 6,    {order:1}),
       s("Kaitlyn Trevino", "mc_leader",  "MC Lead",       "18:00","23:45", 5.75, {slOnly:true, isMC:true, order:20}),
       s("Zoe Rains",       "mc_helper",  "MC Helper",     "18:15","23:45", 5.5,  {isMC:true, order:21}),
-      s("Nani Hoomes",     "evening",    "Evening",       "18:30","22:30", 4,    {order:30}),
-      s("Susan Thai",      "evening",    "Evening",       "18:00","22:30", 4.5,  {order:31}),
+      s("Nani Hoomes",     "mc_helper",  "MC Helper",     "18:30","23:45", 5.25, {isMC:true, order:22}),
+      s("Susan Thai",      "evening",    "Evening",       "18:00","22:30", 4.5,  {order:30}),
     ],
     // FRIDAY 4/3 (Good Friday Holiday): Crystal day SL, Sam+Yise day, Abrar+Gwen eve, Crystal eve SL
     "2026-04-03": [
@@ -476,12 +476,12 @@ export default function App() {
       // Seed full Mar 30 - Apr 5 schedule
       if (!existing["2026-03-30"] || existing["2026-03-30"]._source === "homebase-import" ||
           !existing["2026-03-30"].schedule?.["2026-03-30"]?.length ||
-          existing["2026-03-30"]._schedVersion !== 2) {
+          existing["2026-03-30"]._schedVersion !== 3) {
         existing["2026-03-30"] = {
           schedule: buildMar30Schedule(),
           savedAt: "2026-04-05T20:00:00Z",
           notes: [], weeklyTOs: [], weekStart: "2026-03-30",
-          label: "Week of Mar 30 (Homebase)", _source: "homebase-full", _schedVersion: 2,
+          label: "Week of Mar 30 (Homebase)", _source: "homebase-full", _schedVersion: 3,
         };
       }
       setSavedSchedules(existing);
