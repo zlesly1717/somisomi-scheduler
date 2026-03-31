@@ -105,7 +105,13 @@ function buildMCHistorySeed() {
       sun: { leader: "Spencer Losch", slHelper: null, helpers: ["Chan In", "Gwen Ursua", "Alli Campos"] },
       breakSL: "Crystal Guel", savedAt: "2026-04-05T20:00:00Z",
     },
-
+    { key: "2026-04-06", // Apr 6-12
+      // Thu Apr 9: Crystal MC Lead + Yise + Sam — Spencer break week
+      // Sun Apr 12: Chan MC Lead + Zoe + Abrar (3 SLs on MC)
+      thu: { leader: "Crystal Guel", helpers: ["Yise Moya", "Sam Castillo"] },
+      sun: { leader: "Chan In", slHelper: "Zoe Rains", helpers: ["Abrar Uddin", "Gwen Ursua"] },
+      breakSL: "Spencer Losch", savedAt: "2026-04-12T20:00:00Z",
+    },
   ];
 
   const result = {};
@@ -254,9 +260,21 @@ export default function App() {
       if (existing["2026-04-06"] && existing["2026-04-06"]._source === "homebase-import") {
         delete existing["2026-04-06"];
       }
-      if (!existing["2026-02-16"] || !existing["2026-03-23"] || !existing["2026-03-30"]) {
+      if (!existing["2026-02-16"] || !existing["2026-03-23"] || !existing["2026-03-30"] || !existing["2026-04-06"]) {
         const mcHistory = buildMCHistorySeed();
         Object.entries(mcHistory).forEach(([k, v]) => { if (!existing[k]) existing[k] = v; });
+      }
+      // Seed full Apr 6-12 schedule if not already saved as a real schedule
+      if (!existing["2026-04-06"] || existing["2026-04-06"]._source === "homebase-import" || !existing["2026-04-06"].schedule?.["2026-04-06"]?.length) {
+        existing["2026-04-06"] = {
+          schedule: buildApr6Schedule(),
+          savedAt: "2026-04-12T20:00:00Z",
+          notes: [],
+          weeklyTOs: [],
+          weekStart: "2026-04-06",
+          label: "Week of Apr 6 (Homebase)",
+          _source: "homebase-full",
+        };
       }
       setSavedSchedules(existing);
     } else {
