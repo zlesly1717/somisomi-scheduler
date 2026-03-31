@@ -1822,12 +1822,10 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
   const weekDates = getWeekDates(weekStart);
   const weekKey = weekDates[0];
   const saved = savedSchedules?.[weekKey] || null;
-  // Always ensure empShiftCount and empHours are computed — seeded schedules may not have them
+  // Always recompute empShiftCount and empHours from actual schedule data — stored counts can be stale
   const _rawResult = saved || draft;
   const result = (() => {
     if (!_rawResult) return null;
-    if (_rawResult.empShiftCount && Object.values(_rawResult.empShiftCount).some(v => v > 0)) return _rawResult;
-    // Recompute from schedule data
     const sc = {}, sh = {};
     employees.filter(e => e.status === "active").forEach(e => { sc[e.id] = 0; sh[e.id] = 0; });
     Object.values(_rawResult.schedule || {}).forEach(daySlots => {
@@ -1836,7 +1834,6 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
           sc[slot.empId] = (sc[slot.empId] || 0) + 1;
           sh[slot.empId] = (sh[slot.empId] || 0) + (slot.hours || 0);
         } else if (slot.empName) {
-          // Fallback: match by name for seeded schedules
           const emp = employees.find(e => e.name === slot.empName);
           if (emp) { sc[emp.id] = (sc[emp.id] || 0) + 1; sh[emp.id] = (sh[emp.id] || 0) + (slot.hours || 0); }
         }
