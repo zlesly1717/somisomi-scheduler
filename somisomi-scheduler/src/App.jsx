@@ -232,14 +232,13 @@ function buildApr6Schedule() {
       s("Gwen Ursua",      "evening",     "Evening",       "18:00","23:30", 5.5,  {order:23}),
       s("Nani Hoomes",     "evening",     "Evening",       "18:15","23:30", 5.25, {order:24}),
     ],
-    // SATURDAY 4/11: Zoe day lead, Abrar+Susan day, Cesia mid, Spencer+Kaitlyn eve SL, Crystal+Sam+Yise+Marissa eve
+    // SATURDAY 4/11: Zoe day lead, Abrar+Susan day, Cesia mid, Spencer eve SL, Crystal+Sam+Yise+Marissa eve
     "2026-04-11": [
       s("Zoe Rains",       "day_lead",    "Day Lead (SL)", "11:30","18:00", 6.5,  {slOnly:true, order:0}),
       s("Abrar Uddin",     "day",         "Day / 2nd Day", "11:30","18:00", 6.5,  {order:1}),
       s("Susan Thai",      "day",         "Day / 2nd Day", "11:30","18:00", 6.5,  {order:2}),
       s("Cesia Garcia",    "mid",         "Mid Shift",     "15:00","19:00", 4,    {traineeSlot:true, order:10}),
       s("Spencer Losch",   "evening_sl",  "Evening SL",    "18:00","23:30", 5.5,  {slOnly:true, order:20}),
-      s("Kaitlyn Trevino", "evening_sl2", "Evening SL",    "18:00","23:30", 5.5,  {slOnly:true, order:21}),
       s("Crystal Guel",    "evening",     "Evening",       "19:00","23:30", 4.5,  {order:22}),
       s("Sam Castillo",    "evening",     "Evening",       "18:15","23:30", 5.25, {order:23}),
       s("Yise Moya",       "evening",     "Evening",       "19:00","23:30", 4.5,  {order:24}),
@@ -369,7 +368,7 @@ export default function App() {
       // Seed full Apr 6-12 schedule — force replace if version is old
       if (!existing["2026-04-06"] || existing["2026-04-06"]._source === "homebase-import" || 
           !existing["2026-04-06"].schedule?.["2026-04-06"]?.length ||
-          existing["2026-04-06"]._schedVersion !== 3) {
+          existing["2026-04-06"]._schedVersion !== 4) {
         existing["2026-04-06"] = {
           schedule: buildApr6Schedule(),
           savedAt: "2026-04-12T20:00:00Z",
@@ -378,7 +377,7 @@ export default function App() {
           weekStart: "2026-04-06",
           label: "Week of Apr 6 (Homebase)",
           _source: "homebase-full",
-          _schedVersion: 3,
+          _schedVersion: 4,
         };
       }
       setSavedSchedules(existing);
