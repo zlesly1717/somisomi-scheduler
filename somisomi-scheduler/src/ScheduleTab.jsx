@@ -1264,8 +1264,21 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     "no_fri_sat_night","no_fri_sat_sun","max_consecutive_3",
     "min_swirlers_weekend","sat_night_sl_neq_sun_sl"];
 
-  // Helper: sort candidates — fewest shifts first, then fewest hours
-  const sortCands = (cands) => [...cands].sort((a, b) => sc[a.id] - sc[b.id] || sh[a.id] - sh[b.id]);
+  // Helper: sort candidates — SLs needing 4th shift first, then fewest shifts, then fewest hours
+  const sortCands = (cands) => [...cands].sort((a, b) => {
+    // SLs who still need shifts (non-break SLs under 4) get top priority
+    const aNeedsSL = a.role === "shift_lead" && !a._isBreakSL && sc[a.id] < 4;
+    const bNeedsSL = b.role === "shift_lead" && !b._isBreakSL && sc[b.id] < 4;
+    if (aNeedsSL && !bNeedsSL) return -1;
+    if (!aNeedsSL && bNeedsSL) return 1;
+    // Then regulars who still need 3rd shift before anyone getting a 4th
+    const aNeedsReg = a.role !== "shift_lead" && sc[a.id] < 3;
+    const bNeedsReg = b.role !== "shift_lead" && sc[b.id] < 3;
+    if (aNeedsReg && !bNeedsReg) return -1;
+    if (!aNeedsReg && bNeedsReg) return 1;
+    // Finally sort by fewest shifts then fewest hours
+    return sc[a.id] - sc[b.id] || sh[a.id] - sh[b.id];
+  });
 
   const fillEmptySlots = (filterFn) => {
     weekDates.forEach(dateStr => {
@@ -1280,10 +1293,16 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   // Pass 1: Normal rules, respect all caps
   fillEmptySlots((emps, dateStr, slot) => getCandidates(slot));
 
-  // Pass 2: Relax shift caps (F6)
-  approved.add("F6");
-  fillEmptySlots((emps, dateStr, slot) => getCandidates(slot));
-  approved.delete("F6");
+  // Pass 2: Relax shift cap for SLs who still need 4 shifts
+  fillEmptySlots((emps, dateStr, slot) => {
+    return getCandidates(slot).filter(emp => {
+      // Allow SLs to exceed their current count to reach 4
+      if (emp.role === "shift_lead" && !emp._isBreakSL && sc[emp.id] < 4) return true;
+      // Regulars/trainees: only if they haven't hit 3 yet (respect the cap in pass 2)
+      if (emp.role !== "shift_lead" && sc[emp.id] >= 3) return false;
+      return true;
+    });
+  });
 
   // Pass 3: Relax ALL soft rules
   SOFT_RULES.forEach(r => approved.add(r));
