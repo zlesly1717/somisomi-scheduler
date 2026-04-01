@@ -730,6 +730,20 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (!origFriSatSun) approved.delete("no_fri_sat_sun");
       cands.sort(slSortFn);
     }
+    // Last resort: if still empty and it's a required SL slot, ignore Sat+Sun night rule
+    // (better to have an SL who also has Sun MC than leave the slot empty)
+    if (cands.length === 0 && (slot.type === "evening_sl" || slot.type === "evening_sl2")) {
+      approved.add("F7"); approved.add("F8"); approved.add("no_fri_sat_sun");
+      cands = getCandidates(slot, c => c.filter(e => e.role === "shift_lead"));
+      approved.delete("F7"); approved.delete("F8"); approved.delete("no_fri_sat_sun");
+      // Prefer SL who has Sun MC (they're already working late, not an extra night from scratch)
+      cands.sort((a, b) => {
+        const aMC = nightMap[weekDates[6]]?.has(a.id) ? 0 : 1;
+        const bMC = nightMap[weekDates[6]]?.has(b.id) ? 0 : 1;
+        return aMC - bMC; // prefer the Sun MC person last (they have the most nights)
+      });
+      cands.sort(slSortFn); // re-sort by the standard SL sort
+    }
     if (cands[0]) assignSlotInSchedule(slot, cands[0]);
   }
 
@@ -999,18 +1013,17 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     if (cands[0]) assign(dateStr, idx, cands[0], slot);
   }
 
-  // ── STEP 5: SL overflow — give SLs WEEKEND regular slots to reach 4 ──
-  // ONLY weekend (Fri/Sat/Sun) day, mid, or evening slots. NEVER weekday evening.
+  // ── STEP 5: SL overflow — give SLs slots to reach 4 shifts ──
+  // Try weekends first, then weekdays if still short
   for (const sl of sls.sort((a, b) => sc[a.id] - sc[b.id])) {
+    if (sl._isBreakSL) continue; // break SL stays at 3
     const needed = 4 - sc[sl.id];
     if (needed <= 0) continue;
 
+    // First try: open slots on any day (Thu-Sun preferred, Mon-Wed fallback)
     const openSlots = [];
     weekDates.forEach(dateStr => {
       const dow = new Date(dateStr + "T12:00:00").getDay();
-      const isWeekend = dow === 0 || dow === 4 || dow === 5 || dow === 6; // Thu/Fri/Sat/Sun
-      if (!isWeekend) return;
-
       schedule[dateStr].forEach((slot, idx) => {
         if (slot.empId) return;
         if (slot.slOnly) return; // already handled
@@ -1023,14 +1036,18 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (!weekendNightOK(sl, dateStr, slot.start, slot.isMC)) return;
         if (!consecOK(sl, weekDates.indexOf(dateStr))) return;
         if (slot.isMC && mcCount[sl.id] >= 1) return;
-        // Fri/Sat/Sun nights: SL overflow should not take regular evening slots
-        // (2 SL slots are slOnly, remaining evening slots go to regulars)
-        // Thu evenings: SLs allowed as overflow if not on MC
-        const slDow = new Date(dateStr + "T12:00:00").getDay();
-        if ((slDow === 5 || slDow === 6 || slDow === 0) && slot.type === "evening") return;
-        if (slDow === 4 && slot.type === "evening" && mcCount[sl.id] >= 1) return;
-        openSlots.push({ dateStr, idx, slot });
+        // SLs shouldn't take Mon-Wed evening regular slots
+        if ((dow >= 1 && dow <= 3) && slot.type === "evening") return;
+        // SLs shouldn't take Fri/Sat/Sun regular evening slots (those are for regulars)
+        if ((dow === 5 || dow === 6 || dow === 0) && slot.type === "evening") return;
+        openSlots.push({ dateStr, idx, slot, dow });
       });
+    });
+
+    // Sort: prefer Thu/Fri/Sat/Sun day slots
+    openSlots.sort((a, b) => {
+      const priority = d => [4,5,6,0,1,2,3].indexOf(d);
+      return priority(a.dow) - priority(b.dow);
     });
 
     let filled = 0;
@@ -1040,6 +1057,30 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (schedule[dateStr][idx].empId) continue;
       assign(dateStr, idx, sl, slot);
       filled++;
+    }
+
+    // Second try: if still short, swap a regular out of a day slot to give it to the SL
+    if (filled < needed) {
+      for (const dateStr of weekDates) {
+        if (filled >= needed) break;
+        if (sd[sl.id].has(dateStr)) continue;
+        if (!isAvail(sl, dateStr, "12:00", "18:00", weeklyTimeOffs, availOverrides)) continue;
+        if (!friSatSunOK(sl, dateStr, false)) continue;
+        if (!crystalSundayOK(sl, dateStr)) continue;
+        if (!consecOK(sl, weekDates.indexOf(dateStr))) continue;
+        const dow = new Date(dateStr + "T12:00:00").getDay();
+        // Only consider day slots (regulars can do weekday day shifts, SLs just join)
+        for (let idx = 0; idx < schedule[dateStr].length; idx++) {
+          const slot = schedule[dateStr][idx];
+          if (slot.empId) continue; // only unfilled
+          if (slot.type !== "day") continue; // day slots only
+          if ((dow >= 1 && dow <= 3)) {
+            assign(dateStr, idx, sl, slot);
+            filled++;
+            break;
+          }
+        }
+      }
     }
   }
 
@@ -1865,19 +1906,106 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
     setTimeout(() => {
       try {
         const allTOs = [...(timeOffs || []), ...weeklyTOs];
-        const r = genSchedule(weekDates, employees, rules, schoolDates, allTOs, ds, availOverrides, useMaxOverrides, useBreaks, savedSchedules, priorityRanking, importantEvenings);
-        // If there are unfilled slots that need rule breaks, surface them for approval
-        if (r.rulesNeeded?.length > 0) {
-          setPendingApprovals(r.rulesNeeded);
-          setRuleApprovalChecked(r.rulesNeeded.map(x => x.id)); // pre-check all by default
+
+        // ── MULTI-ATTEMPT SOLVER ──────────────────────────────────────
+        // Score a result: lower = better
+        const scoreResult = (r) => {
+          let score = 0;
+          // Unfilled slots are very bad
+          let unfilled = 0;
+          weekDates.forEach(d => { r.schedule[d].forEach(s => { if (!s.empId) unfilled++; }); });
+          score += unfilled * 1000;
+          // Unfilled SL slots are extra bad
+          weekDates.forEach(d => { r.schedule[d].forEach(s => { if (!s.empId && s.slOnly) score += 500; }); });
+          // Warnings add up
+          score += (r.warnings || []).length * 10;
+          // Short SLs (under min shifts) are bad
+          score += (r.shortSLs || []).length * 200;
+          // Hours imbalance among SLs (penalize big gaps)
+          const active = employees.filter(e => e.status === "active" && e.role === "shift_lead");
+          const hrs = active.map(e => r.empHours?.[e.id] || 0);
+          const maxH = Math.max(...hrs), minH = Math.min(...hrs);
+          score += (maxH - minH) * 2;
+          return score;
+        };
+
+        // Build variations — different SL orderings to try
+        const sls = employees.filter(e => e.status === "active" && e.role === "shift_lead");
+        const baseSLOrder = priorityRanking?.sl || sls.map(e => e.id);
+
+        // Generate permutations of the break SL (bottom of ranking)
+        const attempts = [];
+
+        // Attempt 1: use the exact ranking as given
+        attempts.push({ slRanking: baseSLOrder, breakIdx: baseSLOrder.length - 1 });
+
+        // Attempts 2-5: try each SL as the break SL
+        sls.forEach(sl => {
+          const withoutThis = baseSLOrder.filter(id => id !== sl.id);
+          attempts.push({ slRanking: [...withoutThis, sl.id], breakIdx: withoutThis.length });
+        });
+
+        // Attempts 6-15: shuffle the non-break SLs to get different day/evening assignments
+        const shuffleArray = (arr) => {
+          const a = [...arr];
+          for (let i = a.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [a[i], a[j]] = [a[j], a[i]];
+          }
+          return a;
+        };
+
+        const baseBreakId = baseSLOrder[baseSLOrder.length - 1];
+        for (let i = 0; i < 10; i++) {
+          const nonBreak = shuffleArray(baseSLOrder.filter(id => id !== baseBreakId));
+          attempts.push({ slRanking: [...nonBreak, baseBreakId], breakIdx: nonBreak.length });
         }
-        setDraft(r); setGenerating(false);
+
+        // Run all attempts and score them
+        let best = null;
+        let bestScore = Infinity;
+        const allResults = [];
+
+        attempts.forEach(({ slRanking }) => {
+          try {
+            const r = genSchedule(
+              weekDates, employees, rules, schoolDates, allTOs, ds,
+              availOverrides, useMaxOverrides, useBreaks, savedSchedules,
+              { ...priorityRanking, sl: slRanking },
+              importantEvenings
+            );
+            const s = scoreResult(r);
+            allResults.push({ r, s });
+            if (s < bestScore) { bestScore = s; best = r; }
+          } catch (e) { /* skip failed attempts */ }
+        });
+
+        // If best is significantly better than first attempt, use it
+        // Otherwise use first attempt (preserve determinism)
+        const first = allResults[0]?.r;
+        const firstScore = allResults[0]?.s ?? Infinity;
+        const chosen = (best && bestScore < firstScore) ? best : (first || best);
+
+        if (chosen?.rulesNeeded?.length > 0) {
+          setPendingApprovals(chosen.rulesNeeded);
+          setRuleApprovalChecked(chosen.rulesNeeded.map(x => x.id));
+        }
+
+        // Add a note if multi-attempt found a better solution
+        if (best && bestScore < firstScore && allResults.length > 1) {
+          chosen.warnings = [
+            { date: "", msg: `✓ Tried ${allResults.length} schedule variations — showing best result (score: ${bestScore} vs initial: ${firstScore})` },
+            ...(chosen.warnings || []),
+          ];
+        }
+
+        setDraft(chosen); setGenerating(false);
       } catch (err) {
         console.error("Schedule generation error:", err);
         setGenerating(false);
         alert("Error generating schedule: " + err.message);
       }
-    }, 200);
+    }, 50);
   };
 
   const [priorityRanking, setPriorityRanking] = useState(() => {
