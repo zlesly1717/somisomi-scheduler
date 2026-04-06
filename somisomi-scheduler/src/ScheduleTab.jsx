@@ -653,13 +653,12 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         const aRecent = aLastMC >= prevWeekKeyMC ? 1 : 0;
         const bRecent = bLastMC >= prevWeekKeyMC ? 1 : 0;
         if (aRecent !== bRecent) return aRecent - bRecent;
-        const aCount = mcHistoryCount[a.name] || 0;
-        const bCount = mcHistoryCount[b.name] || 0;
-        if (aCount !== bCount) return aCount - bCount;
-        if (!aLastMC && bLastMC) return -1;
-        if (aLastMC && !bLastMC) return 1;
+        // Oldest last MC date first (most overdue), count as tiebreaker
+        if (!aLastMC && !bLastMC) return (mcHistoryCount[a.name] || 0) - (mcHistoryCount[b.name] || 0);
+        if (!aLastMC) return -1;
+        if (!bLastMC) return 1;
         if (aLastMC !== bLastMC) return aLastMC.localeCompare(bLastMC);
-        return sh[a.id] - sh[b.id];
+        return (mcHistoryCount[a.name] || 0) - (mcHistoryCount[b.name] || 0);
       };
       let cands = getCandidates(slot, c => c.filter(e => e.role === "shift_lead"));
       cands.sort(mcSortFn);
@@ -909,16 +908,17 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       cands.sort((a, b) => {
         const aLastMC = mcHistoryLast[a.name] || "";
         const bLastMC = mcHistoryLast[b.name] || "";
-        // Penalize anyone who MCd last week
+        // Penalize anyone who MCd last week (no back-to-back)
         const aRecent = aLastMC >= prevWeekKey ? 1 : 0;
         const bRecent = bLastMC >= prevWeekKey ? 1 : 0;
         if (aRecent !== bRecent) return aRecent - bRecent;
-        const aCount = mcHistoryCount[a.name] || 0;
-        const bCount = mcHistoryCount[b.name] || 0;
-        if (aCount !== bCount) return aCount - bCount;
-        if (!aLastMC && bLastMC) return -1;
-        if (aLastMC && !bLastMC) return 1;
-        return aLastMC.localeCompare(bLastMC); // earlier = longer ago = pick first
+        // Sort by oldest last MC date first (most overdue = should go first)
+        // Count is only a tiebreaker when dates are equal
+        if (!aLastMC && !bLastMC) return (mcHistoryCount[a.name] || 0) - (mcHistoryCount[b.name] || 0);
+        if (!aLastMC) return -1; // never done MC → most overdue
+        if (!bLastMC) return 1;
+        if (aLastMC !== bLastMC) return aLastMC.localeCompare(bLastMC); // earlier = longer ago = pick first
+        return (mcHistoryCount[a.name] || 0) - (mcHistoryCount[b.name] || 0); // same date → fewest count wins
       });
     }
     // Weekend/Fri evening: trainees only if shift already has 4 people (they become the 5th)
@@ -3221,12 +3221,12 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                 const order = { "this week": 0, "next week": 1 };
                 return (order[scheduledMap[a]] || 0) - (order[scheduledMap[b]] || 0);
               }
-              // Neither scheduled: sort by oldest last date first, then fewest count as tiebreaker
-              if (!lastMap[a] && !lastMap[b]) return countMap[a] - countMap[b]; // both never → fewest count wins
-              if (!lastMap[a]) return -1; // never done → most overdue
-              if (!lastMap[b]) return 1;
-              if (lastMap[a] !== lastMap[b]) return lastMap[a].localeCompare(lastMap[b]); // older date = more overdue
-              return countMap[a] - countMap[b]; // same date → fewest count wins
+              // Neither scheduled: sort by count then last date
+              if (countMap[a] !== countMap[b]) return countMap[a] - countMap[b];
+              if (!lastMap[a] && lastMap[b]) return -1;
+              if (lastMap[a] && !lastMap[b]) return 1;
+              if (lastMap[a] && lastMap[b]) return lastMap[a].localeCompare(lastMap[b]);
+              return 0;
             };
 
             const regSorted = [...activeRegs].sort(sortFn(regMCCount, regLastMC, regScheduledWeek));
