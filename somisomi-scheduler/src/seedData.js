@@ -183,21 +183,21 @@ export const SEED_EMPLOYEES = [
     notes:"Inactive.",traineeCumulative:10.0,guaranteedDays:[],
   },
   {
-    id:"tr-3",name:"Marissa Shelton",role:"trainee",status:"active",
-    maxShifts:3,minShifts:1,maxHours:15,minHours:0,
-    tags:[],unavailability:newUnavail(),
+    id:"tr-3",name:"Marissa Shelton",role:"regular",status:"active",
+    maxShifts:3,minShifts:3,maxHours:20,minHours:12,
+    tags:["can_mc"],unavailability:newUnavail(),
     notes:"Trainee. 30.5h completed. Graduated.",traineeCumulative:30.5,guaranteedDays:[],
   },
   {
-    id:"tr-4",name:"Nani Hoomes",role:"trainee",status:"active",
-    maxShifts:3,minShifts:1,maxHours:15,minHours:0,
-    tags:[],unavailability:{...newUnavail(),mon:{allDay:true,start:"",end:""}},
+    id:"tr-4",name:"Nani Hoomes",role:"regular",status:"active",
+    maxShifts:3,minShifts:3,maxHours:20,minHours:12,
+    tags:["can_mc"],unavailability:{...newUnavail(),mon:{allDay:true,start:"",end:""}},
     notes:"Trainee. 20h completed.",traineeCumulative:20.0,guaranteedDays:[],
   },
   {
-    id:"tr-5",name:"Alli Campos",role:"trainee",status:"active",
-    maxShifts:3,minShifts:1,maxHours:15,minHours:0,
-    tags:[],unavailability:{
+    id:"tr-5",name:"Alli Campos",role:"regular",status:"active",
+    maxShifts:3,minShifts:3,maxHours:20,minHours:12,
+    tags:["can_mc"],unavailability:{
       mon:{allDay:false,start:"",end:""},
       tue:{allDay:false,start:"06:00",end:"16:30"},
       wed:{allDay:false,start:"06:00",end:"13:30"},
