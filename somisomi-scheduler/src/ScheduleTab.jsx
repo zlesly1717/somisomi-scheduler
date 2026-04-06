@@ -877,7 +877,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         // Sunday MC: PREFER 3 SLs + 1 reg. Count SLs already on MC crew.
         const slsOnMC = schedule[slot._dateStr]?.filter(s => s.isMC && s.empId && active.find(e => e.id === s.empId && e.role === "shift_lead")).length || 0;
         const slAvail = cands.filter(e => e.role === "shift_lead");
-        const regAvail = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee" && !(e.tags || []).includes("mc_exempt"));
+        const regAvail = cands.filter(e => e.role !== "shift_lead" && (e.role !== "trainee" || isEffectivelyGraduated(e)) && !(e.tags || []).includes("mc_exempt"));
 
         if (slsOnMC < 3 && slAvail.length > 0) {
           // Still room for another SL — prefer SL to reach 3 total
@@ -892,7 +892,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         // else: fall through to whatever getCandidates returned
       } else {
         // Thu MC: always regs (Crystal leads, you help as owner)
-        const nonSLT = cands.filter(e => e.role !== "shift_lead" && e.role !== "trainee" && !(e.tags || []).includes("mc_exempt"));
+        const nonSLT = cands.filter(e => e.role !== "shift_lead" && (e.role !== "trainee" || isEffectivelyGraduated(e)) && !(e.tags || []).includes("mc_exempt"));
         if (nonSLT.length > 0) cands = nonSLT;
         else {
           const slFallback = cands.filter(e => e.role === "shift_lead");
@@ -1170,7 +1170,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
             if (slot.empId !== over.id) continue;
             if (slot.slOnly && under.role !== "shift_lead") continue;
             if (!friSatSunOK(under, dateStr, slot.slOnly)) continue;
-            if (slot.isMC && under.role === "trainee") continue;
+            if (slot.isMC && under.role === "trainee" && !isEffectivelyGraduated(under)) continue;
             if (slot.isTraineeSlot && under.role !== "trainee") continue;
             if (!isAvail(under, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) continue;
             if (con("no_mc_twice") && slot.isMC && mcCount[under.id] >= 1) continue;
@@ -1231,7 +1231,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
             const slot = schedule[dateStr][si];
             if (slot.empId !== over.id) continue;
             if (slot.slOnly) continue; // can't take SL-required slots
-            if (slot.isMC && under.role === "trainee") continue;
+            if (slot.isMC && under.role === "trainee" && !isEffectivelyGraduated(under)) continue;
             if (slot.isTraineeSlot && under.role !== "trainee") continue;
             if (!isAvail(under, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) continue;
             if (con("no_mc_twice") && slot.isMC && mcCount[under.id] >= 1) continue;
@@ -1315,8 +1315,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     emps.filter(emp => {
       if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
       if (slot.slOnly && emp.role !== "shift_lead") return false;
-      if (slot.isMC && emp.role === "trainee") return false;
-      if (slot.isImportant && emp.role === "trainee") return false;
+      if (slot.isMC && emp.role === "trainee" && !isEffectivelyGraduated(emp)) return false;
+      if (slot.isImportant && emp.role === "trainee" && !isEffectivelyGraduated(emp)) return false;
       if (sc[emp.id] >= emp.maxShifts) return false; // use real maxShifts
       // Special cases always respect their hard caps
       if ((emp.id === "reg-7" || emp.id === "tr-6") && sc[emp.id] >= emp.maxShifts) return false;
@@ -1339,7 +1339,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       return available.filter(e => e.role !== "trainee" || isEffectivelyGraduated(e));
     }
     return available.filter(emp => {
-      if (slot.isMC && emp.role === "trainee") return false;
+      if (slot.isMC && emp.role === "trainee" && !isEffectivelyGraduated(emp)) return false;
       return true;
     });
   });
