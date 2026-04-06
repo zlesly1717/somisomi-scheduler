@@ -531,7 +531,7 @@ export default function App() {
 
       {activeTab === "schedule" && <ScheduleTab employees={employees} setEmployees={setEmployees} rules={rules} schoolDates={schoolDates} timeOffs={timeOffs} savedSchedules={savedSchedules} setSavedSchedules={setSavedSchedules} />}
       {activeTab === "employees" && <EmployeesTab employees={employees} setEmployees={setEmployees} />}
-      {activeTab === "history" && <HistoryTab employees={employees} savedSchedules={savedSchedules} rules={rules} />}
+      {activeTab === "history" && <HistoryTab employees={employees} savedSchedules={savedSchedules} setSavedSchedules={setSavedSchedules} rules={rules} />}
       {activeTab === "settings" && <RulesTab rules={rules} setRules={setRules} employees={employees} schoolDates={schoolDates} setSchoolDates={setSchoolDates} />}
     </div>
   );

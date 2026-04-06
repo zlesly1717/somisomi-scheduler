@@ -29,11 +29,11 @@ function extractMCInfo(weekData, employees) {
       if (!slot.isMC || !slot.empId) return;
       const emp = employees.find(e => e.id === slot.empId);
       const name = emp?.name || slot.empName || "Unknown";
-      if (dow === 4) { // Thu
+      if (dow === 4) {
         if (slot.type === "mc_leader") mc.thu.leader = name;
         else mc.thu.helpers.push(name);
       }
-      if (dow === 0) { // Sun
+      if (dow === 0) {
         if (slot.type === "mc_leader") mc.sun.leader = name;
         else if (slot.type === "mc_sl_helper") mc.sun.slHelper = name;
         else mc.sun.helpers.push(name);
@@ -41,8 +41,6 @@ function extractMCInfo(weekData, employees) {
     });
   });
 
-  // Use seeded breakSL if available (seeded weeks use fake empIds so shift counts are 0)
-  // Otherwise compute from actual shift data
   if (weekData.breakSL !== undefined) {
     return { mc, empHours, empShifts, breakSL: weekData.breakSL, slBreak: [] };
   }
@@ -51,48 +49,132 @@ function extractMCInfo(weekData, employees) {
     .map(e => ({ name: e.name, shifts: empShifts[e.id] || 0, hours: empHours[e.id] || 0 }))
     .sort((a, b) => a.shifts - b.shifts);
   const breakSL = slBreak.length > 0 && slBreak[0].shifts < 4 ? slBreak[0].name : null;
-
   return { mc, empHours, empShifts, breakSL, slBreak };
 }
 
-export function HistoryTab({ employees, savedSchedules, rules }) {
+// Edit a person in the saved schedule's MC slots for a given week
+function editMCInSchedule(weekData, employees, day, oldName, newName) {
+  // day = "thu" or "sun"
+  const schedule = { ...(weekData.schedule || {}) };
+  const targetDow = day === "thu" ? 4 : 0;
+
+  Object.keys(schedule).forEach(dateStr => {
+    const dow = new Date(dateStr + "T12:00:00").getDay();
+    if (dow !== targetDow) return;
+    schedule[dateStr] = schedule[dateStr].map(slot => {
+      if (!slot.isMC) return slot;
+      const slotName = slot.empName || employees.find(e => e.id === slot.empId)?.name;
+      if (slotName !== oldName) return slot;
+      if (newName === null) {
+        // Remove — clear the empId/empName but keep the slot structure
+        return { ...slot, empId: null, empName: null, empRole: null };
+      }
+      const newEmp = employees.find(e => e.name === newName);
+      return { ...slot, empId: newEmp?.id || slot.empId, empName: newName, empRole: newEmp?.role || slot.empRole };
+    });
+  });
+  return { ...weekData, schedule };
+}
+
+export function HistoryTab({ employees, savedSchedules, setSavedSchedules, rules }) {
   const [expandedWeek, setExpandedWeek] = useState(null);
+  const [editingMC, setEditingMC] = useState(null); // { weekKey, day, name, role }
+  const [swapTarget, setSwapTarget] = useState(null); // name to swap with
+
   if (!employees || !savedSchedules || !rules) return <div style={{ padding: 40, textAlign: "center", color: "#9CA3AF" }}>Loading...</div>;
 
   const weeks = Object.entries(savedSchedules || {})
     .map(([key, data]) => ({ key, ...data }))
     .sort((a, b) => b.key.localeCompare(a.key));
 
-  // Build MC rotation frequency across all saved weeks
-  const mcFreq = {};
-  weeks.forEach(w => {
-    const info = extractMCInfo(w, employees);
-    const allParticipants = [
-      info.mc.thu.leader, info.mc.sun.leader, info.mc.sun.slHelper,
-      ...info.mc.thu.helpers, ...info.mc.sun.helpers,
-    ].filter(Boolean);
-    allParticipants.forEach(name => {
-      mcFreq[name] = (mcFreq[name] || 0) + 1;
-    });
-  });
-
-  // Trainee progress (active only)
-  // Only show actual trainees (role === "trainee"), not graduated regulars
   const trainees = employees.filter(e => e.status === "active" && e.role === "trainee");
   const graduationHours = rules?.trainee?.graduationHours || 30;
+  const activeSLs = employees.filter(e => e.status === "active" && e.role === "shift_lead");
+  const activeAll = employees.filter(e => e.status === "active");
+
+  const handleRemove = (weekKey, day, name) => {
+    const updated = editMCInSchedule(savedSchedules[weekKey], employees, day, name, null);
+    setSavedSchedules(prev => ({ ...prev, [weekKey]: updated }));
+    setEditingMC(null);
+  };
+
+  const handleSwap = (weekKey, day, oldName, newName) => {
+    const updated = editMCInSchedule(savedSchedules[weekKey], employees, day, oldName, newName);
+    setSavedSchedules(prev => ({ ...prev, [weekKey]: updated }));
+    setEditingMC(null);
+    setSwapTarget(null);
+  };
+
+  const MCTag = ({ name, role, weekKey, day, editable }) => {
+    const isLeader = role === "leader";
+    const isSLHelper = role === "slhelper";
+    const isEditing = editingMC?.weekKey === weekKey && editingMC?.day === day && editingMC?.name === name;
+
+    return (
+      <div style={{ position: "relative", display: "inline-block" }}>
+        <span
+          onClick={editable ? () => setEditingMC(isEditing ? null : { weekKey, day, name, role }) : undefined}
+          style={{
+            fontSize: 11, fontWeight: isLeader ? 700 : 500,
+            padding: "2px 8px", borderRadius: 6, cursor: editable ? "pointer" : "default",
+            background: isEditing ? "#FEF9C3" : isLeader ? "#EDE9FE" : isSLHelper ? "#FEF3C7" : "#F3F4F6",
+            color: isLeader ? "#7C3AED" : isSLHelper ? "#B45309" : "#374151",
+            border: isEditing ? "2px solid #F59E0B" : isLeader ? "1px solid #DDD6FE" : isSLHelper ? "1px solid #FDE68A" : "1px solid #E5E7EB",
+            userSelect: "none",
+          }}>
+          {isLeader ? "★ " : ""}{name}
+          {editable && <span style={{ marginLeft: 4, fontSize: 9, color: "#9CA3AF" }}>✏️</span>}
+        </span>
+
+        {isEditing && (
+          <div style={{
+            position: "absolute", top: "calc(100% + 4px)", left: 0, zIndex: 100,
+            background: "#fff", borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.15)",
+            padding: 12, minWidth: 220, border: "1px solid #E5E7EB",
+          }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#4A3F2F", marginBottom: 8 }}>Edit: {name}</div>
+
+            {/* Remove option */}
+            <button onClick={() => handleRemove(weekKey, day, name)}
+              style={{ width: "100%", padding: "7px 10px", borderRadius: 7, border: "1px solid #FECACA", background: "#FEF2F2", color: "#DC2626", cursor: "pointer", fontSize: 11, fontWeight: 600, marginBottom: 6, fontFamily: font, textAlign: "left" }}>
+              ✕ Remove from MC (owner covered / no credit)
+            </button>
+
+            {/* Swap options */}
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>Swap with:</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, maxHeight: 180, overflowY: "auto" }}>
+              {activeAll.filter(e => e.name !== name && e.role !== "trainee").map(e => (
+                <button key={e.id} onClick={() => handleSwap(weekKey, day, name, e.name)}
+                  style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", cursor: "pointer", fontSize: 11, fontWeight: 500, fontFamily: font, textAlign: "left" }}>
+                  ⇄ {e.name} <span style={{ fontSize: 9, color: "#9CA3AF" }}>({e.role === "shift_lead" ? "SL" : "reg"})</span>
+                </button>
+              ))}
+            </div>
+
+            <button onClick={() => setEditingMC(null)}
+              style={{ width: "100%", marginTop: 8, padding: "5px", borderRadius: 6, border: "1px solid #E5E7EB", background: "#fff", color: "#9CA3AF", cursor: "pointer", fontSize: 10, fontFamily: font }}>
+              Cancel
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
-    <div style={{ padding: "24px 32px", maxWidth: 960, margin: "0 auto" }}>
+    <div style={{ padding: "24px 32px", maxWidth: 960, margin: "0 auto" }} onClick={() => setEditingMC(null)}>
 
-      {/* MC Rotation Summary */}
+      {/* MC Rotation Tracker */}
       <div style={{ marginBottom: 28 }}>
         <h2 style={{ fontSize: 16, fontWeight: 800, color: "#4A3F2F", marginBottom: 4, display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 20 }}>{"\ud83e\uddf9"}</span> MC Rotation Tracker
+          <span style={{ fontSize: 20 }}>🧹</span> MC Rotation Tracker
         </h2>
-        <p style={{ fontSize: 11, color: "#9CA3AF", margin: "0 0 16px" }}>Tracks who machine cleaned each week so everyone rotates fairly.</p>
+        <p style={{ fontSize: 11, color: "#9CA3AF", margin: "0 0 4px" }}>Tracks who machine cleaned each week so everyone rotates fairly.</p>
+        <p style={{ fontSize: 11, color: "#F59E0B", margin: "0 0 16px" }}>✏️ Click any name to edit — remove if owner covered, or swap if SLs switched.</p>
 
         {weeks.length > 0 ? (
-          <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #E5E7EB", overflow: "hidden" }}>
+          <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #E5E7EB", overflow: "visible" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr style={{ background: "#F9FAFB", borderBottom: "2px solid #E5E7EB" }}>
@@ -114,64 +196,42 @@ export function HistoryTab({ employees, savedSchedules, rules }) {
                     info.mc.sun.slHelper ? { name: info.mc.sun.slHelper, role: "slhelper" } : null,
                     ...info.mc.sun.helpers.map(n => ({ name: n, role: "helper" })),
                   ].filter(Boolean);
+
+                  // Is this week editable? (has a real schedule with MC slots)
+                  const hasRealSchedule = !!w.schedule;
+
+                  const mcedNames = new Set([
+                    info.mc.thu.leader, info.mc.sun.leader, info.mc.sun.slHelper,
+                    ...info.mc.thu.helpers, ...info.mc.sun.helpers,
+                  ].filter(Boolean));
+                  const didntMC = activeSLs.filter(e => !mcedNames.has(e.name));
+
                   return (
-                    <tr key={w.key} style={{ borderBottom: "1px solid #F3F4F6" }}>
-                      <td style={{ padding: "10px 14px", fontWeight: 600, color: "#374151", whiteSpace: "nowrap" }}>{formatWeek(w.key)}</td>
-                      <td style={{ padding: "10px 14px" }}>
+                    <tr key={w.key} style={{ borderBottom: "1px solid #F3F4F6" }} onClick={e => e.stopPropagation()}>
+                      <td style={{ padding: "10px 14px", fontWeight: 600, color: "#374151", whiteSpace: "nowrap", verticalAlign: "top" }}>
+                        {formatWeek(w.key)}
+                      </td>
+                      <td style={{ padding: "10px 14px", verticalAlign: "top" }}>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                          {thuAll.length > 0 ? thuAll.map((p, i) => {
-                            const isLeader = p.role === "leader";
-                            const isSLHelper = p.role === "slhelper";
-                            return (
-                              <span key={i} style={{
-                                fontSize: 11, fontWeight: isLeader ? 700 : 500,
-                                padding: "2px 8px", borderRadius: 6,
-                                background: isLeader ? "#EDE9FE" : isSLHelper ? "#FEF3C7" : "#F3F4F6",
-                                color: isLeader ? "#7C3AED" : isSLHelper ? "#B45309" : "#374151",
-                                border: isLeader ? "1px solid #DDD6FE" : isSLHelper ? "1px solid #FDE68A" : "1px solid #E5E7EB",
-                              }}>
-                                {isLeader ? "★ " : ""}{p.name}
-                              </span>
-                            );
-                          }) : <span style={{ color: "#9CA3AF", fontSize: 11 }}>—</span>}
+                          {thuAll.length > 0 ? thuAll.map((p, i) => (
+                            <MCTag key={i} name={p.name} role={p.role} weekKey={w.key} day="thu" editable={hasRealSchedule} />
+                          )) : <span style={{ color: "#9CA3AF", fontSize: 11 }}>—</span>}
                         </div>
                       </td>
-                      <td style={{ padding: "10px 14px" }}>
+                      <td style={{ padding: "10px 14px", verticalAlign: "top" }}>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                          {sunAll.length > 0 ? sunAll.map((p, i) => {
-                            const isLeader = p.role === "leader";
-                            const isSLHelper = p.role === "slhelper";
-                            return (
-                              <span key={i} style={{
-                                fontSize: 11, fontWeight: isLeader ? 700 : 500,
-                                padding: "2px 8px", borderRadius: 6,
-                                background: isLeader ? "#EDE9FE" : isSLHelper ? "#FEF3C7" : "#F3F4F6",
-                                color: isLeader ? "#7C3AED" : isSLHelper ? "#B45309" : "#374151",
-                                border: isLeader ? "1px solid #DDD6FE" : isSLHelper ? "1px solid #FDE68A" : "1px solid #E5E7EB",
-                              }}>
-                                {isLeader ? "★ " : ""}{p.name}
-                              </span>
-                            );
-                          }) : <span style={{ color: "#9CA3AF", fontSize: 11 }}>—</span>}
+                          {sunAll.length > 0 ? sunAll.map((p, i) => (
+                            <MCTag key={i} name={p.name} role={p.role} weekKey={w.key} day="sun" editable={hasRealSchedule} />
+                          )) : <span style={{ color: "#9CA3AF", fontSize: 11 }}>—</span>}
                         </div>
                       </td>
-                      <td style={{ padding: "10px 14px" }}>
-                        {(() => {
-                          // Collect all SL names who MCed this week
-                          const mcedNames = new Set([
-                            info.mc.thu.leader,
-                            info.mc.sun.leader,
-                            info.mc.sun.slHelper,
-                            ...info.mc.thu.helpers,
-                            ...info.mc.sun.helpers,
-                          ].filter(Boolean));
-                          const didntMC = employees
-                            .filter(e => e.role === "shift_lead" && e.status === "active" && !mcedNames.has(e.name));
-                          if (didntMC.length === 0) return <span style={{ color: "#D1D5DB", fontSize: 11 }}>—</span>;
-                          return didntMC.map(e => (
+                      <td style={{ padding: "10px 14px", verticalAlign: "top" }}>
+                        {didntMC.length === 0
+                          ? <span style={{ color: "#D1D5DB", fontSize: 11 }}>—</span>
+                          : didntMC.map(e => (
                             <span key={e.id} style={{ fontWeight: 600, color: "#DC2626", background: "#FEF2F2", padding: "2px 8px", borderRadius: 6, fontSize: 11, marginRight: 4, display: "inline-block" }}>{e.name}</span>
-                          ));
-                        })()}
+                          ))
+                        }
                       </td>
                     </tr>
                   );
@@ -186,30 +246,11 @@ export function HistoryTab({ employees, savedSchedules, rules }) {
         )}
       </div>
 
-      {/* MC Helper Frequency */}
-      {Object.keys(mcFreq).length > 0 && (
-        <div style={{ marginBottom: 28 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 700, color: "#4A3F2F", marginBottom: 12 }}>MC Helper Frequency (regulars)</h3>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {Object.entries(mcFreq).sort((a, b) => b[1] - a[1]).map(([name, count]) => (
-              <div key={name} style={{
-                padding: "8px 14px", borderRadius: 8, background: count > 2 ? "#FEF2F2" : "#F0FDF4",
-                border: `1px solid ${count > 2 ? "#FECACA" : "#BBF7D0"}`, fontSize: 12,
-              }}>
-                <span style={{ fontWeight: 600, color: "#374151" }}>{name}</span>
-                
-              </div>
-            ))}
-          </div>
-          
-        </div>
-      )}
-
       {/* Trainee Progress */}
       {trainees.length > 0 && (
         <div style={{ marginBottom: 28 }}>
           <h2 style={{ fontSize: 16, fontWeight: 800, color: "#4A3F2F", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 20 }}>{"\ud83c\udf93"}</span> Trainee Progress
+            <span style={{ fontSize: 20 }}>🎓</span> Trainee Progress
           </h2>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
             {trainees.map(emp => {
@@ -220,11 +261,10 @@ export function HistoryTab({ employees, savedSchedules, rules }) {
                 <div key={emp.id} style={{ background: graduated ? "#F0FDF4" : "#fff", border: `1px solid ${graduated ? "#BBF7D0" : "#E5E7EB"}`, borderRadius: 12, padding: 16 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                     <div style={{ fontWeight: 700, fontSize: 13, color: "#374151" }}>{emp.name}</div>
-                    {graduated ? (
-                      <span style={{ fontSize: 10, fontWeight: 700, background: "#16A34A", color: "#fff", padding: "2px 8px", borderRadius: 10 }}>{"\u2713"} GRADUATED</span>
-                    ) : (
-                      <span style={{ fontSize: 10, fontWeight: 600, color: "#6B7280" }}>{Math.max(0, graduationHours - cum).toFixed(1)}h left</span>
-                    )}
+                    {graduated
+                      ? <span style={{ fontSize: 10, fontWeight: 700, background: "#16A34A", color: "#fff", padding: "2px 8px", borderRadius: 10 }}>✓ GRADUATED</span>
+                      : <span style={{ fontSize: 10, fontWeight: 600, color: "#6B7280" }}>{Math.max(0, graduationHours - cum).toFixed(1)}h left</span>
+                    }
                   </div>
                   <div style={{ background: "#F3F4F6", borderRadius: 6, height: 10, overflow: "hidden", marginBottom: 6 }}>
                     <div style={{ width: `${pct}%`, height: "100%", borderRadius: 6, background: graduated ? "#16A34A" : pct > 66 ? "#F59E0B" : "#3B82F6" }} />
@@ -239,11 +279,11 @@ export function HistoryTab({ employees, savedSchedules, rules }) {
         </div>
       )}
 
-      {/* Weekly Detail (expandable) */}
+      {/* Weekly Detail */}
       {weeks.length > 0 && (
         <div style={{ marginBottom: 28 }}>
           <h2 style={{ fontSize: 16, fontWeight: 800, color: "#4A3F2F", marginBottom: 12, display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 20 }}>{"\ud83d\udccb"}</span> Saved Weeks ({weeks.length})
+            <span style={{ fontSize: 20 }}>📋</span> Saved Weeks ({weeks.length})
           </h2>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {weeks.map(w => {
@@ -252,15 +292,11 @@ export function HistoryTab({ employees, savedSchedules, rules }) {
               const totalH = Object.values(info.empHours).reduce((a, b) => a + b, 0);
               const empCount = Object.keys(info.empHours).length;
               const saved = w.savedAt ? new Date(w.savedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
-
               return (
                 <div key={w.key} style={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 12, overflow: "hidden" }}>
-                  <div onClick={() => setExpandedWeek(isExp ? null : w.key)} style={{
-                    padding: "14px 20px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center",
-                    background: isExp ? "#FEFCE8" : "transparent",
-                  }}>
+                  <div onClick={() => setExpandedWeek(isExp ? null : w.key)} style={{ padding: "14px 20px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", background: isExp ? "#FEFCE8" : "transparent" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                      <span style={{ fontSize: 16, transform: isExp ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.2s" }}>{"\u25b6"}</span>
+                      <span style={{ fontSize: 14, transform: isExp ? "rotate(90deg)" : "rotate(0deg)", transition: "transform 0.2s", display: "inline-block" }}>▶</span>
                       <div>
                         <div style={{ fontWeight: 700, fontSize: 13, color: "#374151" }}>Week of {formatWeek(w.key)}</div>
                         <div style={{ fontSize: 10, color: "#9CA3AF", marginTop: 2 }}>
@@ -297,31 +333,6 @@ export function HistoryTab({ employees, savedSchedules, rules }) {
                 </div>
               );
             })}
-          </div>
-        </div>
-      )}
-
-      {/* Summary */}
-      {weeks.length > 0 && (
-        <div style={{ background: "#F9FAFB", borderRadius: 12, padding: 20, border: "1px solid #E5E7EB" }}>
-          <h3 style={{ fontSize: 13, fontWeight: 700, color: "#4A3F2F", marginBottom: 12 }}>{"\ud83d\udcca"} Summary</h3>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16, textAlign: "center" }}>
-            <div>
-              <div style={{ fontSize: 24, fontWeight: 800, color: "#4A3F2F" }}>{weeks.length}</div>
-              <div style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 600 }}>Weeks Saved</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 24, fontWeight: 800, color: "#4A3F2F" }}>
-                {trainees.filter(e => (e.traineeCumulative || 0) >= graduationHours).length}
-              </div>
-              <div style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 600 }}>Graduated</div>
-            </div>
-            <div>
-              <div style={{ fontSize: 24, fontWeight: 800, color: "#4A3F2F" }}>
-                {trainees.filter(e => e.role === "trainee").length}
-              </div>
-              <div style={{ fontSize: 10, color: "#9CA3AF", fontWeight: 600 }}>In Training</div>
-            </div>
           </div>
         </div>
       )}
