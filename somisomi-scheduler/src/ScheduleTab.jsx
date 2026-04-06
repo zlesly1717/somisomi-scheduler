@@ -3221,12 +3221,12 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                 const order = { "this week": 0, "next week": 1 };
                 return (order[scheduledMap[a]] || 0) - (order[scheduledMap[b]] || 0);
               }
-              // Neither scheduled: sort by count then last date
-              if (countMap[a] !== countMap[b]) return countMap[a] - countMap[b];
-              if (!lastMap[a] && lastMap[b]) return -1;
-              if (lastMap[a] && !lastMap[b]) return 1;
-              if (lastMap[a] && lastMap[b]) return lastMap[a].localeCompare(lastMap[b]);
-              return 0;
+              // Neither scheduled: sort by oldest last date first, then fewest count as tiebreaker
+              if (!lastMap[a] && !lastMap[b]) return countMap[a] - countMap[b]; // both never → fewest count wins
+              if (!lastMap[a]) return -1; // never done → most overdue
+              if (!lastMap[b]) return 1;
+              if (lastMap[a] !== lastMap[b]) return lastMap[a].localeCompare(lastMap[b]); // older date = more overdue
+              return countMap[a] - countMap[b]; // same date → fewest count wins
             };
 
             const regSorted = [...activeRegs].sort(sortFn(regMCCount, regLastMC, regScheduledWeek));
