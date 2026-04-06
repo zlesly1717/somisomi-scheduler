@@ -57,10 +57,8 @@ function extractMCInfo(weekData, employees) {
 
 // Edit a person in the saved schedule's MC slots for a given week
 function editMCInSchedule(weekData, employees, day, oldName, newName) {
-  // day = "thu" or "sun"
   const schedule = { ...(weekData.schedule || {}) };
   const targetDow = day === "thu" ? 4 : 0;
-
   Object.keys(schedule).forEach(dateStr => {
     const dow = new Date(dateStr + "T12:00:00").getDay();
     if (dow !== targetDow) return;
@@ -69,12 +67,33 @@ function editMCInSchedule(weekData, employees, day, oldName, newName) {
       const slotName = slot.empName || employees.find(e => e.id === slot.empId)?.name;
       if (slotName !== oldName) return slot;
       if (newName === null) {
-        // Remove — clear the empId/empName but keep the slot structure
         return { ...slot, empId: null, empName: null, empRole: null };
       }
       const newEmp = employees.find(e => e.name === newName);
       return { ...slot, empId: newEmp?.id || slot.empId, empName: newName, empRole: newEmp?.role || slot.empRole };
     });
+  });
+  return { ...weekData, schedule };
+}
+
+// Promote a helper to MC lead — swaps slot types with the current leader
+function promoteToLeader(weekData, employees, day, newLeaderName) {
+  const schedule = { ...(weekData.schedule || {}) };
+  const targetDow = day === "thu" ? 4 : 0;
+  Object.keys(schedule).forEach(dateStr => {
+    const dow = new Date(dateStr + "T12:00:00").getDay();
+    if (dow !== targetDow) return;
+    const slots = [...schedule[dateStr]];
+    // Find current leader slot and the new leader's slot
+    const leaderIdx = slots.findIndex(s => s.isMC && (s.type === "mc_leader"));
+    const helperIdx = slots.findIndex(s => s.isMC && (s.empName === newLeaderName || employees.find(e => e.id === s.empId)?.name === newLeaderName));
+    if (leaderIdx === -1 || helperIdx === -1 || leaderIdx === helperIdx) return;
+    // Swap the names/ids between the two slots (keep slot structure, swap people)
+    const leaderSlot = slots[leaderIdx];
+    const helperSlot = slots[helperIdx];
+    slots[leaderIdx] = { ...leaderSlot, empId: helperSlot.empId, empName: helperSlot.empName, empRole: helperSlot.empRole };
+    slots[helperIdx] = { ...helperSlot, empId: leaderSlot.empId, empName: leaderSlot.empName, empRole: leaderSlot.empRole };
+    schedule[dateStr] = slots;
   });
   return { ...weekData, schedule };
 }
@@ -105,7 +124,12 @@ export function HistoryTab({ employees, savedSchedules, setSavedSchedules, rules
     const updated = editMCInSchedule(savedSchedules[weekKey], employees, day, oldName, newName);
     setSavedSchedules(prev => ({ ...prev, [weekKey]: updated }));
     setEditingMC(null);
-    setSwapTarget(null);
+  };
+
+  const handlePromote = (weekKey, day, name) => {
+    const updated = promoteToLeader(savedSchedules[weekKey], employees, day, name);
+    setSavedSchedules(prev => ({ ...prev, [weekKey]: updated }));
+    setEditingMC(null);
   };
 
   const MCTag = ({ name, role, weekKey, day, editable }) => {
@@ -138,15 +162,23 @@ export function HistoryTab({ employees, savedSchedules, setSavedSchedules, rules
             onClick={e => e.stopPropagation()}>
             <div style={{ fontSize: 11, fontWeight: 700, color: "#4A3F2F", marginBottom: 8 }}>Edit: {name}</div>
 
+            {/* Promote to leader — only show for helpers */}
+            {!isLeader && (
+              <button onClick={() => handlePromote(weekKey, day, name)}
+                style={{ width: "100%", padding: "7px 10px", borderRadius: 7, border: "1px solid #DDD6FE", background: "#EDE9FE", color: "#7C3AED", cursor: "pointer", fontSize: 11, fontWeight: 600, marginBottom: 6, fontFamily: font, textAlign: "left" }}>
+                ★ Make MC Lead (swap with current leader)
+              </button>
+            )}
+
             {/* Remove option */}
             <button onClick={() => handleRemove(weekKey, day, name)}
               style={{ width: "100%", padding: "7px 10px", borderRadius: 7, border: "1px solid #FECACA", background: "#FEF2F2", color: "#DC2626", cursor: "pointer", fontSize: 11, fontWeight: 600, marginBottom: 6, fontFamily: font, textAlign: "left" }}>
-              ✕ Remove from MC (owner covered / no credit)
+              ✕ Remove (owner covered / no credit)
             </button>
 
             {/* Swap options */}
-            <div style={{ fontSize: 10, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>Swap with:</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 3, maxHeight: 180, overflowY: "auto" }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#6B7280", marginBottom: 4 }}>Swap with someone else:</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 3, maxHeight: 160, overflowY: "auto" }}>
               {activeAll.filter(e => e.name !== name && e.role !== "trainee").map(e => (
                 <button key={e.id} onClick={() => handleSwap(weekKey, day, name, e.name)}
                   style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #E5E7EB", background: "#F9FAFB", color: "#374151", cursor: "pointer", fontSize: 11, fontWeight: 500, fontFamily: font, textAlign: "left" }}>

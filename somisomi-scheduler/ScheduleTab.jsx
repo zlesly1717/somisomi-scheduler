@@ -3113,18 +3113,18 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                         {fmtWeek.badge && <span style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "2px 8px", borderRadius: 10, background: fmtWeek.badge === "this week" ? "#DCFCE7" : "#DBEAFE", color: fmtWeek.badge === "this week" ? "#16A34A" : "#2563EB", border: fmtWeek.badge === "this week" ? "1px solid #86EFAC" : "1px solid #93C5FD" }}>{fmtWeek.badge}</span>}
                       </td>
                       <td style={{ padding: "8px 12px" }}>
-                        {thuMC.leader ? (
+                        {(thuMC.leader || thuMC.slHelpers.length > 0 || thuMC.helpers.length > 0) ? (
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6, background: "#EDE9FE", color: "#7C3AED", border: "1px solid #DDD6FE" }}>★ {thuMC.leader}</span>
+                            {thuMC.leader && <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6, background: "#EDE9FE", color: "#7C3AED", border: "1px solid #DDD6FE" }}>★ {thuMC.leader}</span>}
                             {thuMC.slHelpers.map((n, i) => <span key={i} style={{ fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 6, background: "#FEF3C7", color: "#B45309", border: "1px solid #FDE68A" }}>{n}</span>)}
                             {thuMC.helpers.map((n, i) => <span key={i} style={{ fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 6, background: "#F3F4F6", color: "#374151", border: "1px solid #E5E7EB" }}>{n}</span>)}
                           </div>
                         ) : <span style={{ color: "#D1D5DB" }}>—</span>}
                       </td>
                       <td style={{ padding: "8px 12px" }}>
-                        {sunMC.leader ? (
+                        {(sunMC.leader || sunMC.slHelpers.length > 0 || sunMC.helpers.length > 0) ? (
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                            <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6, background: "#EDE9FE", color: "#7C3AED", border: "1px solid #DDD6FE" }}>★ {sunMC.leader}</span>
+                            {sunMC.leader && <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 6, background: "#EDE9FE", color: "#7C3AED", border: "1px solid #DDD6FE" }}>★ {sunMC.leader}</span>}
                             {sunMC.slHelpers.map((n, i) => <span key={i} style={{ fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 6, background: "#FEF3C7", color: "#B45309", border: "1px solid #FDE68A" }}>{n}</span>)}
                             {sunMC.helpers.map((n, i) => <span key={i} style={{ fontSize: 11, fontWeight: 500, padding: "2px 8px", borderRadius: 6, background: "#F3F4F6", color: "#374151", border: "1px solid #E5E7EB" }}>{n}</span>)}
                           </div>
