@@ -473,15 +473,24 @@ export default function App() {
           label: "Week of Apr 6 (Homebase)", _source: "homebase-full", _schedVersion: 4,
         };
       }
-      // Seed full Mar 30 - Apr 5 schedule
+      // Seed full Mar 30 - Apr 5 schedule — Spencer removed from Sun MC (owner covered)
       if (!existing["2026-03-30"] || existing["2026-03-30"]._source === "homebase-import" ||
           !existing["2026-03-30"].schedule?.["2026-03-30"]?.length ||
-          existing["2026-03-30"]._schedVersion !== 3) {
+          (existing["2026-03-30"]._schedVersion || 0) < 5) {
+        const mar30Sched = buildMar30Schedule();
+        // Spencer covered by owner on Sun Apr 5 — remove him from MC lead slot
+        if (mar30Sched["2026-04-05"]) {
+          mar30Sched["2026-04-05"] = mar30Sched["2026-04-05"].map(slot =>
+            slot.isMC && slot.empName === "Spencer Losch"
+              ? { ...slot, empId: null, empName: null, empRole: null }
+              : slot
+          );
+        }
         existing["2026-03-30"] = {
-          schedule: buildMar30Schedule(),
+          schedule: mar30Sched,
           savedAt: "2026-04-05T20:00:00Z",
           notes: [], weeklyTOs: [], weekStart: "2026-03-30",
-          label: "Week of Mar 30 (Homebase)", _source: "homebase-full", _schedVersion: 3,
+          label: "Week of Mar 30 (Homebase)", _source: "homebase-full", _schedVersion: 5,
         };
       }
       setSavedSchedules(existing);
