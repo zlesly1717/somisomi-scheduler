@@ -3181,13 +3181,14 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                   if (!slot.isMC || !slot.empId) return;
                   const name = slot.empName || "?";
 
+                  if (isFuture) return;
+                  // Always record count + last date for sorting (so this week still counts as history)
+                  if (activeRegs.includes(name)) { regMCCount[name]++; regLastMC[name] = key; }
+                  if (activeSLs.includes(name)) { slMCCount[name]++; slLastMC[name] = key; }
+                  // Additionally mark as scheduled this/next week for the ✓ badge
                   if (isThisWeek || isNextWeek) {
                     const label = isThisWeek ? "this week" : "next week";
                     if (activeRegs.includes(name)) regScheduledWeek[name] = label;
-                    if (activeSLs.includes(name)) slMCCount[name]++; // still count for reference
-                  } else if (!isFuture) {
-                    if (activeRegs.includes(name)) { regMCCount[name]++; regLastMC[name] = key; }
-                    if (activeSLs.includes(name)) { slMCCount[name]++; slLastMC[name] = key; }
                   }
                 });
               });
