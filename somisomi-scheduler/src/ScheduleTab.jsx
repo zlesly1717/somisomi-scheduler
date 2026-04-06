@@ -3211,7 +3211,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
               }
             });
 
-            // Sort: scheduled this/next week go to bottom, then sort by fewest MC + oldest last date
+            // Sort: scheduled this/next week go to bottom, then sort by oldest last date first (most overdue)
             const sortFn = (countMap, lastMap, scheduledMap) => (a, b) => {
               const aScheduled = !!scheduledMap[a];
               const bScheduled = !!scheduledMap[b];
@@ -3222,12 +3222,13 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                 const order = { "this week": 0, "next week": 1 };
                 return (order[scheduledMap[a]] || 0) - (order[scheduledMap[b]] || 0);
               }
-              // Neither scheduled: sort by count then last date
-              if (countMap[a] !== countMap[b]) return countMap[a] - countMap[b];
-              if (!lastMap[a] && lastMap[b]) return -1;
-              if (lastMap[a] && !lastMap[b]) return 1;
-              if (lastMap[a] && lastMap[b]) return lastMap[a].localeCompare(lastMap[b]);
-              return 0;
+              // Neither scheduled: oldest last date = most overdue = sort first
+              // Count is only a tiebreaker when dates are identical
+              if (!lastMap[a] && !lastMap[b]) return countMap[a] - countMap[b]; // both never → fewest count wins
+              if (!lastMap[a]) return -1; // never done MC → most overdue, goes first
+              if (!lastMap[b]) return 1;
+              if (lastMap[a] !== lastMap[b]) return lastMap[a].localeCompare(lastMap[b]); // older date first
+              return countMap[a] - countMap[b]; // same date → fewest count as tiebreaker
             };
 
             const regSorted = [...activeRegs].sort(sortFn(regMCCount, regLastMC, regScheduledWeek));
