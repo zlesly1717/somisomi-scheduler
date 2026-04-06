@@ -26,9 +26,12 @@ function extractMCInfo(weekData, employees) {
         empHours[slot.empId] = (empHours[slot.empId] || 0) + (slot.hours || 0);
         empShifts[slot.empId] = (empShifts[slot.empId] || 0) + 1;
       }
-      if (!slot.isMC || !slot.empId) return;
+      if (!slot.isMC) return;
+      // Skip slots explicitly removed (empId and empName both null)
+      if (!slot.empId && !slot.empName) return;
       const emp = employees.find(e => e.id === slot.empId);
-      const name = emp?.name || slot.empName || "Unknown";
+      const name = emp?.name || slot.empName || null;
+      if (!name) return;
       if (dow === 4) {
         if (slot.type === "mc_leader") mc.thu.leader = name;
         else mc.thu.helpers.push(name);

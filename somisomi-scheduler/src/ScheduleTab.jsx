@@ -3052,7 +3052,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                   <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 700, color: "#6B7280", fontSize: 10, textTransform: "uppercase" }}>Week</th>
                   <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 700, color: "#7C3AED", fontSize: 10, textTransform: "uppercase" }}>Thu MC</th>
                   <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 700, color: "#2563EB", fontSize: 10, textTransform: "uppercase" }}>Sun MC</th>
-                  <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 700, color: "#DC2626", fontSize: 10, textTransform: "uppercase" }}>Didn't MC</th>
+                  <th style={{ textAlign: "left", padding: "8px 12px", fontWeight: 700, color: "#DC2626", fontSize: 10, textTransform: "uppercase" }}>SL Break</th>
                 </tr>
               </thead>
               <tbody>
@@ -3072,8 +3072,11 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                     if (!schedule[dt] || !Array.isArray(schedule[dt])) return;
                     const isThu = dt === thuDate;
                     schedule[dt].forEach(slot => {
-                      if (!slot.isMC || !slot.empId) return;
-                      const name = slot.empName || "?";
+                      if (!slot.isMC) return;
+                      // Skip slots explicitly removed (both empId and empName are null)
+                      if (!slot.empId && !slot.empName) return;
+                      const name = slot.empName || employees.find(e => e.id === slot.empId)?.name || "?";
+                      if (!name || name === "?") return;
                       allMCNames.add(name);
                       const mc = isThu ? thuMC : sunMC;
                       if (slot.type === "mc_leader") mc.leader = name;
@@ -3132,7 +3135,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                           didntMC.map((n, i) => (
                             <span key={n} style={{ fontWeight: 600, color: "#DC2626", background: "#FEF2F2", padding: "2px 8px", borderRadius: 6, fontSize: 11, marginRight: 4 }}>{n}</span>
                           ))
-                        ) : <span style={{ color: "#16A34A", fontSize: 11 }}>All SLs cleaned</span>}
+                        ) : <span style={{ color: "#D1D5DB", fontSize: 11 }}>—</span>}
                       </td>
                     </tr>
                   );
