@@ -14,7 +14,16 @@ function EditEmpModal({ emp, onSave, onClose }) {
   })));
   const ref = useRef(null);
   useEffect(() => { ref.current?.focus(); }, []);
-  const set = (k, v) => setF(p => ({ ...p, [k]: v }));
+  const set = (k, v) => setF(p => {
+    const next = { ...p, [k]: v };
+    // Auto-update shift/hour defaults when role changes
+    if (k === "role") {
+      if (v === "shift_lead") { next.maxShifts = 4; next.minShifts = 4; next.maxHours = 24; next.minHours = 18; }
+      else if (v === "regular") { next.maxShifts = 3; next.minShifts = 3; next.maxHours = 20; next.minHours = 12; }
+      else if (v === "trainee") { next.maxShifts = 3; next.minShifts = 1; next.maxHours = 15; next.minHours = 0; }
+    }
+    return next;
+  });
   const setU = (d, k, v) => setF(p => ({ ...p, unavailability: { ...p.unavailability, [d]: { ...p.unavailability[d], [k]: v } } }));
   const togT = id => setF(p => ({ ...p, tags: p.tags.includes(id) ? p.tags.filter(t => t !== id) : [...p.tags, id] }));
 
