@@ -197,6 +197,19 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       e._effMaxShifts = e.maxShifts;
       e._effMinShifts = 0; // ignore minimums — balance decides
     }
+    // Safety: correct stale maxShifts/maxHours if role changed without updating numbers
+    // (e.g. trainee promoted to regular but maxShifts still = 1)
+    if (!wmo) {
+      if (e.role === "regular" && e._effMaxShifts < 3) {
+        e._effMaxShifts = 3; e.maxShifts = 3;
+      }
+      if (e.role === "regular" && e._effMaxHours < 12) {
+        e._effMaxHours = 20; e.maxHours = 20;
+      }
+      if (e.role === "shift_lead" && e._effMaxShifts < 4) {
+        e._effMaxShifts = 4; e.maxShifts = 4;
+      }
+    }
     e._effMaxHours = e.maxHours;
     e._effMinHours = 0;
     // Budget: how many shifts can we give them (availability capped at their max)
