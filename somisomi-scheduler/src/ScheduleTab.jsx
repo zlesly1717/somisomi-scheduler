@@ -210,9 +210,14 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         e._effMaxShifts = 4; e.maxShifts = 4;
       }
     }
+    // Safety: correct stale maxShifts if trainee was promoted to regular without updating numbers
+    if (!wmo) {
+      if (e.role === "regular" && e._effMaxShifts < 3) { e._effMaxShifts = 3; e.maxShifts = 3; }
+      if (e.role === "regular" && e.maxHours < 12) { e.maxHours = 20; }
+      if (e.role === "shift_lead" && e._effMaxShifts < 4) { e._effMaxShifts = 4; e.maxShifts = 4; }
+    }
     e._effMaxHours = e.maxHours;
     e._effMinHours = 0;
-    // Budget: how many shifts can we give them (availability capped at their max)
     e._budget = Math.min(availCount, e._effMaxShifts);
   });
 
@@ -699,11 +704,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (cands.length === 0) cands = [...sls]; // anyone
         cands.sort(mcSortFn);
       }
-      if (cands[0]) {
-        // Release Thu MC reservation for the person we're about to assign
-        if (slot._dow === 0) thuMCReserved.delete(cands[0].id); // Sun MC
-        assignSlotInSchedule(slot, cands[0]); continue;
-      }
+      if (cands[0]) { assignSlotInSchedule(slot, cands[0]); continue; }
     }
 
     // All other SL-only slots: pick SL with fewest hours
@@ -851,19 +852,14 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   // Process order: MC helpers → Weekend evening → Weekend day → Fri → Mid → Weekday 2nd day → Weekday evening
   // Pick: person with fewest hours who hasn't hit their target
 
-  // Pre-reserve top Thu MC candidates: prevent them from being placed on Thursday
-  // via day/evening slots before MC runs (MC is priority 0 but balance pass runs after)
-  const thuDate = weekDates[3]; // Thursday is index 3 (Mon=0...Sun=6)
-  const sunDate = weekDates[6];
+  // Pre-reserve top 2 Thu MC candidates so they can't be placed on other Thu slots first
+  const thuDate = weekDates[3];
   const assistantPoolForReserve = rules?.mcRotation?.assistantPool || [];
-  const thuMCReserved = new Set(); // empIds reserved for Thu MC
-  const sunMCReservedRegs = new Set(); // empIds reserved for Sun MC reg slots
+  const thuMCReserved = new Set();
   const prevWeekKeyReserve = thuDate ? (() => {
     const d = new Date(thuDate + "T12:00:00"); d.setDate(d.getDate() - 7);
     return d.toISOString().split("T")[0];
   })() : "";
-
-  // Find top 2 candidates for Thu MC reg helpers
   const thuMCEligible = active.filter(e =>
     e.role !== "shift_lead" &&
     (e.role !== "trainee" || isEffectivelyGraduated(e)) &&
@@ -881,17 +877,17 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     if (aL !== bL) return aL.localeCompare(bL);
     return assistantPoolForReserve.indexOf(a.name) - assistantPoolForReserve.indexOf(b.name);
   });
-  // Reserve top 2 for Thursday MC — they cannot work any other Thu slot
+  // Block Thu for top 2 so they're reserved for MC
   thuMCEligible.slice(0, 2).forEach(e => {
     thuMCReserved.add(e.id);
-    sd[e.id].add(thuDate); // temporarily block Thu for these people
+    sd[e.id].add(thuDate);
   });
 
   const remainingSlots = [];
   weekDates.forEach(dateStr => {
     schedule[dateStr].forEach((slot, idx) => {
       if (slot.empId || slot.slOnly) return;
-      remainingSlots.push({ dateStr, idx, slot }); // isTraineeSlot unfilled = Step 4 fills with regular
+      remainingSlots.push({ dateStr, idx, slot });
     });
   });
 
@@ -992,16 +988,6 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         return 0;
       });
     }
-    // After Thu MC helpers are assigned, release reservations so those people
-    // can be placed elsewhere in the week (just not on Thu itself — sd still has Thu)
-    if (slot.isMC && slot._dow === 4 && !slot.slOnly) {
-      // Release from thuMCReserved set (sd still has thuDate blocking Thu other slots)
-      if (schedule[slot._dateStr][slot._dateStr ? schedule[slot._dateStr].findIndex(s => s.type === slot.type && s.order === slot.order) : -1]?.empId) {
-        const assignedId = schedule[slot._dateStr].find(s => s.type === slot.type && s.order === slot.order)?.empId;
-        if (assignedId) thuMCReserved.delete(assignedId);
-      }
-    }
-
     // Weekend/Fri evening: trainees only if shift already has 4 people (they become the 5th)
     // Max 1 trainee per shift period. No trainees on weekend day shifts.
     else if (isWeekendSlot && tm(slot.start) >= 1020) {
@@ -1094,9 +1080,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     if (cands[0]) assign(dateStr, idx, cands[0], slot);
   }
 
-  // Release all Thu MC reservations — MC is done, balance pass can now move people freely
-  // EXCEPT: keep sd[thuDate] set so reserved people don't get moved TO Thursday non-MC slots
-  // (they're already blocked from Thu via sd, which is correct — they worked Thu MC)
+  // Release Thu MC reservations — MC is done, sd[thuDate] stays set (they worked Thu)
   thuMCReserved.clear();
 
   // ── STEP 5: SL overflow — give SLs slots to reach 4 shifts ──
