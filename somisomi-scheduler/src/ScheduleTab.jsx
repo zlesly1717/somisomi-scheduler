@@ -906,8 +906,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       } else {
         // Thu MC: always regs (Crystal leads, you help as owner)
         const nonSLT = cands.filter(e => e.role !== "shift_lead" && (e.role !== "trainee" || isEffectivelyGraduated(e)) && !(e.tags || []).includes("mc_exempt"));
-        console.log("[THU MC HELPER] getCandidates returned:", cands.map(e=>e.name+"/"+e.role+"/shifts:"+sc[e.id]+"/max:"+e._effMaxShifts));
-        console.log("[THU MC HELPER] nonSLT filtered:", nonSLT.map(e=>e.name));
+
         if (nonSLT.length > 0) cands = nonSLT;
         else {
           const slFallback = cands.filter(e => e.role === "shift_lead");
@@ -920,6 +919,13 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         const d = new Date(weekDates[0] + "T12:00:00"); d.setDate(d.getDate() - 7);
         return d.toISOString().split("T")[0];
       })() : "";
+      // Build the same ranked order as the "Next Up" display panel:
+      // 1. Penalize back-to-back (MC'd last week)
+      // 2. Never done MC → most overdue (goes first)
+      // 3. Oldest last MC date first
+      // 4. Tiebreaker: use assistantPool order (explicit manager preference), NOT count
+      //    (count is unreliable because trainees accumulate history before graduating)
+      const assistantPool = rules?.mcRotation?.assistantPool || [];
       cands.sort((a, b) => {
         const aLastMC = mcHistoryLast[a.name] || "";
         const bLastMC = mcHistoryLast[b.name] || "";
@@ -927,13 +933,23 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         const aRecent = aLastMC >= prevWeekKey ? 1 : 0;
         const bRecent = bLastMC >= prevWeekKey ? 1 : 0;
         if (aRecent !== bRecent) return aRecent - bRecent;
-        // Sort by oldest last MC date first (most overdue = should go first)
-        // Count is only a tiebreaker when dates are equal
-        if (!aLastMC && !bLastMC) return (mcHistoryCount[a.name] || 0) - (mcHistoryCount[b.name] || 0);
-        if (!aLastMC) return -1; // never done MC → most overdue
+        // Never done MC → most overdue
+        if (!aLastMC && !bLastMC) {
+          const ai = assistantPool.indexOf(a.name); const bi = assistantPool.indexOf(b.name);
+          if (ai !== -1 && bi !== -1) return ai - bi;
+          return 0;
+        }
+        if (!aLastMC) return -1;
         if (!bLastMC) return 1;
-        if (aLastMC !== bLastMC) return aLastMC.localeCompare(bLastMC); // earlier = longer ago = pick first
-        return (mcHistoryCount[a.name] || 0) - (mcHistoryCount[b.name] || 0); // same date → fewest count wins
+        // Oldest last MC date first
+        if (aLastMC !== bLastMC) return aLastMC.localeCompare(bLastMC);
+        // Same date → use assistantPool order as tiebreaker (NOT count)
+        const ai = assistantPool.indexOf(a.name);
+        const bi = assistantPool.indexOf(b.name);
+        if (ai !== -1 && bi !== -1) return ai - bi;
+        if (ai !== -1) return -1;
+        if (bi !== -1) return 1;
+        return 0;
       });
     }
     // Weekend/Fri evening: trainees only if shift already has 4 people (they become the 5th)
@@ -3227,6 +3243,9 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
             });
 
             // Sort: scheduled this/next week go to bottom, then sort by oldest last date first (most overdue)
+            // Tiebreaker for same date: use assistantPool order (NOT count, which is unreliable for promoted trainees)
+            const assistantPoolOrder = (rules?.mcRotation?.assistantPool || []);
+            const poolRank = (name) => { const i = assistantPoolOrder.indexOf(name); return i === -1 ? 999 : i; };
             const sortFn = (countMap, lastMap, scheduledMap) => (a, b) => {
               const aScheduled = !!scheduledMap[a];
               const bScheduled = !!scheduledMap[b];
@@ -3238,12 +3257,11 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                 return (order[scheduledMap[a]] || 0) - (order[scheduledMap[b]] || 0);
               }
               // Neither scheduled: oldest last date = most overdue = sort first
-              // Count is only a tiebreaker when dates are identical
-              if (!lastMap[a] && !lastMap[b]) return countMap[a] - countMap[b]; // both never → fewest count wins
+              if (!lastMap[a] && !lastMap[b]) return poolRank(a) - poolRank(b); // both never → pool order
               if (!lastMap[a]) return -1; // never done MC → most overdue, goes first
               if (!lastMap[b]) return 1;
               if (lastMap[a] !== lastMap[b]) return lastMap[a].localeCompare(lastMap[b]); // older date first
-              return countMap[a] - countMap[b]; // same date → fewest count as tiebreaker
+              return poolRank(a) - poolRank(b); // same date → pool order as tiebreaker
             };
 
             const regSorted = [...activeRegs].sort(sortFn(regMCCount, regLastMC, regScheduledWeek));

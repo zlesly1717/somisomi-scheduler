@@ -283,7 +283,7 @@ export const SEED_RULES = {
   ],
   mcRotation: {
     shiftLeadPool:["Chan In","Zoe Rains","Kaitlyn Trevino","Spencer Losch","Crystal Guel"],
-    assistantPool:["Sam Castillo","Gwen Ursua","Susan Thai","Abrar Uddin","Kennedy Bean","Yise Moya"],
+    assistantPool:["Marissa Shelton","Kennedy Bean","Susan Thai","Nani Hoomes","Alli Campos","Gwen Ursua","Sam Castillo","Abrar Uddin","Yise Moya"],
     noBackToBackHelpers:true,
   },
   weekendSLRotation: {
