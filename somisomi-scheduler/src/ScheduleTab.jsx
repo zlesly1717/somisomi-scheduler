@@ -892,19 +892,46 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 
   remainingSlots.sort((a, b) => {
     const pri = (s) => {
-      if (s.slot.isMC && !s.slot.slOnly) return 0;  // MC helpers
-      if ((s.slot._isWE || s.slot._isFri) && tm(s.slot.start) >= 1020) return 1; // Weekend/Fri evening
-      if (s.slot._isWE && tm(s.slot.start) < 1020) return 2; // Weekend day
-      if (s.slot._isFri && tm(s.slot.start) < 1020) return 3; // Friday day
-      if (s.slot.type === "mid") return 0; // Mid shift: fill FIRST so trainees get it before regs
+      if (s.slot.isMC && !s.slot.slOnly) return 0;  // MC helpers — always first
+      if (s.slot.type === "mid") return 1; // Mid shifts
+      if ((s.slot._isWE || s.slot._isFri) && tm(s.slot.start) >= 1020) return 2; // Weekend/Fri evening
+      if (s.slot._isWE && tm(s.slot.start) < 1020) return 3; // Weekend day
+      if (s.slot._isFri && tm(s.slot.start) < 1020) return 4; // Friday day
       if (!s.slot._isWE && !s.slot._isFri && tm(s.slot.start) < 1020) return 5; // Weekday 2nd day
       return 6; // Weekday evening (Mon-Wed remaining slots)
     };
-    return pri(a) - pri(b);
+    const pa = pri(a), pb = pri(b);
+    if (pa !== pb) return pa - pb;
+    // Secondary sort: within same priority, sort by order to keep same-day slots consecutive
+    return (a.slot.order || 0) - (b.slot.order || 0);
   });
 
+  // ── PRE-PASS: Assign Thu MC helpers first (guaranteed before any other Thu slots) ──
   for (const { dateStr, idx, slot } of remainingSlots) {
+    if (!slot.isMC || slot.slOnly || dateStr !== thuDate) continue;
     if (schedule[dateStr][idx].empId) continue;
+    let cands = getCandidates(slot);
+    const nonSLT = cands.filter(e => e.role !== "shift_lead" && (e.role !== "trainee" || isEffectivelyGraduated(e)) && !(e.tags || []).includes("mc_exempt"));
+    if (nonSLT.length > 0) cands = nonSLT;
+    const prevWeekKey = weekDates[0] ? (() => { const d = new Date(weekDates[0] + "T12:00:00"); d.setDate(d.getDate() - 7); return d.toISOString().split("T")[0]; })() : "";
+    const assistantPool = rules?.mcRotation?.assistantPool || [];
+    cands.sort((a, b) => {
+      const aL = mcHistoryLast[a.name] || "", bL = mcHistoryLast[b.name] || "";
+      const aR = aL >= prevWeekKey ? 1 : 0, bR = bL >= prevWeekKey ? 1 : 0;
+      if (aR !== bR) return aR - bR;
+      if (!aL && !bL) { const ai = assistantPool.indexOf(a.name), bi = assistantPool.indexOf(b.name); if (ai !== -1 && bi !== -1) return ai - bi; return 0; }
+      if (!aL) return -1; if (!bL) return 1;
+      if (aL !== bL) return aL.localeCompare(bL);
+      const ai = assistantPool.indexOf(a.name), bi = assistantPool.indexOf(b.name);
+      if (ai !== -1 && bi !== -1) return ai - bi;
+      return 0;
+    });
+    if (cands[0]) assign(dateStr, idx, cands[0], slot);
+  }
+
+  // ── MAIN LOOP: All remaining slots ──
+  for (const { dateStr, idx, slot } of remainingSlots) {
+    if (schedule[dateStr][idx].empId) continue; // already filled (including Thu MC above)
 
     let cands = getCandidates(slot);
     // Skip Thu MC reserved people on non-MC Thursday slots
@@ -990,6 +1017,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (bi !== -1) return 1;
         return 0;
       });
+      // Assign immediately using MC rotation order — skip the generic PICK sort below
+      if (cands[0]) assign(dateStr, idx, cands[0], slot);
+      continue;
     }
     // Weekend/Fri evening: trainees only if shift already has 4 people (they become the 5th)
     // Max 1 trainee per shift period. No trainees on weekend day shifts.
