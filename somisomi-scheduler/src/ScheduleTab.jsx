@@ -877,10 +877,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     if (aL !== bL) return aL.localeCompare(bL);
     return assistantPoolForReserve.indexOf(a.name) - assistantPoolForReserve.indexOf(b.name);
   });
-  // Block Thu for top 2 so they're reserved for MC
+  // Mark top 2 as reserved — we'll block them from non-MC Thu slots via thuMCReserved check
   thuMCEligible.slice(0, 2).forEach(e => {
     thuMCReserved.add(e.id);
-    sd[e.id].add(thuDate);
   });
 
   const remainingSlots = [];
@@ -908,6 +907,10 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     if (schedule[dateStr][idx].empId) continue;
 
     let cands = getCandidates(slot);
+    // Skip Thu MC reserved people on non-MC Thursday slots
+    if (dateStr === thuDate && !slot.isMC && thuMCReserved.size > 0) {
+      cands = cands.filter(e => !thuMCReserved.has(e.id));
+    }
     const isWeekendSlot = slot._isWE || (slot._isFri && tm(slot.start) >= 1020);
 
     // Mid shift: strongly prefer trainees (their dedicated slot)
@@ -1568,12 +1571,10 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
   // Section 2: Shift Leads — drag to set who gets 3 shifts (MC break)
   const sls = active.filter(e => e.role === "shift_lead");
 
-  // Section 3: Regular staff — all get 3 shifts, no knobs
+  // Section 3: Regular staff — all get 3 shifts (leftoverIds filter handles exclusion in render)
   const regs = active.filter(e =>
     e.role !== "shift_lead" &&
-    !SPECIAL_IDS.includes(e.id) &&
-    e.name !== "Nani Hoomes" &&
-    e.id !== "tr-4"
+    !SPECIAL_IDS.includes(e.id)
   );
 
   // Section 4: Leftover bucket — Nani by default, gets gaps only
