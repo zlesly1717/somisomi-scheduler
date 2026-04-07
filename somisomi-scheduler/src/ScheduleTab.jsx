@@ -906,6 +906,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       } else {
         // Thu MC: always regs (Crystal leads, you help as owner)
         const nonSLT = cands.filter(e => e.role !== "shift_lead" && (e.role !== "trainee" || isEffectivelyGraduated(e)) && !(e.tags || []).includes("mc_exempt"));
+        console.log("[THU MC HELPER] getCandidates returned:", cands.map(e=>e.name+"/"+e.role+"/shifts:"+sc[e.id]+"/max:"+e._effMaxShifts));
+        console.log("[THU MC HELPER] nonSLT filtered:", nonSLT.map(e=>e.name));
         if (nonSLT.length > 0) cands = nonSLT;
         else {
           const slFallback = cands.filter(e => e.role === "shift_lead");
