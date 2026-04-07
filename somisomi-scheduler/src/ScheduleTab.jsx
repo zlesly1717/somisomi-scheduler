@@ -906,7 +906,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       } else {
         // Thu MC: always regs (Crystal leads, you help as owner)
         const nonSLT = cands.filter(e => e.role !== "shift_lead" && (e.role !== "trainee" || isEffectivelyGraduated(e)) && !(e.tags || []).includes("mc_exempt"));
-
+        console.log("[THU MC] slot.order:", slot.order, "| getCandidates:", cands.map(e=>e.name+"/"+e.role), "| nonSLT:", nonSLT.map(e=>e.name+"/sc:"+sc[e.id]+"/max:"+e._effMaxShifts+"/sd:"+sd[e.id].has(slot._dateStr)));
         if (nonSLT.length > 0) cands = nonSLT;
         else {
           const slFallback = cands.filter(e => e.role === "shift_lead");
@@ -1740,7 +1740,7 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
         {sectionLabel("Regular Staff", "All get 3 shifts equally — no changes needed")}
         <div style={{ background: "#F0FDF4", borderRadius: 10, padding: "10px 12px", border: "1px solid #BBF7D0" }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {regs.map(e => (
+            {regs.filter(e => !leftoverIds.has(e.id)).map(e => (
               <span key={e.id} style={{ fontSize: 12, fontWeight: 600, color: "#166534", background: "#DCFCE7", padding: "3px 10px", borderRadius: 10 }}>{e.name}</span>
             ))}
           </div>
