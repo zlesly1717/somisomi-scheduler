@@ -625,8 +625,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   slSlots.sort((a, b) => {
     const pri = (s) => {
       if (s.isMC && s._dow === 4) return 0;  // Thu MC Leader (Crystal) — must be first
-      if (s.type === "day_lead" && s._isSun) return 1;  // Sun Day Lead — before Sun MC
-      if (s.isMC && s._dow === 0) return 2;  // Sun MC SLs — BEFORE Fri/Sat so 3 SLs available
+      if (s.isMC && s._dow === 0) return 1;  // Sun MC SLs — FIRST so MC SLs aren't taken by Day Lead
+      if (s.type === "day_lead" && s._isSun) return 2;  // Sun Day Lead — AFTER Sun MC picks SLs
       if (s.type === "day_lead" && s._isSat) return 3; // Sat DL
       if ((s.type === "evening_sl" || s.type === "evening_sl2") && s._isFri) return 4; // Fri Eve SLs
       if ((s.type === "evening_sl" || s.type === "evening_sl2") && s._isSat) return 5; // Sat Eve SLs
