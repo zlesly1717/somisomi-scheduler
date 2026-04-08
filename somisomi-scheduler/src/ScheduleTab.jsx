@@ -211,7 +211,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       }
     }
     // Safety: correct stale maxShifts if trainee was promoted to regular without updating numbers
-    if (!wmo) {
+    // BUT: don't override intentionally low caps (Grae=2, Cesia=2 are correct)
+    const INTENTIONAL_LOW_CAP_IDS = ["reg-7", "tr-6"]; // Grae, Cesia
+    if (!wmo && !INTENTIONAL_LOW_CAP_IDS.includes(e.id)) {
       if (e.role === "regular" && e._effMaxShifts < 3) { e._effMaxShifts = 3; e.maxShifts = 3; }
       if (e.role === "regular" && e.maxHours < 12) { e.maxHours = 20; }
       if (e.role === "shift_lead" && e._effMaxShifts < 4) { e._effMaxShifts = 4; e.maxShifts = 4; }
@@ -1088,7 +1090,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       // If still no one, allow trainees (better than unfilled)
     }
 
-    // PICK: SLs under their 18h minimum get priority, then fewest hours
+    // PICK: Fewest shifts first (equalize shift count), then fewest hours (equalize hours)
+    // SLs needing 4 shifts get priority. Guaranteed days respected.
     const slMinHours = 18;
     cands.sort((a, b) => {
       const aOv = availOverrides?.[dateStr + ":" + a.id] ? 1 : 0;
@@ -1097,12 +1100,14 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       const aG = (a.guaranteedDays || []).includes(slot._dayKey) ? 1 : 0;
       const bG = (b.guaranteedDays || []).includes(slot._dayKey) ? 1 : 0;
       if (bG !== aG) return bG - aG;
-      // SLs under 18h get priority over regulars who are at or above their fair share
+      // SLs under 18h get priority
       const aSLUnder = a.role === "shift_lead" && sh[a.id] < slMinHours ? 1 : 0;
       const bSLUnder = b.role === "shift_lead" && sh[b.id] < slMinHours ? 1 : 0;
       if (bSLUnder !== aSLUnder) return bSLUnder - aSLUnder;
-      if (sh[a.id] !== sh[b.id]) return sh[a.id] - sh[b.id];
+      // PRIMARY: fewest shifts (ensures everyone reaches their target before anyone gets extras)
       if (sc[a.id] !== sc[b.id]) return sc[a.id] - sc[b.id];
+      // SECONDARY: fewest hours (equalize hours within same shift count)
+      if (sh[a.id] !== sh[b.id]) return sh[a.id] - sh[b.id];
       if (isWeekendSlot) {
         const aWE = weCount[a.id] || 0, bWE = weCount[b.id] || 0;
         if (aWE !== bWE) return aWE - bWE;
