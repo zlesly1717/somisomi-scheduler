@@ -392,22 +392,25 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   const isHardCapped = (emp) => HARD_CAPPED.has(emp.id);
 
   const assign = (dateStr, slotIndex, emp, slot) => {
-    // Hard cap: never exceed _effMaxShifts regardless of which phase is assigning
-    if (sc[emp.id] >= emp._effMaxShifts) return;
-    // Extra hard cap for intentionally limited employees (Grae/Cesia)
-    if (isHardCapped(emp) && sc[emp.id] >= emp.maxShifts) return;
-    // Break SL never gets more than 3 shifts
+    // Grae/Cesia: absolute hard cap at 2
+    if (isHardCapped(emp) && sc[emp.id] >= 2) return;
+    // Break SL: hard cap at 3
     if (emp._isBreakSL && sc[emp.id] >= 3) return;
-    // Regular employees never get more than 3 shifts
+    // Regular employees: hard cap at 3 regardless of Firebase maxShifts value
     if (emp.role === "regular" && !isHardCapped(emp) && sc[emp.id] >= 3) return;
+    // Non-break SLs: cap at 4
+    if (emp.role === "shift_lead" && !emp._isBreakSL && sc[emp.id] >= 4) return;
+    // General _effMaxShifts cap as fallback
+    if (sc[emp.id] >= emp._effMaxShifts) return;
     // ABSOLUTE: never assign someone to two shifts on the same day
     if (sd[emp.id].has(dateStr)) return;
     _doAssign(dateStr, slotIndex, emp, slot);
   };
   const forceAssign = (dateStr, slotIndex, emp, slot) => {
-    // No hard blocks — used only as absolute last resort to fill empty slots
-    // EXCEPT: always respect hard caps for employees with maxShifts <= 2
-    if (isHardCapped(emp) && sc[emp.id] >= emp.maxShifts) return;
+    // Absolute last resort — but still respect role-based caps
+    if (isHardCapped(emp) && sc[emp.id] >= 2) return;
+    if (emp._isBreakSL && sc[emp.id] >= 3) return;
+    if (emp.role === "regular" && !isHardCapped(emp) && sc[emp.id] >= 3) return;
     _doAssign(dateStr, slotIndex, emp, slot);
   };
   const _doAssign = (dateStr, slotIndex, emp, slot) => {
@@ -2064,9 +2067,10 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
     setStep("review");
   };
 
-  const handleGenerate = (breaks, maxOverridesOverride) => {
+  const handleGenerate = (breaks, maxOverridesOverride, priorityRankingOverride) => {
     const useBreaks = breaks || approvedBreaks;
     const useMaxOverrides = maxOverridesOverride !== undefined ? maxOverridesOverride : weeklyMaxOverrides;
+    const usePriorityRanking = priorityRankingOverride || priorityRanking;
     setGenerating(true); setStep("result"); setPendingApprovals(null);
     const ds = dayStaffing || initDayStaffing(weekDates);
     setTimeout(() => {
@@ -2097,7 +2101,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
 
         // Build variations — different SL orderings to try
         const sls = employees.filter(e => e.status === "active" && e.role === "shift_lead");
-        const baseSLOrder = priorityRanking?.sl || sls.map(e => e.id);
+        const baseSLOrder = usePriorityRanking?.sl || sls.map(e => e.id);
 
         // Generate permutations of the break SL (bottom of ranking)
         const attempts = [];
@@ -2137,7 +2141,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
             const r = genSchedule(
               weekDates, employees, rules, schoolDates, allTOs, ds,
               availOverrides, useMaxOverrides, useBreaks, savedSchedules,
-              { ...priorityRanking, sl: slRanking },
+              { ...usePriorityRanking, sl: slRanking },
               importantEvenings
             );
             const s = scoreResult(r);
@@ -2196,9 +2200,8 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
     setWeeklyMaxOverrides(overrides);
     savePriorityRanking({ sl: slRanking || [], reg: regRanking || [], leftovers: leftoverIds || [] });
     setShowNuance(false);
-    // Do NOT reset dayStaffing here — preserve any staffing adjustments the manager made
-    // Pass overrides directly — React state update is async so weeklyMaxOverrides would be stale
-    setTimeout(() => handleGenerate(approvedBreaks, overrides), 50);
+    // Pass overrides AND slRanking directly — React state updates are async so both would be stale
+    setTimeout(() => handleGenerate(approvedBreaks, overrides, { sl: slRanking || [], reg: regRanking || [], leftovers: leftoverIds || [] }), 50);
   };
 
   const handleApproveBreaks = (approvedIds) => {
