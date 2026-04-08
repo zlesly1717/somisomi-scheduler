@@ -823,13 +823,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       approved.add("F7"); approved.add("F8"); approved.add("no_fri_sat_sun");
       cands = getCandidates(slot, c => c.filter(e => e.role === "shift_lead"));
       approved.delete("F7"); approved.delete("F8"); approved.delete("no_fri_sat_sun");
-      // Prefer SL who has Sun MC (they're already working late, not an extra night from scratch)
-      cands.sort((a, b) => {
-        const aMC = nightMap[weekDates[6]]?.has(a.id) ? 0 : 1;
-        const bMC = nightMap[weekDates[6]]?.has(b.id) ? 0 : 1;
-        return aMC - bMC; // prefer the Sun MC person last (they have the most nights)
-      });
-      cands.sort(slSortFn); // re-sort by the standard SL sort
+      // Sort: SLs with fewest shifts get priority (they need the 4th shift most)
+      // then fewest hours as tiebreaker — don't re-sort with slSortFn (it overwrites)
+      cands.sort((a, b) => sc[a.id] - sc[b.id] || sh[a.id] - sh[b.id]);
     }
     if (cands[0]) {
       assignSlotInSchedule(slot, cands[0]);
