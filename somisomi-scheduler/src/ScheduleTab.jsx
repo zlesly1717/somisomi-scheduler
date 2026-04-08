@@ -256,12 +256,12 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       .map(([k]) => k)
   );
 
-  // GRAE RULE: max 1 weekend shift, prefer to use her other shift on a weekday
-  // (unless weekday is unavailable, then allow 2 weekends)
-  const graeEmp = active.find(e => e.name === "Grae McKown");
-  if (graeEmp) {
-    graeEmp._maxWeekendShifts = 1; // soft cap — enforced during assignment
-  }
+  // GRAE + CESIA RULE: max 1 weekend shift + max 1 weekday shift (total 2 shifts)
+  // Enforced during assignment via _maxWeekendShifts flag
+  active.filter(e => e.id === "reg-7" || e.id === "tr-6").forEach(emp => {
+    emp._maxWeekendShifts = 1; // 1 weekend shift max
+    emp._maxWeekdayShifts = 1; // 1 weekday shift max
+  });
 
   // ── STEP 1b: Compute target shifts for balancing ──────────────────
   const computeGroupAvg = (group) => {
@@ -478,17 +478,28 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (!weekendNightOK(emp, dateStr, slot.start, slot.isMC)) return false; // F7/F8
       if (!consecOK(emp, dayIndex)) return false; // F9
 
-      // FLEXIBLE F2: Grae max 1 weekend shift
+      // FLEXIBLE F2: Grae/Cesia max 1 weekend shift + max 1 weekday shift
       if (!approved.has("F2") && emp._maxWeekendShifts !== undefined) {
         const isWeekendSlot = dow === 0 || dow === 6 || (dow === 5 && tm(slot.start) >= 1020);
+        const isWeekdaySlot = !isWeekendSlot;
         if (isWeekendSlot) {
           const wkndSoFar = [4,5,6].reduce((c, wi) => c + (sd[emp.id].has(weekDates[wi]) ? 1 : 0), 0);
-          if (wkndSoFar >= emp._maxWeekendShifts) {
+          if (wkndSoFar >= (emp._maxWeekendShifts || 1)) {
             const hasWeekdayAvail = [0,1,2,3].some(wi =>
               !sd[emp.id].has(weekDates[wi]) &&
               isAvail(emp, weekDates[wi], "18:00", "22:30", weeklyTimeOffs, availOverrides)
             );
             if (hasWeekdayAvail) return false;
+          }
+        }
+        if (isWeekdaySlot && emp._maxWeekdayShifts !== undefined) {
+          const wkdaySoFar = [0,1,2,3].reduce((c, wi) => c + (sd[emp.id].has(weekDates[wi]) ? 1 : 0), 0);
+          if (wkdaySoFar >= emp._maxWeekdayShifts) {
+            const hasWeekendAvail = [4,5,6].some(wi =>
+              !sd[emp.id].has(weekDates[wi]) &&
+              isAvail(emp, weekDates[wi], "18:00", "22:30", weeklyTimeOffs, availOverrides)
+            );
+            if (hasWeekendAvail) return false;
           }
         }
       }
@@ -1110,6 +1121,15 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     // PICK: Fewest shifts first (equalize shift count), then fewest hours (equalize hours)
     // SLs needing 4 shifts get priority. Guaranteed days respected.
     const slMinHours = 18;
+    // Count non-MC shifts only — people whose only shifts are MC shouldn't be penalized
+    // for weekday slot priority (Marissa on Sun MC should still get a weekday slot)
+    const nonMCSC = (emp) => {
+      let count = 0;
+      weekDates.forEach(d => {
+        schedule[d]?.forEach(s => { if (s.empId === emp.id && !s.isMC) count++; });
+      });
+      return count;
+    };
     cands.sort((a, b) => {
       const aOv = availOverrides?.[dateStr + ":" + a.id] ? 1 : 0;
       const bOv = availOverrides?.[dateStr + ":" + b.id] ? 1 : 0;
@@ -1121,9 +1141,12 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       const aSLUnder = a.role === "shift_lead" && sh[a.id] < slMinHours ? 1 : 0;
       const bSLUnder = b.role === "shift_lead" && sh[b.id] < slMinHours ? 1 : 0;
       if (bSLUnder !== aSLUnder) return bSLUnder - aSLUnder;
-      // PRIMARY: fewest shifts (ensures everyone reaches their target before anyone gets extras)
+      // PRIMARY: fewest non-MC shifts first (MC shifts don't count against weekday priority)
+      const aNonMC = nonMCSC(a), bNonMC = nonMCSC(b);
+      if (aNonMC !== bNonMC) return aNonMC - bNonMC;
+      // SECONDARY: fewest total shifts
       if (sc[a.id] !== sc[b.id]) return sc[a.id] - sc[b.id];
-      // SECONDARY: fewest hours (equalize hours within same shift count)
+      // TERTIARY: fewest hours
       if (sh[a.id] !== sh[b.id]) return sh[a.id] - sh[b.id];
       if (isWeekendSlot) {
         const aWE = weCount[a.id] || 0, bWE = weCount[b.id] || 0;
@@ -1533,7 +1556,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   // ── Flexible rule detection ───────────────────────────────────────
   const FLEXIBLE_RULES = [
     { id: "F1",  label: "Good weekend people preferred on weekends" },
-    { id: "F2",  label: "Grae max 1 weekend shift" },
+    { id: "F2",  label: "Grae/Cesia: max 1 weekday + 1 weekend shift" },
     { id: "F3",  label: "2nd day priority list" },
     { id: "F4",  label: "Trainees preferred on Mon-Thu evenings" },
     { id: "F5",  label: "Regulars preferred over SLs on weekday 2nd day" },
