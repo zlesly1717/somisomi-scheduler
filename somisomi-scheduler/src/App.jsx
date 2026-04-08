@@ -112,6 +112,14 @@ function buildMCHistorySeed() {
       sun: { leader: "Chan In", slHelper: "Zoe Rains", helpers: ["Abrar Uddin", "Kaitlyn Trevino"] },
       breakSL: "Spencer Losch", savedAt: "2026-04-12T20:00:00Z",
     },
+    { key: "2026-04-13", // Apr 13-19 (published)
+      // Thu Apr 16: Crystal MC Lead + Zoe (SL) + Marissa + Kennedy
+      // Sun Apr 19: Spencer MC Lead + Chan (SL helper) + Marissa + Nani
+      // Break SL: Kaitlyn Trevino
+      thu: { leader: "Crystal Guel", slHelper: "Zoe Rains", helpers: ["Marissa Shelton", "Kennedy Bean"] },
+      sun: { leader: "Spencer Losch", slHelper: "Chan In", helpers: ["Marissa Shelton", "Nani Hoomes"] },
+      breakSL: "Kaitlyn Trevino", savedAt: "2026-04-19T20:00:00Z",
+    },
   ];
 
   const result = {};
@@ -130,10 +138,16 @@ function buildMCHistorySeed() {
     dates.forEach(dt => { schedule[dt] = []; });
 
     // Thu MC slots
-    schedule[thuDate] = [
+    const thuSlots = [
       { type: "mc_leader", label: "MC Leader (Eve SL)", start: "18:00", end: "23:45", hours: 5.75, isMC: true, order: 20, empId: "seed", empName: w.thu.leader, empRole: "shift_lead" },
-      ...w.thu.helpers.map((h, i) => ({ type: "mc_helper", label: "MC Helper", start: "18:00", end: "23:45", hours: 5.75, isMC: true, order: 22 + i, empId: "seed-h" + i, empName: h, empRole: "regular" })),
     ];
+    if (w.thu.slHelper) {
+      thuSlots.push({ type: "mc_sl_helper", label: "MC Helper (SL)", start: "18:00", end: "23:45", hours: 5.75, isMC: true, order: 21, empId: "seed-tsl", empName: w.thu.slHelper, empRole: "shift_lead" });
+    }
+    w.thu.helpers.forEach((h, i) => {
+      thuSlots.push({ type: "mc_helper", label: "MC Helper", start: "18:00", end: "23:45", hours: 5.75, isMC: true, order: 22 + i, empId: "seed-h" + i, empName: h, empRole: "regular" });
+    });
+    schedule[thuDate] = thuSlots;
 
     // Sun MC slots
     const sunSlots = [
