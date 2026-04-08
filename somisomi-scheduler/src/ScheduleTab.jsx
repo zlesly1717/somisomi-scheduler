@@ -612,8 +612,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     if (isMC) {
       // MC slots for the cleaning crew
       // Thu MC: 1 SL leader + 2 reg helpers = 3 total (owner helps in person)
-      // Sun MC: ideally 1 SL leader + 1 SL helper + 2 reg helpers = 4 total
-      //         but can flex to 1 SL leader + 0 SL helper + 2 reg helpers if SL unavailable
+      // Sun MC: ALWAYS 1 SL leader + 1 SL helper + 2 reg helpers = 4 total
+      //         (2 SLs frees up the 3rd SL for evening floor coverage)
       slots.push({ type: "mc_leader", label: "MC Lead", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: true, isMC: true, order: 20 });
       if (isSun) {
         slots.push({ type: "mc_sl_helper", label: "MC Crew (SL)", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: true, isMC: true, order: 21 });
@@ -1087,13 +1087,14 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       const isSunMC = slot._dow === 0;
 
       if (isSunMC) {
-        // Sunday MC: PREFER 3 SLs + 1 reg. Count SLs already on MC crew.
+        // Sunday MC: 2 SLs + 2 regs (mc_leader + mc_sl_helper handled in Step 2 as slOnly)
+        // Regular MC helper slots just use the reg MC rotation sort
         const slsOnMC = schedule[slot._dateStr]?.filter(s => s.isMC && s.empId && active.find(e => e.id === s.empId && e.role === "shift_lead")).length || 0;
         const slAvail = cands.filter(e => e.role === "shift_lead");
         const regAvail = cands.filter(e => e.role !== "shift_lead" && (e.role !== "trainee" || isEffectivelyGraduated(e)) && !(e.tags || []).includes("mc_exempt"));
 
-        if (slsOnMC < 3 && slAvail.length > 0) {
-          // Still room for another SL — prefer SL to reach 3 total
+        if (false && slsOnMC < 3 && slAvail.length > 0) {
+          // DISABLED: no longer trying to get 3 SLs — always 2 SLs + 2 regs
           cands = slAvail;
         } else if (regAvail.length > 0) {
           // Have 3 SLs or no SL available — use reg
