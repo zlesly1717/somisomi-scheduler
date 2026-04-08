@@ -490,12 +490,11 @@ export default function App() {
             return slot;
           });
         }
-        // Fix Thu Apr 16: Crystal + Zoe + Marissa only (remove Kennedy)
+        // Fix Thu Apr 16: Crystal + Zoe + Marissa only (filter out Kennedy entirely)
         if (sched1319["2026-04-16"]) {
-          sched1319["2026-04-16"] = sched1319["2026-04-16"].map(slot => {
-            if (!slot.isMC || slot.empName !== "Kennedy Bean") return slot;
-            return { ...slot, empId: null, empName: "⚠ UNFILLED", empRole: null };
-          });
+          sched1319["2026-04-16"] = sched1319["2026-04-16"].filter(slot => 
+            !(slot.isMC && slot.empName === "Kennedy Bean")
+          );
         }
         w1319.schedule = sched1319;
         w1319._mcFixed = true;
