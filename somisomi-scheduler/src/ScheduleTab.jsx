@@ -218,6 +218,10 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (e.role === "regular" && e._effMaxShifts < 3) { e._effMaxShifts = 3; e.maxShifts = 3; }
       if (e.role === "regular" && e.maxHours < 12) { e.maxHours = 20; }
       if (e.role === "shift_lead" && e._effMaxShifts < 4) { e._effMaxShifts = 4; e.maxShifts = 4; }
+      // Graduated trainees should get 3 shifts like regulars
+      if (e.role === "trainee" && (e.traineeCumulative || 0) >= 30 && e._effMaxShifts < 3) {
+        e._effMaxShifts = 3; e._budget = Math.min(e._budget || 7, 3);
+      }
     }
     e._effMaxHours = e.maxHours;
     e._effMinHours = 0;
@@ -394,10 +398,25 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   const assign = (dateStr, slotIndex, emp, slot) => {
     // Grae/Cesia: absolute hard cap at 2
     if (isHardCapped(emp) && sc[emp.id] >= 2) return;
+    // Grae/Cesia: hard 1-weekday + 1-weekend rule
+    if (isHardCapped(emp)) {
+      const dow = new Date(dateStr + "T12:00:00").getDay();
+      const isWE = dow === 0 || dow === 6 || (dow === 5 && slot.start && parseInt(slot.start) >= 18);
+      if (isWE) {
+        // Already has a weekend shift? Block another weekend
+        const wkndCount = (weekDates || []).filter((d, i) => i >= 4 && sd[emp.id].has(d)).length;
+        if (wkndCount >= 1) return;
+      } else {
+        // Already has a weekday shift? Block another weekday
+        const wkdayCount = (weekDates || []).filter((d, i) => i < 4 && sd[emp.id].has(d)).length;
+        if (wkdayCount >= 1) return;
+      }
+    }
     // Break SL: hard cap at 3
     if (emp._isBreakSL && sc[emp.id] >= 3) return;
-    // Regular employees: hard cap at 3 regardless of Firebase maxShifts value
-    if (emp.role === "regular" && !isHardCapped(emp) && sc[emp.id] >= 3) return;
+    // Regular employees + graduated trainees: hard cap at 3
+    const isGraduatedTrainee = emp.role === "trainee" && isEffectivelyGraduated(emp);
+    if ((emp.role === "regular" || isGraduatedTrainee) && !isHardCapped(emp) && sc[emp.id] >= 3) return;
     // Non-break SLs: cap at 4
     if (emp.role === "shift_lead" && !emp._isBreakSL && sc[emp.id] >= 4) return;
     // General _effMaxShifts cap as fallback
@@ -409,6 +428,17 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   const forceAssign = (dateStr, slotIndex, emp, slot) => {
     // Absolute last resort — but still respect role-based caps
     if (isHardCapped(emp) && sc[emp.id] >= 2) return;
+    if (isHardCapped(emp)) {
+      const dow = new Date(dateStr + "T12:00:00").getDay();
+      const isWE = dow === 0 || dow === 6 || (dow === 5 && slot.start && parseInt(slot.start) >= 18);
+      if (isWE) {
+        const wkndCount = (weekDates || []).filter((d, i) => i >= 4 && sd[emp.id].has(d)).length;
+        if (wkndCount >= 1) return;
+      } else {
+        const wkdayCount = (weekDates || []).filter((d, i) => i < 4 && sd[emp.id].has(d)).length;
+        if (wkdayCount >= 1) return;
+      }
+    }
     if (emp._isBreakSL && sc[emp.id] >= 3) return;
     if (emp.role === "regular" && !isHardCapped(emp) && sc[emp.id] >= 3) return;
     _doAssign(dateStr, slotIndex, emp, slot);
