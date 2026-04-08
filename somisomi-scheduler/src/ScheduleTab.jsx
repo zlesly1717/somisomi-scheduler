@@ -2225,9 +2225,12 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
       const dow = new Date(d + "T12:00:00").getDay(); // 0=Sun,1=Mon,...,6=Sat
       const isWeekend = dow === 0 || dow === 6; // Sat or Sun
       const isFri = dow === 5;
-      if (isWeekend || isFri) {
-        // Fri/Sat/Sun: Day=3, Mid=1, Eve=5
+      if (isWeekend) {
+        // Sat/Sun: Day=3, Mid=1, Eve=5
         ds[d] = { day: 3, mid: 1, evening: 5 };
+      } else if (isFri) {
+        // Fri: Day=2, Mid=0, Eve=5
+        ds[d] = { day: 2, mid: 0, evening: 5 };
       } else {
         // Mon-Thu: Day=2, Mid=0, Eve=4
         ds[d] = { day: 2, mid: 0, evening: 4 };

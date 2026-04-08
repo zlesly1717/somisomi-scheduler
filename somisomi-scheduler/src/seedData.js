@@ -56,7 +56,7 @@ export const SEED_EMPLOYEES = [
     notes:"Always MCs Thursday (Sun all day off).",traineeCumulative:0,guaranteedDays:["fri","sat"],
   },
   {
-    id:"reg-1",name:"Kennedy Bean",role:"regular",status:"active",
+    id:"reg-1",name:"Kennedy Bean",role:"regular",status:"active",tier:"top",
     maxShifts:3,minShifts:3,maxHours:20,minHours:12,
     tags:["can_swirl","good_weekend","can_mc"],
     unavailability:{
@@ -101,7 +101,7 @@ export const SEED_EMPLOYEES = [
     notes:"2nd Day & 4th shift priority. Tue/Thu can start at 12pm. Fri-Sun clear.",traineeCumulative:0,guaranteedDays:[],
   },
   {
-    id:"reg-4",name:"Gwen Ursua",role:"regular",status:"active",
+    id:"reg-4",name:"Gwen Ursua",role:"regular",status:"active",tier:"top",
     maxShifts:3,minShifts:3,maxHours:20,minHours:12,
     tags:["can_swirl","good_weekend","can_mc"],
     unavailability:{
@@ -111,7 +111,7 @@ export const SEED_EMPLOYEES = [
     notes:"Good person. Can do 4 shifts. Sun unavailable 9am-6pm.",traineeCumulative:0,guaranteedDays:[],
   },
   {
-    id:"reg-5",name:"Susan Thai",role:"regular",status:"active",
+    id:"reg-5",name:"Susan Thai",role:"regular",status:"active",tier:"top",
     maxShifts:3,minShifts:3,maxHours:20,minHours:12,
     tags:["can_swirl","fourth_shift_priority","can_mc"],
     unavailability:{
@@ -126,7 +126,7 @@ export const SEED_EMPLOYEES = [
     notes:"Can do Thu MC (6pm+). 4th shift priority. Fri-Sun clear.",traineeCumulative:0,guaranteedDays:[],
   },
   {
-    id:"reg-6",name:"Abrar Uddin",role:"regular",status:"active",
+    id:"reg-6",name:"Abrar Uddin",role:"regular",status:"active",tier:"top",
     maxShifts:3,minShifts:3,maxHours:20,minHours:12,
     tags:["can_swirl","fourth_shift_priority","second_day_priority","good_weekend","no_weekday_nights"],
     unavailability:{

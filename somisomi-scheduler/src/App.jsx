@@ -393,6 +393,9 @@ export default function App() {
         if ((e.name === "Christina Mullins" || e.id === "reg-8") && e.status !== "inactive") e.status = "inactive";
         if ((e.name === "Tiernan Hollister" || e.id === "tr-2") && e.status !== "inactive") e.status = "inactive";
         if ((e.name === "Lena Maslak" || e.id === "reg-3") && e.status !== "inactive") e.status = "inactive";
+        // Auto-migrate: set top tier for key employees if not already set
+        const TOP_TIER_NAMES = ["Kennedy Bean", "Gwen Ursua", "Susan Thai", "Abrar Uddin"];
+        if (!e.tier && TOP_TIER_NAMES.includes(e.name)) e.tier = "top";
         if ((e.name === "Yise Moya" || e.id === "tr-1") && e.role === "trainee") {
           e.role = "regular"; e.maxShifts = 4; e.minShifts = 3; e.maxHours = 20; e.minHours = 12;
           if (!(e.tags || []).includes("can_swirl")) e.tags = [...(e.tags || []), "can_swirl", "can_mc"];
