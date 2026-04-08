@@ -246,8 +246,34 @@ export function EmployeesTab({ employees, setEmployees }) {
     return true;
   });
 
+  const activeTiered = employees.filter(e => e.status === "active" && e.role !== "shift_lead");
+  const topTier = activeTiered.filter(e => (e.tier || "standard") === "top");
+  const stdTier = activeTiered.filter(e => (e.tier || "standard") === "standard");
+  const flexTier = activeTiered.filter(e => (e.tier || "standard") === "flexible");
+
   return (
     <>
+      {/* Tier summary panel */}
+      <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10, padding: "10px 14px", marginBottom: 12, fontFamily: font }}>
+        <div style={{ fontSize: 11, fontWeight: 800, color: "#92400E", marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>Staff Tiers — tap any badge on an employee card to cycle</div>
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+          {TIERS.map(t => {
+            const members = t.id === "top" ? topTier : t.id === "standard" ? stdTier : flexTier;
+            return (
+              <div key={t.id} style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 120 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, color: t.color, background: t.bg, border: `1px solid ${t.border}`, borderRadius: 6, padding: "2px 7px", display: "inline-block" }}>{t.emoji} {t.label}</span>
+                <span style={{ fontSize: 10, color: "#6B7280" }}>{t.desc}</span>
+                <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+                  {members.length === 0
+                    ? <span style={{ fontSize: 9, color: "#D1D5DB", fontStyle: "italic" }}>none</span>
+                    : members.map(e => <span key={e.id} style={{ fontSize: 9, fontWeight: 600, color: t.color, background: t.bg, borderRadius: 4, padding: "1px 5px" }}>{e.name.split(" ")[0]}</span>)
+                  }
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
       {/* Toolbar */}
       <div style={{ padding: "12px 28px", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", background: "#fff", borderBottom: "1px solid #E5E7EB" }}>
         <div style={{ position: "relative" }}>

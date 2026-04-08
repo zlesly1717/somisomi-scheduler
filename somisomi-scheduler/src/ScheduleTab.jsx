@@ -612,7 +612,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     if (isMC) {
       // MC slots for the cleaning crew
       // Thu MC: 1 SL leader + 2 reg helpers = 3 total (owner helps in person)
-      // Sun MC: 1 SL leader + 1 SL helper + 2 reg helpers = 4 total (no outside help)
+      // Sun MC: ideally 1 SL leader + 1 SL helper + 2 reg helpers = 4 total
+      //         but can flex to 1 SL leader + 0 SL helper + 2 reg helpers if SL unavailable
       slots.push({ type: "mc_leader", label: "MC Lead", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: true, isMC: true, order: 20 });
       if (isSun) {
         slots.push({ type: "mc_sl_helper", label: "MC Crew (SL)", start: mcS, end: mcE, hours: hrs(mcS, mcE), slOnly: true, isMC: true, order: 21 });
@@ -832,24 +833,50 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     }
     if (cands[0]) {
       assignSlotInSchedule(slot, cands[0]);
-    } else if (!slot.isMC) {
-      // No SL available — try strong regulars as last resort (Susan, Gwen, Abrar)
+    } else {
       const slotInSched = schedule[slot._dateStr].find(s => s.order === slot.order);
       if (slotInSched && !slotInSched.empId) {
-        const srCands = strongRegulars.filter(e =>
-          isAvail(e, slot._dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides) &&
-          !sd[e.id].has(slot._dateStr) &&
-          sc[e.id] < 3
-        ).sort((a, b) => sh[a.id] - sh[b.id]); // fewest hours first
-        if (srCands[0]) {
-          // Downgrade slot so assign() doesn't reject non-SL
+        if (slot.type === "mc_sl_helper") {
+          // Sun MC SL helper: if no SL available, downgrade to regular MC helper
+          // This allows 2 SLs + 2 regs instead of always requiring 3 SLs
           slotInSched.slOnly = false;
-          assign(slot._dateStr, schedule[slot._dateStr].indexOf(slotInSched), srCands[0], slotInSched);
-        } else if (slot.type === "evening_sl2") {
-          // Still nothing — downgrade to regular evening for gap fill passes
-          slotInSched.slOnly = false;
-          slotInSched.type = "evening";
-          slotInSched.label = "Evening";
+          slotInSched.type = "mc_helper";
+          slotInSched.label = "MC Helper";
+          // Now try to fill with a regular
+          const regCands = getCandidates(slotInSched).filter(e =>
+            e.role !== "shift_lead" &&
+            (e.role !== "trainee" || isEffectivelyGraduated(e)) &&
+            !(e.tags || []).includes("mc_exempt") &&
+            sc[e.id] < 3
+          );
+          const assistantPool = rules?.mcRotation?.assistantPool || [];
+          const prevWK = weekDates[0] ? (() => { const d = new Date(weekDates[0] + "T12:00:00"); d.setDate(d.getDate() - 7); return d.toISOString().split("T")[0]; })() : "";
+          regCands.sort((a, b) => {
+            const aL = mcHistoryLast[a.name] || "", bL = mcHistoryLast[b.name] || "";
+            const aR = aL >= prevWK ? 1 : 0, bR = bL >= prevWK ? 1 : 0;
+            if (aR !== bR) return aR - bR;
+            if (!aL && !bL) return assistantPool.indexOf(a.name) - assistantPool.indexOf(b.name);
+            if (!aL) return -1; if (!bL) return 1;
+            if (aL !== bL) return aL.localeCompare(bL);
+            return assistantPool.indexOf(a.name) - assistantPool.indexOf(b.name);
+          });
+          if (regCands[0]) assign(slot._dateStr, schedule[slot._dateStr].indexOf(slotInSched), regCands[0], slotInSched);
+        } else if (!slot.isMC) {
+          // Non-MC SL slot: try strong regulars as last resort (Susan, Gwen, Abrar)
+          const srCands = strongRegulars.filter(e =>
+            isAvail(e, slot._dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides) &&
+            !sd[e.id].has(slot._dateStr) &&
+            sc[e.id] < 3
+          ).sort((a, b) => sh[a.id] - sh[b.id]);
+          if (srCands[0]) {
+            slotInSched.slOnly = false;
+            assign(slot._dateStr, schedule[slot._dateStr].indexOf(slotInSched), srCands[0], slotInSched);
+          } else if (slot.type === "evening_sl2") {
+            // Still nothing — downgrade to regular evening for gap fill passes
+            slotInSched.slOnly = false;
+            slotInSched.type = "evening";
+            slotInSched.label = "Evening";
+          }
         }
       }
     }
@@ -1625,27 +1652,46 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 
   // ── POST-GENERATION SAFETY: strip excess shifts ──────────────────
   // Final sanity check — remove any shifts that exceed role caps
+  // This is the absolute last line of defense — runs after ALL passes
   active.forEach(emp => {
     const cap = isHardCapped(emp) ? 2
       : emp._isBreakSL ? 3
       : (emp.role === "regular" || (emp.role === "trainee" && isEffectivelyGraduated(emp))) ? 3
       : emp.role === "shift_lead" ? 4
       : 3;
-    if (sc[emp.id] <= cap) return; // within cap, nothing to do
-    // Remove excess shifts — remove the ones that matter least (non-SL slots, latest in week)
-    const daysWorked = weekDates.filter(d => sd[emp.id].has(d)).reverse(); // latest first
-    for (const d of daysWorked) {
-      if (sc[emp.id] <= cap) break;
-      for (let si = schedule[d].length - 1; si >= 0; si--) {
-        const slot = schedule[d][si];
-        if (slot.empId !== emp.id) continue;
-        if (slot.slOnly || slot.isMC) continue; // don't remove essential slots
-        // Remove this shift
-        schedule[d][si] = { ...slot, empId: null, empName: "⚠ UNFILLED", empRole: null };
-        sc[emp.id]--; sh[emp.id] -= slot.hours;
-        if (!schedule[d].some(s => s.empId === emp.id)) sd[emp.id].delete(d);
-        break;
+    // Keep stripping until within cap (loop handles multiple excess shifts)
+    while (sc[emp.id] > cap) {
+      const daysWorked = weekDates.filter(d => sd[emp.id].has(d)).reverse(); // latest first
+      let removed = false;
+      // Pass 1: remove non-essential slots (not slOnly, not isMC)
+      outer: for (const d of daysWorked) {
+        for (let si = schedule[d].length - 1; si >= 0; si--) {
+          const slot = schedule[d][si];
+          if (slot.empId !== emp.id) continue;
+          if (slot.slOnly || slot.isMC) continue;
+          schedule[d][si] = { ...slot, empId: null, empName: "⚠ UNFILLED", empRole: null };
+          sc[emp.id]--; sh[emp.id] -= slot.hours;
+          if (!schedule[d].some(s => s.empId === emp.id)) sd[emp.id].delete(d);
+          removed = true;
+          break outer;
+        }
       }
+      // Pass 2: if still over cap (all slots are slOnly/isMC), remove any non-MC slot
+      if (!removed) {
+        outer2: for (const d of daysWorked) {
+          for (let si = schedule[d].length - 1; si >= 0; si--) {
+            const slot = schedule[d][si];
+            if (slot.empId !== emp.id) continue;
+            if (slot.isMC) continue; // only keep MC, remove even slOnly
+            schedule[d][si] = { ...slot, empId: null, empName: "⚠ UNFILLED", empRole: null };
+            sc[emp.id]--; sh[emp.id] -= slot.hours;
+            if (!schedule[d].some(s => s.empId === emp.id)) sd[emp.id].delete(d);
+            removed = true;
+            break outer2;
+          }
+        }
+      }
+      if (!removed) break; // safety: avoid infinite loop
     }
   });
 
@@ -2179,14 +2225,12 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
       const dow = new Date(d + "T12:00:00").getDay(); // 0=Sun,1=Mon,...,6=Sat
       const isWeekend = dow === 0 || dow === 6; // Sat or Sun
       const isFri = dow === 5;
-      const dt = getDayType(d, schoolDates);
-      const s = rules.staffing[dt] || rules.staffing.weekday;
       if (isWeekend || isFri) {
         // Fri/Sat/Sun: Day=3, Mid=1, Eve=5
-        ds[d] = { day: s.day || 3, mid: s.mid !== undefined ? s.mid : 1, evening: s.evening || 5 };
+        ds[d] = { day: 3, mid: 1, evening: 5 };
       } else {
         // Mon-Thu: Day=2, Mid=0, Eve=4
-        ds[d] = { day: s.day || 2, mid: s.mid !== undefined ? s.mid : 0, evening: s.evening || 4 };
+        ds[d] = { day: 2, mid: 0, evening: 4 };
       }
     });
     return ds;
