@@ -2103,19 +2103,10 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
         const sls = employees.filter(e => e.status === "active" && e.role === "shift_lead");
         const baseSLOrder = usePriorityRanking?.sl || sls.map(e => e.id);
 
-        // Generate permutations of the break SL (bottom of ranking)
+        // Generate permutations — always keep designated break SL (last in baseSLOrder) at bottom
+        // Only shuffle the non-break SLs to explore different day/evening slot assignments
         const attempts = [];
 
-        // Attempt 1: use the exact ranking as given
-        attempts.push({ slRanking: baseSLOrder, breakIdx: baseSLOrder.length - 1 });
-
-        // Attempts 2-5: try each SL as the break SL
-        sls.forEach(sl => {
-          const withoutThis = baseSLOrder.filter(id => id !== sl.id);
-          attempts.push({ slRanking: [...withoutThis, sl.id], breakIdx: withoutThis.length });
-        });
-
-        // Attempts 6-15: shuffle the non-break SLs to get different day/evening assignments
         const shuffleArray = (arr) => {
           const a = [...arr];
           for (let i = a.length - 1; i > 0; i--) {
@@ -2125,10 +2116,16 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
           return a;
         };
 
-        const baseBreakId = baseSLOrder[baseSLOrder.length - 1];
-        for (let i = 0; i < 10; i++) {
-          const nonBreak = shuffleArray(baseSLOrder.filter(id => id !== baseBreakId));
-          attempts.push({ slRanking: [...nonBreak, baseBreakId], breakIdx: nonBreak.length });
+        const baseBreakId = baseSLOrder[baseSLOrder.length - 1]; // Always the designated break SL
+        const nonBreakSLs = baseSLOrder.filter(id => id !== baseBreakId);
+
+        // Attempt 1: use the exact ranking as given
+        attempts.push({ slRanking: baseSLOrder, breakIdx: baseSLOrder.length - 1 });
+
+        // Attempts 2-15: shuffle non-break SLs only — break SL always stays at bottom
+        for (let i = 0; i < 14; i++) {
+          const shuffled = shuffleArray(nonBreakSLs);
+          attempts.push({ slRanking: [...shuffled, baseBreakId], breakIdx: shuffled.length });
         }
 
         // Run all attempts and score them
