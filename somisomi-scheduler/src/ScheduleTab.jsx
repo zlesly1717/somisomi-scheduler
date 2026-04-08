@@ -862,16 +862,27 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
           });
           if (regCands[0]) assign(slot._dateStr, schedule[slot._dateStr].indexOf(slotInSched), regCands[0], slotInSched);
         } else if (!slot.isMC) {
-          // Non-MC SL slot: try strong regulars as last resort (Susan, Gwen, Abrar)
-          const srCands = strongRegulars.filter(e =>
+          // Non-MC SL slot: try strong regulars (top tier) as last resort
+          // Try ALL regulars sorted by tier then hours — top tier first
+          const allRegCands = active.filter(e =>
+            e.role !== "shift_lead" &&
+            !isHardCapped(e) &&
+            (e.role !== "trainee" || isEffectivelyGraduated(e)) &&
             isAvail(e, slot._dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides) &&
             !sd[e.id].has(slot._dateStr) &&
             sc[e.id] < 3
-          ).sort((a, b) => sh[a.id] - sh[b.id]);
-          if (srCands[0]) {
+          ).sort((a, b) => {
+            // Top tier first
+            const tierRank = { top: 0, standard: 1, flexible: 2 };
+            const aTier = tierRank[a.tier || "standard"] ?? 1;
+            const bTier = tierRank[b.tier || "standard"] ?? 1;
+            if (aTier !== bTier) return aTier - bTier;
+            return sh[a.id] - sh[b.id]; // fewest hours second
+          });
+          if (allRegCands[0]) {
             slotInSched.slOnly = false;
-            assign(slot._dateStr, schedule[slot._dateStr].indexOf(slotInSched), srCands[0], slotInSched);
-          } else if (slot.type === "evening_sl2") {
+            assign(slot._dateStr, schedule[slot._dateStr].indexOf(slotInSched), allRegCands[0], slotInSched);
+          } else {
             // Still nothing — downgrade to regular evening for gap fill passes
             slotInSched.slOnly = false;
             slotInSched.type = "evening";
@@ -1058,9 +1069,14 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     }
     const isWeekendSlot = slot._isWE || (slot._isFri && tm(slot.start) >= 1020);
 
-    // Mid shift: strongly prefer trainees (their dedicated slot)
+    // Mid shift: trainee slot — prefer trainees, then graduated trainees/regulars
+    // Never assign SLs or hard-capped employees (Grae/Cesia) to mid slots
     if (slot.type === "mid" || slot.isTraineeSlot) {
-      const traineeCands = cands.filter(e => e.role === "trainee" || isTrainee(e));
+      // Remove SLs and hard-capped from mid slots entirely
+      const noSLorCapped = cands.filter(e => e.role !== "shift_lead" && !isHardCapped(e));
+      if (noSLorCapped.length > 0) cands = noSLorCapped;
+      // Prefer actual trainees first
+      const traineeCands = cands.filter(e => isTrainee(e));
       if (traineeCands.length > 0) cands = traineeCands;
       // Sort by cumulative hours — less experienced first
       cands.sort((a, b) => (a.traineeCumulative || 0) - (b.traineeCumulative || 0));
@@ -1287,6 +1303,29 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         openSlots.push({ dateStr, idx, slot, dow });
       });
     });
+
+    // If no open slots found with normal rules, relax F7/F8 for SLs reaching 4th shift
+    if (openSlots.length === 0) {
+      approved.add("F7"); approved.add("F8");
+      weekDates.forEach(dateStr => {
+        const dow = new Date(dateStr + "T12:00:00").getDay();
+        schedule[dateStr].forEach((slot, idx) => {
+          if (slot.empId) return;
+          if (slot.slOnly) return;
+          if (slot.isTraineeSlot) return;
+          if (sd[sl.id].has(dateStr)) return;
+          if (!isAvail(sl, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return;
+          if (!friSatSunOK(sl, dateStr, slot.slOnly)) return;
+          if (!dayAfterMCOK(sl, dateStr, slot.start)) return;
+          if (!crystalSundayOK(sl, dateStr)) return;
+          if (!consecOK(sl, weekDates.indexOf(dateStr))) return;
+          if (slot.isMC && mcCount[sl.id] >= 1) return;
+          if ((dow >= 1 && dow <= 4) && slot.type === "evening") return;
+          openSlots.push({ dateStr, idx, slot, dow });
+        });
+      });
+      approved.delete("F7"); approved.delete("F8");
+    }
 
     // Sort: prefer Thu/Fri/Sat/Sun day slots
     openSlots.sort((a, b) => {
