@@ -241,11 +241,12 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
 
   if (breakSLId) {
     const emp = active.find(e => e.id === breakSLId);
-    if (emp && !weeklyMaxOverrides?.[breakSLId]) {
+    if (emp) {
+      // Always cap break SL at 3, regardless of weeklyMaxOverrides
       emp._effMaxShifts = 3;
       emp._budget = Math.min(emp._budget, 3);
+      emp._isBreakSL = true; // flag to skip MC assignment
     }
-    emp._isBreakSL = true; // flag to skip MC assignment
   }
   // Leftover bucket: identified by isLeftover flag in weeklyMaxOverrides
   // They keep their full max shifts but get scheduled after everyone else
@@ -393,8 +394,12 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   const assign = (dateStr, slotIndex, emp, slot) => {
     // Hard cap: never exceed _effMaxShifts regardless of which phase is assigning
     if (sc[emp.id] >= emp._effMaxShifts) return;
-    // Extra hard cap for intentionally limited employees (maxShifts <= 2)
+    // Extra hard cap for intentionally limited employees (Grae/Cesia)
     if (isHardCapped(emp) && sc[emp.id] >= emp.maxShifts) return;
+    // Break SL never gets more than 3 shifts
+    if (emp._isBreakSL && sc[emp.id] >= 3) return;
+    // Regular employees never get more than 3 shifts
+    if (emp.role === "regular" && !isHardCapped(emp) && sc[emp.id] >= 3) return;
     // ABSOLUTE: never assign someone to two shifts on the same day
     if (sd[emp.id].has(dateStr)) return;
     _doAssign(dateStr, slotIndex, emp, slot);
