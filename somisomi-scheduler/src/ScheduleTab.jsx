@@ -385,15 +385,22 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     return !!(availOverrides && availOverrides[overrideKey]);
   };
 
+  // These employees have intentionally low shift caps — NEVER exceed them, not even in gap fill
+  const HARD_CAPPED_IDS = new Set(["reg-7", "tr-6"]); // Grae (2 shifts), Cesia (2 shifts)
+
   const assign = (dateStr, slotIndex, emp, slot) => {
     // Hard cap: never exceed _effMaxShifts regardless of which phase is assigning
     if (sc[emp.id] >= emp._effMaxShifts) return;
+    // Extra hard cap for intentionally limited employees — respect their maxShifts absolutely
+    if (HARD_CAPPED_IDS.has(emp.id) && sc[emp.id] >= emp.maxShifts) return;
     // ABSOLUTE: never assign someone to two shifts on the same day
     if (sd[emp.id].has(dateStr)) return;
     _doAssign(dateStr, slotIndex, emp, slot);
   };
   const forceAssign = (dateStr, slotIndex, emp, slot) => {
     // No hard blocks — used only as absolute last resort to fill empty slots
+    // EXCEPT: always respect hard caps for intentionally limited employees
+    if (HARD_CAPPED_IDS.has(emp.id) && sc[emp.id] >= emp.maxShifts) return;
     _doAssign(dateStr, slotIndex, emp, slot);
   };
   const _doAssign = (dateStr, slotIndex, emp, slot) => {
