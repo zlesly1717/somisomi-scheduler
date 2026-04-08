@@ -1304,8 +1304,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   }
 
   // ── STEP 6B: Regular balance pass ────────────────────────────────
-  // After SLs are equalized, balance regulars among themselves.
-  // Regulars share hours equally — person with fewest hours picks first.
+  // Goal: everyone gets 3 shifts AND stays in 15-20h range.
+  // Priority: equalize shifts first, then equalize hours within same shift count.
   let balanceChangedB = true;
   let balanceSafetyB = 40;
   while (balanceChangedB && balanceSafetyB-- > 0) {
@@ -1313,13 +1313,27 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     const pool = active.filter(e => e.role === "regular" && !isBalanceExempt(e) && e._budget > 0);
     if (pool.length < 2) break;
 
-    pool.sort((a, b) => sh[b.id] - sh[a.id]);
+    pool.sort((a, b) => {
+      // Primary: shift count descending
+      if (sc[b.id] !== sc[a.id]) return sc[b.id] - sc[a.id];
+      // Secondary: hours descending
+      return sh[b.id] - sh[a.id];
+    });
+    const maxSc = sc[pool[0].id];
+    const minSc = sc[pool[pool.length - 1].id];
     const maxH = sh[pool[0].id];
     const minH = sh[pool[pool.length - 1].id];
-    if (maxH - minH <= 2) break;
+    // Stop if shifts are equal and hours gap is small
+    if (maxSc === minSc && maxH - minH <= 2) break;
 
-    const overP = pool.filter(e => sh[e.id] >= maxH - 1);
-    const underP = pool.filter(e => sh[e.id] <= minH + 1);
+    // Over: most shifts, or if shifts equal, most hours
+    const overP = maxSc > minSc
+      ? pool.filter(e => sc[e.id] === maxSc)
+      : pool.filter(e => sh[e.id] >= maxH - 1);
+    // Under: fewest shifts, or if shifts equal, fewest hours
+    const underP = maxSc > minSc
+      ? pool.filter(e => sc[e.id] === minSc)
+      : pool.filter(e => sh[e.id] <= minH + 1);
 
     let swapped = false;
     outer2: for (const under of underP) {
@@ -1366,20 +1380,23 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     "no_fri_sat_night","no_fri_sat_sun","max_consecutive_3",
     "min_swirlers_weekend","sat_night_sl_neq_sun_sl"];
 
-  // Helper: sort candidates — SLs needing 4th shift first, then fewest shifts, then fewest hours
+  // Helper: sort candidates — prioritize getting everyone to their target first
+  // Target: regulars = 3 shifts (15-20h), SLs = 4 shifts (not on break)
   const sortCands = (cands) => [...cands].sort((a, b) => {
     // SLs who still need shifts (non-break SLs under 4) get top priority
     const aNeedsSL = a.role === "shift_lead" && !a._isBreakSL && sc[a.id] < 4;
     const bNeedsSL = b.role === "shift_lead" && !b._isBreakSL && sc[b.id] < 4;
     if (aNeedsSL && !bNeedsSL) return -1;
     if (!aNeedsSL && bNeedsSL) return 1;
-    // Then regulars who still need 3rd shift before anyone getting a 4th
+    // Regulars who still need their 3rd shift — highest priority among regulars
     const aNeedsReg = a.role !== "shift_lead" && sc[a.id] < 3;
     const bNeedsReg = b.role !== "shift_lead" && sc[b.id] < 3;
     if (aNeedsReg && !bNeedsReg) return -1;
     if (!aNeedsReg && bNeedsReg) return 1;
-    // Finally sort by fewest shifts then fewest hours
-    return sc[a.id] - sc[b.id] || sh[a.id] - sh[b.id];
+    // Among people who both need shifts: fewest shifts first, then fewest hours
+    if (sc[a.id] !== sc[b.id]) return sc[a.id] - sc[b.id];
+    // Same shift count: fewest hours first (to equalize hours within shift count)
+    return sh[a.id] - sh[b.id];
   });
 
   const fillEmptySlots = (filterFn) => {
@@ -1406,9 +1423,25 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     });
   });
 
-  // Pass 3: Relax ALL soft rules
+  // Pass 3: Relax soft rules. Give 4th shift only to SLs not on break, or regulars
+  // with fewest hours IF no one still needs their 3rd shift.
   SOFT_RULES.forEach(r => approved.add(r));
-  fillEmptySlots((emps, dateStr, slot) => getCandidates(slot));
+  fillEmptySlots((emps, dateStr, slot) => {
+    const cands = getCandidates(slot);
+    // First priority: anyone who still needs their 3rd shift
+    const needs3 = cands.filter(emp => {
+      if (emp.role === "shift_lead") return !emp._isBreakSL && sc[emp.id] < 4;
+      return sc[emp.id] < 3;
+    });
+    if (needs3.length > 0) return needs3;
+    // Second priority: SLs not on break who need 4th shift
+    const slNeeds4 = cands.filter(emp => emp.role === "shift_lead" && !emp._isBreakSL && sc[emp.id] < 4);
+    if (slNeeds4.length > 0) return slNeeds4;
+    // Third priority: regulars with least hours who could use a 4th shift (rare)
+    const regLowHours = cands.filter(emp => emp.role === "regular" && sc[emp.id] < 4 && sh[emp.id] < 15);
+    if (regLowHours.length > 0) return regLowHours;
+    return cands.filter(emp => emp.role !== "regular" || sc[emp.id] < 4);
+  });
   SOFT_RULES.forEach(r => approved.delete(r));
 
   // Pass 4: Use real maxShifts, bypass soft rules, availability required
