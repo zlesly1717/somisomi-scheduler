@@ -252,6 +252,10 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       emp._isBreakSL = true; // flag to skip MC assignment
     }
   }
+  // Strong regulars who can cover SL-required slots as absolute last resort
+  const STRONG_REGULAR_NAMES = ["Susan Thai", "Gwen Ursua", "Abrar Uddin"];
+  const strongRegulars = active.filter(e => STRONG_REGULAR_NAMES.includes(e.name));
+
   // Leftover bucket: identified by isLeftover flag in weeklyMaxOverrides
   // They keep their full max shifts but get scheduled after everyone else
   const leftoverEmpIds = new Set(
@@ -821,7 +825,29 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       });
       cands.sort(slSortFn); // re-sort by the standard SL sort
     }
-    if (cands[0]) assignSlotInSchedule(slot, cands[0]);
+    if (cands[0]) {
+      assignSlotInSchedule(slot, cands[0]);
+    } else if (!slot.isMC) {
+      // No SL available — try strong regulars as last resort (Susan, Gwen, Abrar)
+      const slotInSched = schedule[slot._dateStr].find(s => s.order === slot.order);
+      if (slotInSched && !slotInSched.empId) {
+        const srCands = strongRegulars.filter(e =>
+          isAvail(e, slot._dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides) &&
+          !sd[e.id].has(slot._dateStr) &&
+          sc[e.id] < 3
+        ).sort((a, b) => sh[a.id] - sh[b.id]); // fewest hours first
+        if (srCands[0]) {
+          // Downgrade slot so assign() doesn't reject non-SL
+          slotInSched.slOnly = false;
+          assign(slot._dateStr, schedule[slot._dateStr].indexOf(slotInSched), srCands[0], slotInSched);
+        } else if (slot.type === "evening_sl2") {
+          // Still nothing — downgrade to regular evening for gap fill passes
+          slotInSched.slOnly = false;
+          slotInSched.type = "evening";
+          slotInSched.label = "Evening";
+        }
+      }
+    }
   }
 
   // ── STEP 3: Place trainees on Mon-Thu evenings ─────────────────────
@@ -2109,7 +2135,20 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
 
   const initDayStaffing = (dates) => {
     const ds = {};
-    dates.forEach(d => { const dt = getDayType(d, schoolDates); const s = rules.staffing[dt] || rules.staffing.weekday; ds[d] = { day: s.day || 2, mid: s.mid || 0, evening: s.evening || 3 }; });
+    dates.forEach(d => {
+      const dow = new Date(d + "T12:00:00").getDay(); // 0=Sun,1=Mon,...,6=Sat
+      const isWeekend = dow === 0 || dow === 6; // Sat or Sun
+      const isFri = dow === 5;
+      const dt = getDayType(d, schoolDates);
+      const s = rules.staffing[dt] || rules.staffing.weekday;
+      if (isWeekend || isFri) {
+        // Fri/Sat/Sun: Day=3, Mid=1, Eve=5
+        ds[d] = { day: s.day || 3, mid: s.mid !== undefined ? s.mid : 1, evening: s.evening || 5 };
+      } else {
+        // Mon-Thu: Day=2, Mid=0, Eve=4
+        ds[d] = { day: s.day || 2, mid: s.mid !== undefined ? s.mid : 0, evening: s.evening || 4 };
+      }
+    });
     return ds;
   };
 
