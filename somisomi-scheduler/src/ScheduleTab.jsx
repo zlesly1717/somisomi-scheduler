@@ -1437,24 +1437,16 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     });
   });
 
-  // Pass 3: Relax soft rules. Give 4th shift only to SLs not on break, or regulars
-  // with fewest hours IF no one still needs their 3rd shift.
+  // Pass 3: Relax soft rules. Strictly cap regulars at 3. Break SL at 3. Non-break SLs at 4.
   SOFT_RULES.forEach(r => approved.add(r));
   fillEmptySlots((emps, dateStr, slot) => {
     const cands = getCandidates(slot);
-    // First priority: anyone who still needs their 3rd shift
-    const needs3 = cands.filter(emp => {
-      if (emp.role === "shift_lead") return !emp._isBreakSL && sc[emp.id] < 4;
-      return sc[emp.id] < 3;
+    // Strictly filter by target shift counts
+    return cands.filter(emp => {
+      if (isHardCapped(emp)) return sc[emp.id] < emp.maxShifts; // Grae/Cesia: absolute max
+      if (emp.role === "shift_lead") return emp._isBreakSL ? sc[emp.id] < 3 : sc[emp.id] < 4;
+      return sc[emp.id] < 3; // regulars: hard cap at 3
     });
-    if (needs3.length > 0) return needs3;
-    // Second priority: SLs not on break who need 4th shift
-    const slNeeds4 = cands.filter(emp => emp.role === "shift_lead" && !emp._isBreakSL && sc[emp.id] < 4);
-    if (slNeeds4.length > 0) return slNeeds4;
-    // Third priority: regulars with least hours who could use a 4th shift (rare)
-    const regLowHours = cands.filter(emp => emp.role === "regular" && sc[emp.id] < 4 && sh[emp.id] < 15);
-    if (regLowHours.length > 0) return regLowHours;
-    return cands.filter(emp => emp.role !== "regular" || sc[emp.id] < 4);
   });
   SOFT_RULES.forEach(r => approved.delete(r));
 
@@ -1474,22 +1466,32 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   );
   SOFT_RULES.forEach(r => approved.delete(r));
 
-  // Pass 5: Ignore shift caps. If slOnly slot has no SL available, allow strong regulars.
+  // Pass 5: Ignore most soft rules but still respect shift caps for regulars/break SLs.
   SOFT_RULES.forEach(r => approved.add(r));
   fillEmptySlots((emps, dateStr, slot) => {
-    const available = emps.filter(emp =>
-      isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)
-    );
+    const available = emps.filter(emp => {
+      if (!isAvail(emp, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return false;
+      if (isHardCapped(emp) && sc[emp.id] >= emp.maxShifts) return false; // Grae/Cesia always capped
+      return true;
+    });
     // For SL-only slots: try SLs first, fall back to non-trainees if no SL available
     if (slot.slOnly) {
       const slCands = available.filter(e => e.role === "shift_lead");
       if (slCands.length > 0) return slCands;
-      // No SL available — use any non-trainee (better than empty)
       return available.filter(e => e.role !== "trainee" || isEffectivelyGraduated(e));
     }
+    // For regular slots: prefer people who still need shifts
+    const needsShift = available.filter(emp => {
+      if (slot.isMC && emp.role === "trainee" && !isEffectivelyGraduated(emp)) return false;
+      if (emp.role === "shift_lead") return emp._isBreakSL ? sc[emp.id] < 3 : sc[emp.id] < 4;
+      return sc[emp.id] < 3; // regulars: still prefer those who need 3rd shift
+    });
+    if (needsShift.length > 0) return needsShift;
+    // Last resort: anyone available (SLs needing 4th, or regulars if truly stuck)
     return available.filter(emp => {
       if (slot.isMC && emp.role === "trainee" && !isEffectivelyGraduated(emp)) return false;
-      return true;
+      if (emp.role === "shift_lead") return emp._isBreakSL ? sc[emp.id] < 3 : sc[emp.id] < 4;
+      return sc[emp.id] < 4; // allow 4th for regulars only as absolute last resort
     });
   });
   SOFT_RULES.forEach(r => approved.delete(r));
