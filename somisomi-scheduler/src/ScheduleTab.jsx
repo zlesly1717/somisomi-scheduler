@@ -252,9 +252,13 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       emp._isBreakSL = true; // flag to skip MC assignment
     }
   }
-  // Strong regulars who can cover SL-required slots as absolute last resort
-  const STRONG_REGULAR_NAMES = ["Susan Thai", "Gwen Ursua", "Abrar Uddin"];
-  const strongRegulars = active.filter(e => STRONG_REGULAR_NAMES.includes(e.name));
+  // Strong regulars = "top" tier employees who aren't shift leads
+  // Tier set in Employees tab. Falls back to hardcoded names if no tiers set.
+  const topTierRegs = active.filter(e => e.role !== "shift_lead" && e.tier === "top");
+  const FALLBACK_STRONG = ["Susan Thai", "Gwen Ursua", "Abrar Uddin"];
+  const strongRegulars = topTierRegs.length > 0
+    ? topTierRegs
+    : active.filter(e => FALLBACK_STRONG.includes(e.name));
 
   // Leftover bucket: identified by isLeftover flag in weeklyMaxOverrides
   // They keep their full max shifts but get scheduled after everyone else
@@ -444,7 +448,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       }
     }
     if (emp._isBreakSL && sc[emp.id] >= 3) return;
-    if (emp.role === "regular" && !isHardCapped(emp) && sc[emp.id] >= 3) return;
+    if ((emp.role === "regular" || (emp.role === "trainee" && isEffectivelyGraduated(emp))) && !isHardCapped(emp) && sc[emp.id] >= 3) return;
+    if (emp.role === "shift_lead" && !emp._isBreakSL && sc[emp.id] >= 4) return;
     _doAssign(dateStr, slotIndex, emp, slot);
   };
   const _doAssign = (dateStr, slotIndex, emp, slot) => {
@@ -1147,10 +1152,14 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       const goodWE = rules.goodWeekendPeople || [];
       const good = cands.filter(e => goodWE.includes(e.name));
       if (good.length > 0) cands = good;
-      // Important evening: prefer non-trainees, experienced regulars first
+      // Important evening: prefer top-tier, then non-trainees
       if (slot.isImportant) {
-        const noTrainees = cands.filter(e => !isTrainee(e));
-        if (noTrainees.length > 0) cands = noTrainees;
+        const topTier = cands.filter(e => !isTrainee(e) && e.tier === "top");
+        if (topTier.length > 0) cands = topTier;
+        else {
+          const noTrainees = cands.filter(e => !isTrainee(e));
+          if (noTrainees.length > 0) cands = noTrainees;
+        }
       }
     }
     // Weekend day / Fri day: no trainees
@@ -1208,6 +1217,11 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         const aWE = weCount[a.id] || 0, bWE = weCount[b.id] || 0;
         if (aWE !== bWE) return aWE - bWE;
       }
+      // Tier tiebreaker: top > standard > flexible
+      const tierRank = { top: 0, standard: 1, flexible: 2 };
+      const aTier = tierRank[a.tier || "standard"] ?? 1;
+      const bTier = tierRank[b.tier || "standard"] ?? 1;
+      if (aTier !== bTier) return aTier - bTier;
       return Math.random() - 0.5;
     });
 
@@ -1607,6 +1621,32 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       const pick = noDoubleNoTO[0] || noDouble[0] || pool[0];
       if (pick) forceAssign(dateStr, idx, pick, slot);
     });
+  });
+
+  // ── POST-GENERATION SAFETY: strip excess shifts ──────────────────
+  // Final sanity check — remove any shifts that exceed role caps
+  active.forEach(emp => {
+    const cap = isHardCapped(emp) ? 2
+      : emp._isBreakSL ? 3
+      : (emp.role === "regular" || (emp.role === "trainee" && isEffectivelyGraduated(emp))) ? 3
+      : emp.role === "shift_lead" ? 4
+      : 3;
+    if (sc[emp.id] <= cap) return; // within cap, nothing to do
+    // Remove excess shifts — remove the ones that matter least (non-SL slots, latest in week)
+    const daysWorked = weekDates.filter(d => sd[emp.id].has(d)).reverse(); // latest first
+    for (const d of daysWorked) {
+      if (sc[emp.id] <= cap) break;
+      for (let si = schedule[d].length - 1; si >= 0; si--) {
+        const slot = schedule[d][si];
+        if (slot.empId !== emp.id) continue;
+        if (slot.slOnly || slot.isMC) continue; // don't remove essential slots
+        // Remove this shift
+        schedule[d][si] = { ...slot, empId: null, empName: "⚠ UNFILLED", empRole: null };
+        sc[emp.id]--; sh[emp.id] -= slot.hours;
+        if (!schedule[d].some(s => s.empId === emp.id)) sd[emp.id].delete(d);
+        break;
+      }
+    }
   });
 
   // ── Flexible rule detection ───────────────────────────────────────

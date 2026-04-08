@@ -2,6 +2,15 @@ import { useState, useEffect, useRef } from "react";
 import { DAYS, DAY_LABELS, DAY_FULL, ROLE_CONFIG, TAG_OPTIONS, newUnavail, fmtTime } from "./constants";
 
 const font = "'DM Sans',sans-serif";
+
+// Staff tier system: Top / Standard / Flexible
+const TIERS = [
+  { id: "top",      label: "Top",      emoji: "⭐", color: "#92400E", bg: "#FEF3C7", border: "#F59E0B", desc: "Can cover SL slots, trusted on important nights" },
+  { id: "standard", label: "Standard", emoji: "✓",  color: "#1E40AF", bg: "#DBEAFE", border: "#3B82F6", desc: "Regular crew, gets scheduled normally" },
+  { id: "flexible", label: "Flexible", emoji: "○",  color: "#6B7280", bg: "#F3F4F6", border: "#D1D5DB", desc: "Fills gaps, fewer priority slots" },
+];
+const TIER_CYCLE = { top: "standard", standard: "flexible", flexible: "top" };
+const tierFor = (emp) => emp.tier || "standard";
 const si = { padding: "8px 12px", border: "1px solid #D1D5DB", borderRadius: 8, fontSize: 13, outline: "none", fontFamily: font, boxSizing: "border-box", width: "100%" };
 const sl = { fontSize: 10.5, fontWeight: 700, color: "#6B7280", marginBottom: 4, display: "block", textTransform: "uppercase", letterSpacing: 0.5 };
 
@@ -134,7 +143,7 @@ function EditEmpModal({ emp, onSave, onClose }) {
   );
 }
 
-function EmpCard({ emp, onEdit, onAction }) {
+function EmpCard({ emp, onEdit, onAction, onTierClick }) {
   const rc = ROLE_CONFIG[emp.role];
   const off = emp.status === "inactive" || emp.status === "off";
   return (
@@ -144,6 +153,7 @@ function EmpCard({ emp, onEdit, onAction }) {
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
             <span style={{ fontSize: 14, fontWeight: 700, color: off ? "#9CA3AF" : "#111827" }}>{emp.name}</span>
             <span style={{ padding: "2px 8px", borderRadius: 12, fontSize: 10, fontWeight: 700, color: off ? "#9CA3AF" : rc.color, background: off ? "#F3F4F6" : rc.bg, textTransform: "uppercase" }}>{rc.label}</span>
+            {!off && emp.role !== "shift_lead" && (() => { const t = TIERS.find(x => x.id === tierFor(emp)); return t ? <span title={t.desc} style={{ padding: "2px 7px", borderRadius: 10, fontSize: 10, fontWeight: 700, background: t.bg, color: t.color, border: `1px solid ${t.border}`, cursor: "pointer" }} onClick={onTierClick}>{t.emoji} {t.label}</span> : null; })()}
             {off && <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 8, background: "#FEE2E2", color: "#DC2626", fontWeight: 700 }}>INACTIVE</span>}
           </div>
           <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>
@@ -225,6 +235,7 @@ export function EmployeesTab({ employees, setEmployees }) {
   };
 
   const togStatus = id => setEmployees(p => p.map(e => e.id === id ? { ...e, status: e.status === "active" ? "inactive" : "active" } : e));
+  const cycleTier = id => setEmployees(p => p.map(e => e.id === id ? { ...e, tier: TIER_CYCLE[tierFor(e)] } : e));
   const delEmp = id => { setEmployees(p => p.filter(e => e.id !== id)); setConfirmId(null); };
 
   const filtered = employees.filter(e => {
@@ -256,7 +267,7 @@ export function EmployeesTab({ employees, setEmployees }) {
           <div style={{ textAlign: "center", padding: 40, color: "#9CA3AF", fontSize: 13 }}>No employees found.</div>
         ) : viewMode === "cards" ? (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: 12 }}>
-            {filtered.map(emp => <EmpCard key={emp.id} emp={emp} onEdit={() => setEditing(emp)} onAction={() => setConfirmId(emp.id)} />)}
+            {filtered.map(emp => <EmpCard key={emp.id} emp={emp} onEdit={() => setEditing(emp)} onAction={() => setConfirmId(emp.id)} onTierClick={() => cycleTier(emp.id)} />)}
           </div>
         ) : (
           <div style={{ overflowX: "auto", background: "#fff", borderRadius: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.06)" }}>
