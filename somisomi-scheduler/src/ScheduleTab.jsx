@@ -1139,10 +1139,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (!weekendNightOK(sl, dateStr, slot.start, slot.isMC)) return;
         if (!consecOK(sl, weekDates.indexOf(dateStr))) return;
         if (slot.isMC && mcCount[sl.id] >= 1) return;
-        // SLs shouldn't take Mon-Wed evening regular slots
-        if ((dow >= 1 && dow <= 3) && slot.type === "evening") return;
-        // SLs shouldn't take Fri/Sat/Sun regular evening slots (those are for regulars)
-        if ((dow === 5 || dow === 6 || dow === 0) && slot.type === "evening") return;
+        // SLs shouldn't take Mon-Thu evening regular slots (those days have Eve SL slot for SLs)
+        if ((dow >= 1 && dow <= 4) && slot.type === "evening") return;
+        // SLs CAN take Fri/Sat/Sun regular evening slots to reach their 4th shift
         openSlots.push({ dateStr, idx, slot, dow });
       });
     });
@@ -1607,8 +1606,8 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
     !SPECIAL_IDS.includes(e.id)
   );
 
-  // Section 4: Leftover bucket — Nani by default, gets gaps only
-  const leftoverDefaults = active.filter(e => e.name === "Nani Hoomes" || e.id === "tr-4");
+  // Section 4: Leftover bucket — starts empty, manager adds manually
+  const leftoverDefaults = [];
 
   // ── Auto-rank SLs from MC history ─────────────────────────────
   // Compute who most deserves break (hasn't had one recently) → put them at bottom of ranking
@@ -1643,14 +1642,10 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
     }).map(e => e.id);
   };
 
-  // SL ranking state — auto-init from MC history if no saved ranking
+  // SL ranking state — always recompute fresh from MC history each week
+  // Never use stale saved ranking from a previous week's modal choice
   const initSlRanking = () => {
-    if (savedRanking?.sl?.length) {
-      const saved = savedRanking.sl.filter(id => sls.find(e => e.id === id));
-      const newSLs = sls.filter(e => !saved.includes(e.id)).map(e => e.id);
-      return [...newSLs, ...saved];
-    }
-    return computeSLBreakRanking(); // auto-rank from history
+    return computeSLBreakRanking();
   };
   const [slRanking, setSlRanking] = useState(initSlRanking);
 
@@ -1665,11 +1660,8 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
 
   // Leftover bucket — who's in it
   const [leftoverIds, setLeftoverIds] = useState(() => {
-    if (savedRanking?.leftovers?.length) {
-      const valid = savedRanking.leftovers.filter(id => active.find(e => e.id === id));
-      if (valid.length > 0) return new Set(valid);
-    }
-    return new Set(leftoverDefaults.map(e => e.id));
+    // Always start with empty leftover bucket — manager adds manually each week
+    return new Set();
   });
 
   const [dragId, setDragId] = useState(null);
@@ -2134,11 +2126,11 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
       if (saved) {
         const parsed = JSON.parse(saved);
         // Ensure leftovers key exists
-        if (!parsed.leftovers) parsed.leftovers = ["tr-4"]; // Nani default
+        if (!parsed.leftovers) parsed.leftovers = []; // empty by default
         return parsed;
       }
     } catch(e) {}
-    return { sl: [], reg: [], leftovers: ["tr-4"] }; // tr-4 = Nani
+    return { sl: [], reg: [], leftovers: [] };
   });
 
   const savePriorityRanking = (ranking) => {
