@@ -463,42 +463,6 @@ export default function App() {
       });
       // Migrate: add swirl config if missing
       if (!r.swirl) r.swirl = SEED_RULES.swirl || { minPerShift: 2, weekendOnly: true, swirlers: [] };
-      // Migrate: fix Apr 13-19 MC history with correct crews
-      (() => {
-        const apr1319 = existing["2026-04-13"];
-        if (!apr1319 || apr1319._mcFixed) return;
-        const apr1319sched = apr1319.schedule || {};
-        // Fix Sun Apr 19: Kennedy + Susan (Marissa left early, Nani not there)
-        const apr19slots = apr1319sched["2026-04-19"];
-        if (apr19slots) {
-          const sunCorrect = [
-            { name: "Kennedy Bean", id: "reg-1" },
-            { name: "Susan Thai",   id: "reg-5" },
-          ];
-          let sunFixIdx = 0;
-          apr1319sched["2026-04-19"] = apr19slots.map(slot => {
-            if (!slot.isMC) return slot;
-            if (slot.empName === "Marissa Shelton" || slot.empName === "Nani Hoomes") {
-              const fix = sunCorrect[sunFixIdx++];
-              return fix ? { ...slot, empId: fix.id, empName: fix.name, empRole: "regular" } : slot;
-            }
-            return slot;
-          });
-        }
-        // Fix Thu Apr 16: Crystal + Zoe + Marissa only (remove Kennedy)
-        const apr16slots = apr1319sched["2026-04-16"];
-        if (apr16slots) {
-          apr1319sched["2026-04-16"] = apr16slots.map(slot => {
-            if (!slot.isMC) return slot;
-            if (slot.empName === "Kennedy Bean") {
-              return { ...slot, empId: null, empName: "⚠ UNFILLED", empRole: null };
-            }
-            return slot;
-          });
-        }
-        apr1319.schedule = apr1319sched;
-        apr1319._mcFixed = true;
-      })();
       setEmployees(emps);
       setRules(r);
       // Migrate: force school calendar to Conroe ISD if it has outdated entries
@@ -508,6 +472,34 @@ export default function App() {
       setTimeOffs(data.timeOffs || []);
       // Migrate: pre-seed MC rotation history from past 4 weeks if not already saved
       const existing = data.savedSchedules || {};
+      // Migrate: fix Apr 13-19 MC history with correct crews
+      // Must run AFTER existing is declared
+      if (existing["2026-04-13"] && !existing["2026-04-13"]._mcFixed) {
+        const w1319 = existing["2026-04-13"];
+        const sched1319 = w1319.schedule || {};
+        // Fix Sun Apr 19: Kennedy + Susan (Marissa left early before MC)
+        if (sched1319["2026-04-19"]) {
+          const sunFix = [{ name: "Kennedy Bean", id: "reg-1" }, { name: "Susan Thai", id: "reg-5" }];
+          let sunFi = 0;
+          sched1319["2026-04-19"] = sched1319["2026-04-19"].map(slot => {
+            if (!slot.isMC) return slot;
+            if (slot.empName === "Marissa Shelton" || slot.empName === "Nani Hoomes") {
+              const fx = sunFix[sunFi++];
+              return fx ? { ...slot, empId: fx.id, empName: fx.name, empRole: "regular" } : slot;
+            }
+            return slot;
+          });
+        }
+        // Fix Thu Apr 16: Crystal + Zoe + Marissa only (remove Kennedy)
+        if (sched1319["2026-04-16"]) {
+          sched1319["2026-04-16"] = sched1319["2026-04-16"].map(slot => {
+            if (!slot.isMC || slot.empName !== "Kennedy Bean") return slot;
+            return { ...slot, empId: null, empName: "⚠ UNFILLED", empRole: null };
+          });
+        }
+        w1319.schedule = sched1319;
+        w1319._mcFixed = true;
+      }
       // Remove Apr 6 test week ONLY if it has no real schedule data (just seeded MC history)
       if (existing["2026-04-06"] && existing["2026-04-06"]._source === "homebase-import") {
         delete existing["2026-04-06"];
