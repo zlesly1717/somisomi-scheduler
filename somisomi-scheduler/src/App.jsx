@@ -463,48 +463,42 @@ export default function App() {
       });
       // Migrate: add swirl config if missing
       if (!r.swirl) r.swirl = SEED_RULES.swirl || { minPerShift: 2, weekendOnly: true, swirlers: [] };
-      // Migrate: fix Apr 13-19 Sun MC — correct crew is Chan+Spencer+Kennedy+Susan
-      // (Marissa worked that day but left early before MC)
-      if (existing["2026-04-13"]) {
-        const sunDate = "2026-04-19";
-        const sched = existing["2026-04-13"].schedule;
-        if (sched?.[sunDate]) {
-          // Check if Marissa or Nani are on Sun MC — replace with Kennedy+Susan
-          const hasBadCrew = sched[sunDate].some(s => s.isMC && (s.empName === "Marissa Shelton" || s.empName === "Nani Hoomes"));
-          if (hasBadCrew) {
-            const CORRECT_SUN_CREW = {
-              "Kennedy Bean":  { id: "reg-1", role: "regular" },
-              "Susan Thai":    { id: "reg-5", role: "regular" },
-            };
-            let helperIdx = 0;
-            sched[sunDate] = sched[sunDate].map(slot => {
-              if (!slot.isMC) return slot;
-              if (slot.empName === "Marissa Shelton" || slot.empName === "Nani Hoomes") {
-                const crew = Object.entries(CORRECT_SUN_CREW)[helperIdx++];
-                if (crew) return { ...slot, empId: crew[1].id, empName: crew[0], empRole: crew[1].role };
-              }
-              return slot;
-            });
-            existing["2026-04-13"]._mcFixed = true;
-          }
+      // Migrate: fix Apr 13-19 MC history with correct crews
+      (() => {
+        const apr1319 = existing["2026-04-13"];
+        if (!apr1319 || apr1319._mcFixed) return;
+        const apr1319sched = apr1319.schedule || {};
+        // Fix Sun Apr 19: Kennedy + Susan (Marissa left early, Nani not there)
+        const apr19slots = apr1319sched["2026-04-19"];
+        if (apr19slots) {
+          const sunCorrect = [
+            { name: "Kennedy Bean", id: "reg-1" },
+            { name: "Susan Thai",   id: "reg-5" },
+          ];
+          let sunFixIdx = 0;
+          apr1319sched["2026-04-19"] = apr19slots.map(slot => {
+            if (!slot.isMC) return slot;
+            if (slot.empName === "Marissa Shelton" || slot.empName === "Nani Hoomes") {
+              const fix = sunCorrect[sunFixIdx++];
+              return fix ? { ...slot, empId: fix.id, empName: fix.name, empRole: "regular" } : slot;
+            }
+            return slot;
+          });
         }
-        // Fix Thu Apr 16 MC — correct crew: Crystal (lead) + Zoe (SL helper) + Marissa (only 1 reg helper)
-        const thuDate = "2026-04-16";
-        if (sched?.[thuDate]) {
-          const hasBadThu = sched[thuDate].some(s => s.isMC && s.empName === "Kennedy Bean");
-          if (hasBadThu) {
-            sched[thuDate] = sched[thuDate].map(slot => {
-              if (!slot.isMC) return slot;
-              // Crystal stays as lead, Zoe stays as SL helper, Marissa stays as helper
-              // Remove Kennedy — Thu MC only has 3 people (Crystal + Zoe + Marissa)
-              if (slot.empName === "Kennedy Bean") {
-                return { ...slot, empId: null, empName: "⚠ UNFILLED", empRole: null };
-              }
-              return slot;
-            });
-          }
+        // Fix Thu Apr 16: Crystal + Zoe + Marissa only (remove Kennedy)
+        const apr16slots = apr1319sched["2026-04-16"];
+        if (apr16slots) {
+          apr1319sched["2026-04-16"] = apr16slots.map(slot => {
+            if (!slot.isMC) return slot;
+            if (slot.empName === "Kennedy Bean") {
+              return { ...slot, empId: null, empName: "⚠ UNFILLED", empRole: null };
+            }
+            return slot;
+          });
         }
-      }
+        apr1319.schedule = apr1319sched;
+        apr1319._mcFixed = true;
+      })();
       setEmployees(emps);
       setRules(r);
       // Migrate: force school calendar to Conroe ISD if it has outdated entries
