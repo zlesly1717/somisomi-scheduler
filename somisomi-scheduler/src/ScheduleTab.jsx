@@ -1,4 +1,4 @@
-import { useState } from "react"; 
+import { useState } from "react";
 import { DAYS, fmtTime, ROLE_CONFIG } from "./constants";
 
 const font = "'DM Sans',sans-serif";
@@ -210,10 +210,11 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         e._effMaxShifts = 4; e.maxShifts = 4;
       }
     }
-    // Safety: correct stale maxShifts if trainee was promoted to regular without updating numbers
-    // BUT: don't override intentionally low caps (Grae=2, Cesia=2 are correct)
-    const INTENTIONAL_LOW_CAP_IDS = ["reg-7", "tr-6"]; // Grae, Cesia
-    if (!wmo && !INTENTIONAL_LOW_CAP_IDS.includes(e.id)) {
+    // Force-reset intentionally capped employees regardless of what Firebase has
+    if (e.id === "reg-7") { e._effMaxShifts = 2; e.maxShifts = 2; e._budget = Math.min(e._budget || 7, 2); }
+    if (e.id === "tr-6")  { e._effMaxShifts = 2; e.maxShifts = 2; e._budget = Math.min(e._budget || 7, 2); }
+    // Safety: correct stale maxShifts for promoted trainees (but skip hard-capped employees)
+    if (!wmo && e.id !== "reg-7" && e.id !== "tr-6") {
       if (e.role === "regular" && e._effMaxShifts < 3) { e._effMaxShifts = 3; e.maxShifts = 3; }
       if (e.role === "regular" && e.maxHours < 12) { e.maxHours = 20; }
       if (e.role === "shift_lead" && e._effMaxShifts < 4) { e._effMaxShifts = 4; e.maxShifts = 4; }
@@ -385,22 +386,23 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     return !!(availOverrides && availOverrides[overrideKey]);
   };
 
-  // These employees have intentionally low shift caps — NEVER exceed them, not even in gap fill
-  const HARD_CAPPED_IDS = new Set(["reg-7", "tr-6"]); // Grae (2 shifts), Cesia (2 shifts)
+  // These employees are hard-capped at 2 shifts regardless of Firebase data
+  const HARD_CAPPED = new Set(["reg-7", "tr-6"]); // Grae McKown, Cesia Garcia
+  const isHardCapped = (emp) => HARD_CAPPED.has(emp.id);
 
   const assign = (dateStr, slotIndex, emp, slot) => {
     // Hard cap: never exceed _effMaxShifts regardless of which phase is assigning
     if (sc[emp.id] >= emp._effMaxShifts) return;
-    // Extra hard cap for intentionally limited employees — respect their maxShifts absolutely
-    if (HARD_CAPPED_IDS.has(emp.id) && sc[emp.id] >= emp.maxShifts) return;
+    // Extra hard cap for intentionally limited employees (maxShifts <= 2)
+    if (isHardCapped(emp) && sc[emp.id] >= emp.maxShifts) return;
     // ABSOLUTE: never assign someone to two shifts on the same day
     if (sd[emp.id].has(dateStr)) return;
     _doAssign(dateStr, slotIndex, emp, slot);
   };
   const forceAssign = (dateStr, slotIndex, emp, slot) => {
     // No hard blocks — used only as absolute last resort to fill empty slots
-    // EXCEPT: always respect hard caps for intentionally limited employees
-    if (HARD_CAPPED_IDS.has(emp.id) && sc[emp.id] >= emp.maxShifts) return;
+    // EXCEPT: always respect hard caps for employees with maxShifts <= 2
+    if (isHardCapped(emp) && sc[emp.id] >= emp.maxShifts) return;
     _doAssign(dateStr, slotIndex, emp, slot);
   };
   const _doAssign = (dateStr, slotIndex, emp, slot) => {
