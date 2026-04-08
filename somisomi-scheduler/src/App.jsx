@@ -114,10 +114,11 @@ function buildMCHistorySeed() {
     },
     { key: "2026-04-13", // Apr 13-19 (published)
       // Thu Apr 16: Crystal MC Lead + Zoe (SL) + Marissa + Kennedy
-      // Sun Apr 19: Spencer MC Lead + Chan (SL helper) + Marissa + Nani
+      // Sun Apr 19: Chan MC Lead + Spencer (SL helper) + Kennedy + Susan
+      //             (Marissa worked that day but left before MC cleaning)
       // Break SL: Kaitlyn Trevino
       thu: { leader: "Crystal Guel", slHelper: "Zoe Rains", helpers: ["Marissa Shelton", "Kennedy Bean"] },
-      sun: { leader: "Spencer Losch", slHelper: "Chan In", helpers: ["Marissa Shelton", "Nani Hoomes"] },
+      sun: { leader: "Chan In", slHelper: "Spencer Losch", helpers: ["Kennedy Bean", "Susan Thai"] },
       breakSL: "Kaitlyn Trevino", savedAt: "2026-04-19T20:00:00Z",
     },
   ];
