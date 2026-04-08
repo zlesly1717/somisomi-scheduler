@@ -459,7 +459,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     const isSatNight = slotDow === 6 && tm(slot.start || "18:00") >= 1020;
     const isSunNight = slotDow === 0 && tm(slot.start || "18:00") >= 1020;
     const isMCSlot = slot.isMC;
-    if (isSatNight && nightMap[weekDates[6]]?.has(emp.id)) return; // already has Sun night
+    // SLs with Sun MC can still work Sat night — MC is a required duty, not a "choice"
+    const hasSunMC = schedule[weekDates[6]]?.some(s => s.isMC && s.empId === emp.id);
+    if (isSatNight && nightMap[weekDates[6]]?.has(emp.id) && !hasSunMC) return; // already has Sun night (non-MC)
     if (isSunNight && !isMCSlot && nightMap[weekDates[5]]?.has(emp.id)) return; // already has Sat night (non-MC slots only)
     schedule[dateStr][slotIndex] = { ...slot, empId: emp.id, empName: emp.name, empRole: emp.role };
     sc[emp.id]++; sh[emp.id] += slot.hours; sd[emp.id].add(dateStr);
@@ -858,31 +860,90 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
           });
           if (regCands[0]) assign(slot._dateStr, schedule[slot._dateStr].indexOf(slotInSched), regCands[0], slotInSched);
         } else if (!slot.isMC) {
-          // Non-MC SL slot: try strong regulars (top tier) as last resort
-          // Try ALL regulars sorted by tier then hours — top tier first
-          const allRegCands = active.filter(e =>
-            e.role !== "shift_lead" &&
-            !isHardCapped(e) &&
-            (e.role !== "trainee" || isEffectivelyGraduated(e)) &&
-            isAvail(e, slot._dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides) &&
-            !sd[e.id].has(slot._dateStr) &&
-            sc[e.id] < 3
-          ).sort((a, b) => {
-            // Top tier first
-            const tierRank = { top: 0, standard: 1, flexible: 2 };
-            const aTier = tierRank[a.tier || "standard"] ?? 1;
-            const bTier = tierRank[b.tier || "standard"] ?? 1;
-            if (aTier !== bTier) return aTier - bTier;
-            return sh[a.id] - sh[b.id]; // fewest hours second
-          });
-          if (allRegCands[0]) {
-            slotInSched.slOnly = false;
-            assign(slot._dateStr, schedule[slot._dateStr].indexOf(slotInSched), allRegCands[0], slotInSched);
-          } else {
-            // Still nothing — downgrade to regular evening for gap fill passes
-            slotInSched.slOnly = false;
-            slotInSched.type = "evening";
-            slotInSched.label = "Evening";
+          // Non-MC SL slot unfilled — try smart swap first:
+          // If Sunday MC has more than 2 SLs, pull one off MC and put them here,
+          // then replace their MC spot with a regular (already 2 SLs on MC is enough)
+          const sunDate = weekDates[6];
+          const sunMCSlots = schedule[sunDate]?.filter(s => s.isMC && s.empId && !s.slOnly) || [];
+          const slsOnSunMC = schedule[sunDate]?.filter(s =>
+            s.isMC && s.empId &&
+            active.find(e => e.id === s.empId && e.role === "shift_lead") &&
+            s.type !== "mc_leader" // don't pull the leader
+          ) || [];
+
+          let swapped = false;
+          // Find an SL on Sun MC who can also cover this unfilled slot
+          for (const mcSlot of slsOnSunMC) {
+            const slEmp = active.find(e => e.id === mcSlot.empId);
+            if (!slEmp) continue;
+            if (!isAvail(slEmp, slot._dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) continue;
+            if (sd[slEmp.id].has(slot._dateStr)) continue; // already works that day
+
+            // Find a regular to replace them on Sun MC
+            const assistantPool = rules?.mcRotation?.assistantPool || [];
+            const prevWK = weekDates[0] ? (() => { const d = new Date(weekDates[0] + "T12:00:00"); d.setDate(d.getDate() - 7); return d.toISOString().split("T")[0]; })() : "";
+            const regReplacement = active.filter(e =>
+              e.role !== "shift_lead" &&
+              !isHardCapped(e) &&
+              (e.role !== "trainee" || isEffectivelyGraduated(e)) &&
+              !(e.tags || []).includes("mc_exempt") &&
+              isAvail(e, sunDate, mcSlot.start, mcSlot.end, weeklyTimeOffs, availOverrides) &&
+              !sd[e.id].has(sunDate) &&
+              sc[e.id] < 3 &&
+              mcCount[e.id] < 1 // hasn't already done MC this week
+            ).sort((a, b) => {
+              const aL = mcHistoryLast[a.name] || "", bL = mcHistoryLast[b.name] || "";
+              const aR = aL >= prevWK ? 1 : 0, bR = bL >= prevWK ? 1 : 0;
+              if (aR !== bR) return aR - bR;
+              if (!aL) return -1; if (!bL) return 1;
+              if (aL !== bL) return aL.localeCompare(bL);
+              return assistantPool.indexOf(a.name) - assistantPool.indexOf(b.name);
+            });
+
+            if (regReplacement[0]) {
+              // Execute the swap: remove SL from Sun MC
+              const mcIdx = schedule[sunDate].indexOf(mcSlot);
+              sc[slEmp.id]--; sh[slEmp.id] -= mcSlot.hours;
+              mcCount[slEmp.id] = Math.max(0, mcCount[slEmp.id] - 1);
+              if (!schedule[sunDate].some((s, i) => i !== mcIdx && s.empId === slEmp.id)) sd[slEmp.id].delete(sunDate);
+              if (nightMap[sunDate]) nightMap[sunDate].delete(slEmp.id);
+              schedule[sunDate][mcIdx] = { ...mcSlot, slOnly: false, type: "mc_helper", label: "MC Helper", empId: null, empName: "⚠ UNFILLED", empRole: null };
+
+              // Put regular in the Sun MC slot
+              assign(sunDate, mcIdx, regReplacement[0], schedule[sunDate][mcIdx]);
+
+              // Put the SL in the unfilled Eve SL slot
+              slotInSched.slOnly = true; // keep it as SL slot
+              assign(slot._dateStr, schedule[slot._dateStr].indexOf(slotInSched), slEmp, slotInSched);
+              swapped = true;
+              break;
+            }
+          }
+
+          if (!swapped) {
+            // No swap possible — try top-tier regulars as direct fallback
+            const allRegCands = active.filter(e =>
+              e.role !== "shift_lead" &&
+              !isHardCapped(e) &&
+              (e.role !== "trainee" || isEffectivelyGraduated(e)) &&
+              isAvail(e, slot._dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides) &&
+              !sd[e.id].has(slot._dateStr) &&
+              sc[e.id] < 3
+            ).sort((a, b) => {
+              const tierRank = { top: 0, standard: 1, flexible: 2 };
+              const aTier = tierRank[a.tier || "standard"] ?? 1;
+              const bTier = tierRank[b.tier || "standard"] ?? 1;
+              if (aTier !== bTier) return aTier - bTier;
+              return sh[a.id] - sh[b.id];
+            });
+            if (allRegCands[0]) {
+              slotInSched.slOnly = false;
+              assign(slot._dateStr, schedule[slot._dateStr].indexOf(slotInSched), allRegCands[0], slotInSched);
+            } else {
+              slotInSched.slOnly = false;
+              slotInSched.type = "evening";
+              slotInSched.label = "Evening";
+            }
           }
         }
       }
