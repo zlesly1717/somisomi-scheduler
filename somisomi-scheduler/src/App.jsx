@@ -523,12 +523,10 @@ export default function App() {
           !existing["2026-03-30"].schedule?.["2026-03-30"]?.length ||
           (existing["2026-03-30"]._schedVersion || 0) < 5) {
         const mar30Sched = buildMar30Schedule();
-        // Spencer covered by owner on Sun Apr 5 — remove him from MC lead slot
+        // Spencer covered by owner on Sun Apr 5 — remove him from MC entirely
         if (mar30Sched["2026-04-05"]) {
-          mar30Sched["2026-04-05"] = mar30Sched["2026-04-05"].map(slot =>
-            slot.isMC && slot.empName === "Spencer Losch"
-              ? { ...slot, empId: null, empName: null, empRole: null }
-              : slot
+          mar30Sched["2026-04-05"] = mar30Sched["2026-04-05"].filter(slot =>
+            !(slot.isMC && slot.empName === "Spencer Losch")
           );
         }
         existing["2026-03-30"] = {

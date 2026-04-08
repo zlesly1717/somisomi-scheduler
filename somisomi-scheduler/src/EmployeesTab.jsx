@@ -266,7 +266,7 @@ export function EmployeesTab({ employees, setEmployees }) {
                 <div style={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
                   {members.length === 0
                     ? <span style={{ fontSize: 9, color: "#D1D5DB", fontStyle: "italic" }}>none</span>
-                    : members.map(e => <span key={e.id} style={{ fontSize: 9, fontWeight: 600, color: t.color, background: t.bg, borderRadius: 4, padding: "1px 5px" }}>{e.name.split(" ")[0]}</span>)
+                    : members.map(e => <span key={e.id} style={{ fontSize: 9, fontWeight: 600, color: t.color, background: t.bg, borderRadius: 4, padding: "1px 5px" }}>{(e.name || "").split(" ")[0]}</span>)
                   }
                 </div>
               </div>

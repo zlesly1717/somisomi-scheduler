@@ -2964,7 +2964,7 @@ export function ScheduleTab({ employees, setEmployees, rules, schoolDates, timeO
                             background: un ? "#FEE2E2" : isTr ? "#EDE9FE" : isSL ? "#FEF3C7" : "#F9FAFB",
                             border: isSel ? "2px solid #2563EB" : un ? "1px dashed #FCA5A5" : "1px solid #E5E7EB",
                             boxShadow: isSel ? "0 0 0 2px rgba(37,99,235,0.2)" : "none",
-                          }}>{match.empName.split(" ")[0]}</div>
+                          }}>{(match.empName || "").split(" ")[0]}</div>
                           <div style={{ fontSize: 8, color: "#9CA3AF", marginTop: 1 }}>{fmtTime(match.start)}{"\u2013"}{fmtTime(match.end)}</div>
                         </td>
                       );
