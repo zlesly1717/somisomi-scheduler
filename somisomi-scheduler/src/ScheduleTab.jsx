@@ -502,6 +502,11 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (!friSatSunOK(emp, dateStr, slot.slOnly)) return false; // no all 3 weekend days
       if (!dayAfterMCOK(emp, dateStr, slot.start)) return false; // no day after MC night
       if (!crystalSundayOK(emp, dateStr)) return false; // Crystal off Sundays
+      // SLs cannot take weekday (Mon-Fri) day slots — those are for regulars
+      if (emp.role === "shift_lead" && !slot.slOnly && !slot.isMC) {
+        const slDow = new Date(dateStr + "T12:00:00").getDay();
+        if ((slDow >= 1 && slDow <= 5) && tm(slot.start) < 1020) return false;
+      }
       // SLs can only be on Mon-Wed evening via the slOnly evening_sl slot
       // Regular "evening" type slots on Mon-Wed are for regulars only
       // Thu: SLs allowed on evening slots ONLY if they're not already doing MC that night
@@ -1356,22 +1361,38 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
           if (slot.isMC && mcCount[sl.id] >= 1) return;
           if (!relaxNightRules && !weekendNightOK(sl, dateStr, slot.start, slot.isMC)) return;
           if (!relaxNightRules && !friSatSunOK(sl, dateStr, false)) return;
+          // Never allow SLs on weekday day shifts (Mon-Fri day = for regulars only)
+          if ((dow >= 1 && dow <= 5) && tm(slot.start) < 1020) return;
           // Without relaxation: skip Mon-Thu evenings (those have dedicated SL slots)
-          // With relaxation: allow everything including weekday evenings
+          // With relaxation: allow weekday evenings
           if (!allowWeekdayEve && (dow >= 1 && dow <= 4) && slot.type === "evening") return;
           openSlots.push({ dateStr, idx, slot, dow });
         });
       });
       if (relaxNightRules) { approved.delete("F7"); approved.delete("F8"); approved.delete("no_fri_sat_sun"); }
 
-      // Sort: prefer weekend/Fri slots first, then weekday day slots, then weekday evenings
+      // Block weekday (Mon-Fri) day slots — SLs only take weekday evenings or weekend shifts
+      const filteredSlots = openSlots.filter(s => {
+        const isWeekdayDay = (s.dow >= 1 && s.dow <= 5) && tm(s.slot.start) < 1020;
+        return !isWeekdayDay;
+      });
+      openSlots.length = 0;
+      filteredSlots.forEach(s => openSlots.push(s));
+
+      // Sort: Sat morning → Sat night → Sun morning → Fri night → Sun night → weekday evenings
       openSlots.sort((a, b) => {
-        const priority = d => [5, 6, 0, 4, 1, 2, 3].indexOf(d); // Fri,Sat,Sun,Thu first
-        if (priority(a.dow) !== priority(b.dow)) return priority(a.dow) - priority(b.dow);
-        // Within same day: prefer day shifts over evening
-        const aIsEve = tm(a.slot.start) >= 1020 ? 1 : 0;
-        const bIsEve = tm(b.slot.start) >= 1020 ? 1 : 0;
-        return aIsEve - bIsEve;
+        const slotPriority = (s) => {
+          const dow = s.dow;
+          const isEve = tm(s.slot.start) >= 1020;
+          if (dow === 6 && !isEve) return 0;  // Sat morning ⭐
+          if (dow === 6 && isEve) return 1;   // Sat night ⭐
+          if (dow === 0 && !isEve) return 2;  // Sun morning ⭐
+          if (dow === 5 && isEve) return 3;   // Fri night ⭐
+          if (dow === 0 && isEve) return 4;   // Sun night
+          if (dow === 4 && isEve) return 5;   // Thu night
+          return 6;                            // weekday evenings (Mon-Wed)
+        };
+        return slotPriority(a) - slotPriority(b);
       });
 
       for (const { dateStr, idx } of openSlots) {
@@ -1596,6 +1617,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
         if (slot.slOnly) continue;
         if (slot.isTraineeSlot) continue;
         if (slot.isMC && mcCount[sl.id] >= 1) continue;
+        // SLs don't take weekday day shifts
+        const slotDow6c = new Date(dateStr + "T12:00:00").getDay();
+        if ((slotDow6c >= 1 && slotDow6c <= 5) && tm(slot.start) < 1020) continue;
         if (!isAvail(sl, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) continue;
         assign(dateStr, idx, sl, slot);
       }
@@ -1615,6 +1639,9 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
           if (!slot.empId) continue;
           if (slot.slOnly || slot.isMC) continue; // don't steal required slots
           if (slot.isTraineeSlot) continue;
+          // SLs don't take weekday day shifts even via swap
+          const swapDow = new Date(dateStr + "T12:00:00").getDay();
+          if ((swapDow >= 1 && swapDow <= 5) && tm(slot.start) < 1020) continue;
           const occupant = active.find(e => e.id === slot.empId);
           if (!occupant || occupant.role === "shift_lead") continue; // only steal from regulars
           if (sc[occupant.id] <= 2) continue; // don't leave regulars with < 2 shifts
