@@ -504,8 +504,11 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       if (!crystalSundayOK(emp, dateStr)) return false; // Crystal off Sundays
       // SLs cannot take weekday (Mon-Fri) day slots — those are for regulars
       if (emp.role === "shift_lead" && !slot.slOnly && !slot.isMC) {
-        const slDow = new Date(dateStr + "T12:00:00").getDay();
-        if ((slDow >= 1 && slDow <= 5) && tm(slot.start) < 1020) return false;
+        const slDateStr = slot._dateStr || "";
+        if (slDateStr) {
+          const slDow = new Date(slDateStr + "T12:00:00").getDay();
+          if ((slDow >= 1 && slDow <= 5) && tm(slot.start) < 1020) return false;
+        }
       }
       // SLs can only be on Mon-Wed evening via the slOnly evening_sl slot
       // Regular "evening" type slots on Mon-Wed are for regulars only
