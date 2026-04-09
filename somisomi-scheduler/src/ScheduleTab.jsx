@@ -1332,97 +1332,62 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
   // Release Thu MC reservations — MC is done, sd[thuDate] stays set (they worked Thu)
   thuMCReserved.clear();
 
-  // ── STEP 5: SL overflow — give SLs slots to reach 4 shifts ──
-  // Try weekends first, then weekdays if still short
+  // ── STEP 5: SL overflow — give non-break SLs slots to reach 4 shifts ──
+  // SLs can take ANY available slot — day, evening, weekend. 
+  // Priority: days they're not already working, slots not yet filled.
+  // Escalating relaxation: try with rules → relax night rules → try any slot
   for (const sl of sls.sort((a, b) => sc[a.id] - sc[b.id])) {
     if (sl._isBreakSL) continue; // break SL stays at 3
-    const needed = 4 - sc[sl.id];
-    if (needed <= 0) continue;
+    if (sc[sl.id] >= 4) continue; // already at 4
 
-    // First try: open slots on any day (Thu-Sun preferred, Mon-Wed fallback)
-    const openSlots = [];
-    weekDates.forEach(dateStr => {
-      const dow = new Date(dateStr + "T12:00:00").getDay();
-      schedule[dateStr].forEach((slot, idx) => {
-        if (slot.empId) return;
-        if (slot.slOnly) return; // already handled
-        if (slot.isTraineeSlot) return;
-        if (sd[sl.id].has(dateStr)) return;
-        if (!isAvail(sl, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return;
-        if (!friSatSunOK(sl, dateStr, slot.slOnly)) return;
-        if (!dayAfterMCOK(sl, dateStr, slot.start)) return;
-        if (!crystalSundayOK(sl, dateStr)) return;
-        if (!weekendNightOK(sl, dateStr, slot.start, slot.isMC)) return;
-        if (!consecOK(sl, weekDates.indexOf(dateStr))) return;
-        if (slot.isMC && mcCount[sl.id] >= 1) return;
-        // SLs shouldn't take Mon-Thu evening regular slots (those days have Eve SL slot for SLs)
-        if ((dow >= 1 && dow <= 4) && slot.type === "evening") return;
-        // SLs CAN take Fri/Sat/Sun regular evening slots to reach their 4th shift
-        openSlots.push({ dateStr, idx, slot, dow });
-      });
-    });
-
-    // If no open slots found with normal rules, relax F7/F8 for SLs reaching 4th shift
-    if (openSlots.length === 0) {
-      approved.add("F7"); approved.add("F8");
+    const tryFillSL = (relaxNightRules, allowWeekdayEve) => {
+      if (relaxNightRules) { approved.add("F7"); approved.add("F8"); approved.add("no_fri_sat_sun"); }
+      const openSlots = [];
       weekDates.forEach(dateStr => {
         const dow = new Date(dateStr + "T12:00:00").getDay();
         schedule[dateStr].forEach((slot, idx) => {
-          if (slot.empId) return;
-          if (slot.slOnly) return;
-          if (slot.isTraineeSlot) return;
-          if (sd[sl.id].has(dateStr)) return;
+          if (schedule[dateStr][idx].empId) return; // filled
+          if (slot.slOnly) return; // SL-only slots already handled in Step 2
+          if (slot.isTraineeSlot) return; // trainee slots reserved
+          if (sd[sl.id].has(dateStr)) return; // already works this day
           if (!isAvail(sl, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) return;
-          if (!friSatSunOK(sl, dateStr, slot.slOnly)) return;
-          if (!dayAfterMCOK(sl, dateStr, slot.start)) return;
           if (!crystalSundayOK(sl, dateStr)) return;
           if (!consecOK(sl, weekDates.indexOf(dateStr))) return;
           if (slot.isMC && mcCount[sl.id] >= 1) return;
-          if ((dow >= 1 && dow <= 4) && slot.type === "evening") return;
+          if (!relaxNightRules && !weekendNightOK(sl, dateStr, slot.start, slot.isMC)) return;
+          if (!relaxNightRules && !friSatSunOK(sl, dateStr, false)) return;
+          // Without relaxation: skip Mon-Thu evenings (those have dedicated SL slots)
+          // With relaxation: allow everything including weekday evenings
+          if (!allowWeekdayEve && (dow >= 1 && dow <= 4) && slot.type === "evening") return;
           openSlots.push({ dateStr, idx, slot, dow });
         });
       });
-      approved.delete("F7"); approved.delete("F8");
-    }
+      if (relaxNightRules) { approved.delete("F7"); approved.delete("F8"); approved.delete("no_fri_sat_sun"); }
 
-    // Sort: prefer Thu/Fri/Sat/Sun day slots
-    openSlots.sort((a, b) => {
-      const priority = d => [4,5,6,0,1,2,3].indexOf(d);
-      return priority(a.dow) - priority(b.dow);
-    });
+      // Sort: prefer weekend/Fri slots first, then weekday day slots, then weekday evenings
+      openSlots.sort((a, b) => {
+        const priority = d => [5, 6, 0, 4, 1, 2, 3].indexOf(d); // Fri,Sat,Sun,Thu first
+        if (priority(a.dow) !== priority(b.dow)) return priority(a.dow) - priority(b.dow);
+        // Within same day: prefer day shifts over evening
+        const aIsEve = tm(a.slot.start) >= 1020 ? 1 : 0;
+        const bIsEve = tm(b.slot.start) >= 1020 ? 1 : 0;
+        return aIsEve - bIsEve;
+      });
 
-    let filled = 0;
-    for (const { dateStr, idx, slot } of openSlots) {
-      if (filled >= needed) break;
-      if (sd[sl.id].has(dateStr)) continue;
-      if (schedule[dateStr][idx].empId) continue;
-      assign(dateStr, idx, sl, slot);
-      filled++;
-    }
-
-    // Second try: if still short, swap a regular out of a day slot to give it to the SL
-    if (filled < needed) {
-      for (const dateStr of weekDates) {
-        if (filled >= needed) break;
+      for (const { dateStr, idx } of openSlots) {
+        if (sc[sl.id] >= 4) break;
         if (sd[sl.id].has(dateStr)) continue;
-        if (!isAvail(sl, dateStr, "12:00", "18:00", weeklyTimeOffs, availOverrides)) continue;
-        if (!friSatSunOK(sl, dateStr, false)) continue;
-        if (!crystalSundayOK(sl, dateStr)) continue;
-        if (!consecOK(sl, weekDates.indexOf(dateStr))) continue;
-        const dow = new Date(dateStr + "T12:00:00").getDay();
-        // Only consider day slots (regulars can do weekday day shifts, SLs just join)
-        for (let idx = 0; idx < schedule[dateStr].length; idx++) {
-          const slot = schedule[dateStr][idx];
-          if (slot.empId) continue; // only unfilled
-          if (slot.type !== "day") continue; // day slots only
-          if ((dow >= 1 && dow <= 3)) {
-            assign(dateStr, idx, sl, slot);
-            filled++;
-            break;
-          }
-        }
+        if (schedule[dateStr][idx].empId) continue;
+        assign(dateStr, idx, sl, schedule[dateStr][idx]);
       }
-    }
+    };
+
+    // Pass 1: normal rules, skip Mon-Thu evenings
+    tryFillSL(false, false);
+    // Pass 2: relax night rules (F7/F8), still skip Mon-Thu evenings
+    if (sc[sl.id] < 4) tryFillSL(true, false);
+    // Pass 3: relax everything including weekday evenings
+    if (sc[sl.id] < 4) tryFillSL(true, true);
   }
 
   // ── STEP 5b: 5th person on a shift can be a trainee ────────────────
@@ -1610,6 +1575,60 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       }
     }
     if (!swapped) break;
+  }
+
+  // ── STEP 6C: Final SL top-up — any SL still under 4 gets one last aggressive try ──
+  // This runs after balance passes — if any non-break SL still has < 4 shifts,
+  // find them ANY available slot including filled slots we can swap a regular out of
+  for (const sl of sls) {
+    if (sl._isBreakSL || sc[sl.id] >= 4) continue;
+    // Try any open slot first (all rules relaxed)
+    approved.add("F7"); approved.add("F8"); approved.add("no_fri_sat_sun");
+    for (const dateStr of weekDates) {
+      if (sc[sl.id] >= 4) break;
+      if (sd[sl.id].has(dateStr)) continue;
+      if (!isAvail(sl, dateStr, "11:00", "23:59", weeklyTimeOffs, availOverrides)) continue;
+      if (!crystalSundayOK(sl, dateStr)) continue;
+      for (let idx = 0; idx < schedule[dateStr].length; idx++) {
+        if (sc[sl.id] >= 4) break;
+        const slot = schedule[dateStr][idx];
+        if (slot.empId) continue; // skip filled
+        if (slot.slOnly) continue;
+        if (slot.isTraineeSlot) continue;
+        if (slot.isMC && mcCount[sl.id] >= 1) continue;
+        if (!isAvail(sl, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) continue;
+        assign(dateStr, idx, sl, slot);
+      }
+    }
+    approved.delete("F7"); approved.delete("F8"); approved.delete("no_fri_sat_sun");
+
+    // If still under 4: swap a regular out of a slot and give it to the SL
+    if (sc[sl.id] < 4) {
+      outer6c: for (const dateStr of weekDates) {
+        if (sc[sl.id] >= 4) break;
+        if (sd[sl.id].has(dateStr)) continue;
+        if (!isAvail(sl, dateStr, "11:00", "23:59", weeklyTimeOffs, availOverrides)) continue;
+        if (!crystalSundayOK(sl, dateStr)) continue;
+        for (let idx = 0; idx < schedule[dateStr].length; idx++) {
+          if (sc[sl.id] >= 4) break;
+          const slot = schedule[dateStr][idx];
+          if (!slot.empId) continue;
+          if (slot.slOnly || slot.isMC) continue; // don't steal required slots
+          if (slot.isTraineeSlot) continue;
+          const occupant = active.find(e => e.id === slot.empId);
+          if (!occupant || occupant.role === "shift_lead") continue; // only steal from regulars
+          if (sc[occupant.id] <= 2) continue; // don't leave regulars with < 2 shifts
+          if (!isAvail(sl, dateStr, slot.start, slot.end, weeklyTimeOffs, availOverrides)) continue;
+          // Swap: give slot to SL, regular loses it (they may get it back via gap fill)
+          sc[occupant.id]--; sh[occupant.id] -= slot.hours;
+          if (!schedule[dateStr].some((s, i) => i !== idx && s.empId === occupant.id)) sd[occupant.id].delete(dateStr);
+          if (slot._isWE) weCount[occupant.id] = Math.max(0, weCount[occupant.id] - 1);
+          schedule[dateStr][idx] = { ...slot, empId: null, empName: "⚠ UNFILLED", empRole: null };
+          assign(dateStr, idx, sl, schedule[dateStr][idx]);
+          break outer6c;
+        }
+      }
+    }
   }
 
   // ── Gap fill cascade: 5 passes, each more relaxed than the last ─────
