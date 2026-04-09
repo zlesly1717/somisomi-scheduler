@@ -1932,14 +1932,19 @@ function NuanceModal({ employees, weeklyMaxOverrides, setWeeklyMaxOverrides, onG
   // Compute who most deserves break (hasn't had one recently) → put them at bottom of ranking
   const computeSLBreakRanking = () => {
     if (!savedSchedules) return sls.map(e => e.id);
-    const now = new Date();
-    const todayDay = now.getDay();
-    const currentMon = new Date(now); currentMon.setDate(now.getDate() - (todayDay === 0 ? 6 : todayDay - 1)); currentMon.setHours(0,0,0,0);
+    // Use weekStart (the week being scheduled) as cutoff — include all prior weeks
+    // e.g. scheduling Apr 20-26: include Apr 13 and earlier, skip Apr 20+
+    const cutoffMon = weekStart ? new Date(weekStart + "T00:00:00") : (() => {
+      const now = new Date();
+      const todayDay = now.getDay();
+      const m = new Date(now); m.setDate(now.getDate() - (todayDay === 0 ? 6 : todayDay - 1)); m.setHours(0,0,0,0);
+      return m;
+    })();
     const slLastBreak = {}; const slBreakCount = {};
     sls.forEach(e => { slLastBreak[e.name] = null; slBreakCount[e.name] = 0; });
     Object.entries(savedSchedules).forEach(([key, data]) => {
       const weekMon = new Date(key + "T00:00:00");
-      if (weekMon >= currentMon) return; // skip current/future
+      if (weekMon >= cutoffMon) return; // skip the week being scheduled and future weeks
       const schedule = data.schedule || data;
       const mcNames = new Set();
       Object.values(schedule).forEach(slots => {
