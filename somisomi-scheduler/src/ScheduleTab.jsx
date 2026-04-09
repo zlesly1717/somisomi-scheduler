@@ -252,6 +252,8 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       emp._isBreakSL = true; // flag to skip MC assignment
     }
   }
+  const SL_MIN_WEEKEND = 2; // SLs must have at least 2 weekend shifts
+
   // Strong regulars = "top" tier employees who aren't shift leads
   // Tier set in Employees tab. Falls back to hardcoded names if no tiers set.
   const topTierRegs = active.filter(e => e.role !== "shift_lead" && e.tier === "top");
@@ -1293,7 +1295,7 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
     }
 
     // PICK: Fewest shifts first (equalize shift count), then fewest hours (equalize hours)
-    // SLs needing 4 shifts get priority. Guaranteed days respected.
+    // SLs needing weekend shifts get top priority on weekend slots.
     const slMinHours = 18;
     // Count non-MC shifts only — people whose only shifts are MC shouldn't be penalized
     // for weekday slot priority (Marissa on Sun MC should still get a weekday slot)
@@ -1311,6 +1313,12 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       const aG = (a.guaranteedDays || []).includes(slot._dayKey) ? 1 : 0;
       const bG = (b.guaranteedDays || []).includes(slot._dayKey) ? 1 : 0;
       if (bG !== aG) return bG - aG;
+      // SLs who need weekend shifts get TOP priority on weekend slots
+      if (isWeekendSlot) {
+        const aSLNeedsWE = a.role === "shift_lead" && !a._isBreakSL && (weCount[a.id] || 0) < SL_MIN_WEEKEND ? 1 : 0;
+        const bSLNeedsWE = b.role === "shift_lead" && !b._isBreakSL && (weCount[b.id] || 0) < SL_MIN_WEEKEND ? 1 : 0;
+        if (bSLNeedsWE !== aSLNeedsWE) return bSLNeedsWE - aSLNeedsWE;
+      }
       // SLs under 18h get priority
       const aSLUnder = a.role === "shift_lead" && sh[a.id] < slMinHours ? 1 : 0;
       const bSLUnder = b.role === "shift_lead" && sh[b.id] < slMinHours ? 1 : 0;
@@ -1382,18 +1390,21 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
       openSlots.length = 0;
       filteredSlots.forEach(s => openSlots.push(s));
 
-      // Sort: Sat morning → Sat night → Sun morning → Fri night → Sun night → weekday evenings
+      // Sort: weekend slots first (must get 2), then Fri night, then weekday evenings last resort
       openSlots.sort((a, b) => {
         const slotPriority = (s) => {
           const dow = s.dow;
           const isEve = tm(s.slot.start) >= 1020;
-          if (dow === 6 && !isEve) return 0;  // Sat morning ⭐
+          if (dow === 6 && !isEve) return 0;  // Sat morning ⭐ highest priority
           if (dow === 6 && isEve) return 1;   // Sat night ⭐
           if (dow === 0 && !isEve) return 2;  // Sun morning ⭐
-          if (dow === 5 && isEve) return 3;   // Fri night ⭐
-          if (dow === 0 && isEve) return 4;   // Sun night
+          if (dow === 0 && isEve) return 3;   // Sun night ⭐
+          if (dow === 5 && isEve) return 4;   // Fri night
           if (dow === 4 && isEve) return 5;   // Thu night
-          return 6;                            // weekday evenings (Mon-Wed)
+          if (dow === 3 && isEve) return 6;   // Wed night
+          if (dow === 2 && isEve) return 7;   // Tue night
+          if (dow === 1 && isEve) return 8;   // Mon night
+          return 9;                            // anything else
         };
         return slotPriority(a) - slotPriority(b);
       });
@@ -1645,6 +1656,10 @@ function genSchedule(weekDates, employees, rules, schoolDates, weeklyTimeOffs, d
           // SLs don't take weekday day shifts even via swap
           const swapDow = new Date(dateStr + "T12:00:00").getDay();
           if ((swapDow >= 1 && swapDow <= 5) && tm(slot.start) < 1020) continue;
+          // Prefer weekend slots for SLs — only steal weekday evening as last resort
+          const isSwapWeekend = swapDow === 0 || swapDow === 5 || swapDow === 6;
+          const slNeedsWeekend = (weCount[sl.id] || 0) < SL_MIN_WEEKEND;
+          if (slNeedsWeekend && !isSwapWeekend) continue; // skip weekday slots if SL needs weekends
           const occupant = active.find(e => e.id === slot.empId);
           if (!occupant || occupant.role === "shift_lead") continue; // only steal from regulars
           if (sc[occupant.id] <= 2) continue; // don't leave regulars with < 2 shifts
